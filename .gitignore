@@ -1,2 +1,7 @@
-./venv
-./results
+venv
+results
+
+data/__pycache__
+losses/__pycache__
+models/__pycache__
+utils/__pycache__
