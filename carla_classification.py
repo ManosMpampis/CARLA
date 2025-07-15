@@ -30,14 +30,11 @@ set_seed(4)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-FLAGS = argparse.ArgumentParser(description='classification Loss')
-FLAGS.add_argument('--config_env', help='Location of path config file')
-FLAGS.add_argument('--config_exp', help='Location of experiments config file')
-FLAGS.add_argument('--fname', help='Config the file name of Dataset')
 
-def main():
+
+def main(args):
     global best_f1
-    args = FLAGS.parse_args()
+    
     p = create_config(args.config_env, args.config_exp, args.fname)
     print(colored('CARLA Self-supervised Classification stage --> ', 'yellow'))
 
@@ -211,4 +208,11 @@ def main():
     predictions, _ = get_predictions(p, tst_dl, model, True)
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser(description='classification Loss')
+    parser.add_argument('--config_env', help='Location of path config file', type=str, default='configs/env.yml')
+    parser.add_argument('--config_exp', help='Location of experiments config file', type=str, default='configs/classification/carla_classification_smd.yml')
+    parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
+    args = parser.parse_args()
+
+    main(args=args)

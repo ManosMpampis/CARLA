@@ -29,23 +29,12 @@ def set_seed(seed):
 
 set_seed(4)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Parser
-parser = argparse.ArgumentParser(description='pretext')
-parser.add_argument('--config_env',
-                    help='Config file for the environment')
-parser.add_argument('--config_exp',
-                    help='Config file for the experiment')
-parser.add_argument('--fname',
-                    help='Config the file name of Dataset')
-args = parser.parse_args()
-
-def main():
+def main(args):
     # # Set PyTorch-specific threading options
     # torch.set_num_threads(1)
     # torch.set_num_interop_threads(1) 
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     print(colored('CARLA Pretext stage --> ', 'yellow'))
     p = create_config(args.config_env, args.config_exp, args.fname)
 
@@ -237,4 +226,11 @@ def main():
 
  
 if __name__ == '__main__':
-    main()
+    # Parser
+    parser = argparse.ArgumentParser(description='pretext')
+    parser.add_argument('--config_env', help='Config file for the environment', type=str, default='configs/env.yml')
+    parser.add_argument('--config_exp', help='Config file for the experiment', type=str, default='configs/pretext/carla_pretext_smd.yml')
+    parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
+    args = parser.parse_args()
+
+    main(args=args)
