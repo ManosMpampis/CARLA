@@ -7,8 +7,8 @@ class TSRepository(object):
     def __init__(self, n, dim, num_classes, temperature):
         self.n = n
         self.dim = dim 
-        self.features = torch.FloatTensor(self.n, self.dim)
-        self.targets = torch.LongTensor(self.n)
+        self.features = torch.empty(self.n, self.dim, dtype=torch.float)
+        self.targets = torch.empty(self.n, dtype=torch.long)
         self.ptr = 0
         self.device = 'cpu'
         self.K = 100
@@ -112,8 +112,8 @@ class TSRepository(object):
 
     def resize(self, sz):
         self.n = sz * self.n
-        self.features = torch.FloatTensor(self.n, self.dim)
-        self.targets = torch.LongTensor(self.n)
+        self.features = torch.empty(self.n, self.dim, dtype=torch.float)
+        self.targets = torch.empty(self.n, dtype=torch.long)
         
     def update(self, features, targets):
         b = features.size(0)

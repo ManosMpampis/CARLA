@@ -9,23 +9,23 @@ class MyPath(object):
         assert(database in db_names)
 
         if database == 'msl' or database == 'smap':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/MSL_SMAP'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/MSL_SMAP'
         elif database == 'ucr':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/UCR'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/UCR'
         elif database == 'yahoo':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/Yahoo'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/Yahoo'
         elif database == 'smd':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/SMD'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/SMD'
         elif database == 'swat':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/SWAT'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/SWAT'
         elif database == 'wadi':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/WADI'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/WADI'
         elif database == 'kpi':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/KPI'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/KPI'
         elif database == 'swan':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/Swan'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/Swan'
         elif database == 'gecco':
-            return '/home/zahraz/hz18_scratch/zahraz/datasets/GECCO'
+            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/GECCO'
         
         else:
             raise NotImplementedError
