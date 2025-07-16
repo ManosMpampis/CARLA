@@ -1,22 +1,19 @@
-
 import os
 import pandas
 import numpy as np
 from torch.utils.data import Dataset
 from utils.mypath import MyPath
 import ast
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import torch
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class MSL(Dataset):
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None):
+    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, device=torch.device("cpu")):
 
         super(MSL, self).__init__()
+        self.device = device
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -92,11 +89,12 @@ class MSL(Dataset):
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
         # ts_org = self.data[index]
-        ts_org = torch.from_numpy(self.data[index]).float().to(device)  # cuda
+        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long).to(device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
             class_name = self.classes[target]
         else:
             target = 0

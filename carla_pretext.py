@@ -33,7 +33,10 @@ def main(args):
     # # Set PyTorch-specific threading options
     # torch.set_num_threads(1)
     # torch.set_num_interop_threads(1) 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.device == 'auto':
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(args.device)
     
     print(colored('CARLA Pretext stage --> ', 'yellow'))
     p = create_config(args.config_env, args.config_exp, args.fname)
@@ -61,16 +64,16 @@ def main(args):
                 p['fname'] = file_name
                 if ii == 0 :
                     train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                                  split='train+unlabeled')
+                                                  split='train+unlabeled', device=device)
                     val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                              train_dataset.std)
+                                              train_dataset.std, device=device)
                     # base_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
                     #                                  split='train')
                 else:
                     new_train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                                  split='train+unlabeled')
+                                                  split='train+unlabeled', device=device)
                     new_val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, new_train_dataset.mean,
-                                                  new_train_dataset.std)
+                                                  new_train_dataset.std, device=device)
 
                     train_dataset.concat_ds(new_train_dataset)
                     val_dataset.concat_ds(new_val_dataset)
@@ -79,9 +82,9 @@ def main(args):
                 ii += 1
         else:
             train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                              split='train+unlabeled')
+                                              split='train+unlabeled', device=device)
             val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                          train_dataset.std)
+                                          train_dataset.std, device=device)
             # base_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
             #                                  split='train') # Dataset w/o augs for knn eval
 
@@ -121,17 +124,17 @@ def main(args):
         print(">>>", "train/test w. shapes of {}/{}".format(np.shape(TRAIN_TS), np.shape(TEST_TS)))
 
         train_dataset = get_train_dataset(p, train_transforms, sanomaly,
-                                          to_augmented_dataset=True, data=TRAIN_TS, label=train_label)
+                                          to_augmented_dataset=True, data=TRAIN_TS, label=train_label, device=device)
         val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                          train_dataset.std, TEST_TS, test_label)
+                                          train_dataset.std, TEST_TS, test_label, device=device)
         # base_dataset = get_train_dataset(p, train_transforms, sanomaly,
         #                                   to_augmented_dataset=True, data=TRAIN_TS, label=train_label)
 
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
         or p['train_db_name'] == 'swan' or p['train_db_name'] == 'gecco' or p['train_db_name'] == 'wadi' or p['train_db_name'] == 'ucr':
-        train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True)
+        train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True, device=device)
         val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                      train_dataset.std)
+                                      train_dataset.std, device=device)
 
     train_dataloader = get_train_dataloader(p, train_dataset)
     val_dataloader = get_val_dataloader(p, val_dataset)
@@ -140,19 +143,17 @@ def main(args):
     print('Dataset contains {}/{} train/val samples'.format(len(train_dataset), len(val_dataset)))
     
     # TS Repository
-   # base_dataset = get_train_dataset(p, train_transforms, panomaly, sanomaly, to_augmented_dataset=True, split='train')
+    # base_dataset = get_train_dataset(p, train_transforms, panomaly, sanomaly, to_augmented_dataset=True, split='train')
 
     ts_repository_base = TSRepository(len(train_dataset),
                                       p['model_kwargs']['features_dim'],
-                                      p['num_classes'], p['criterion_kwargs']['temperature'])
-    ts_repository_base.to(device)
+                                      p['num_classes'], p['criterion_kwargs']['temperature']).to(device)
+
     ts_repository_val = TSRepository(len(val_dataset),
                                      p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature'])
-    ts_repository_val.to(device)
+                                     p['num_classes'], p['criterion_kwargs']['temperature']).to(device)
 
-    criterion = get_criterion(p)
-    criterion = criterion.to(device)
+    criterion = get_criterion(p).to(device)
 
     # optimizer = get_optimizer(p, model)
     optimizer = torch.optim.Adam(model.parameters(), lr=p['optimizer_kwargs']['lr'])
@@ -163,7 +164,7 @@ def main(args):
         checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
         optimizer.load_state_dict(checkpoint['optimizer'])
         model.load_state_dict(checkpoint['model'])
-        model.to(device)
+        model = model.to(device)
         start_epoch = checkpoint['epoch']
 
     else:
@@ -198,7 +199,7 @@ def main(args):
     ts_repository_aug = TSRepository(len(train_dataset) * 2,
                                      p['model_kwargs']['features_dim'],
                                      p['num_classes'], p['criterion_kwargs']['temperature']) #need size of repository == 1+num_of_anomalies
-    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug)
+    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug, device=device)
     # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
     out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
@@ -213,7 +214,7 @@ def main(args):
     # These will be used for validation.
     print(colored('Fill TS Repository for mining the nearest/furthest neighbors (val) ...', 'blue'))
 
-    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None)
+    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None, device=device)
     # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
     out_pre = np.column_stack((ts_repository_val.features.cpu().numpy(), ts_repository_val.targets.cpu().numpy()))
 
@@ -231,6 +232,7 @@ if __name__ == '__main__':
     parser.add_argument('--config_env', help='Config file for the environment', type=str, default='configs/env.yml')
     parser.add_argument('--config_exp', help='Config file for the experiment', type=str, default='configs/pretext/carla_pretext_smd.yml')
     parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
+    parser.add_argument('--device', help='Device used to load the model', type=str, choices=['cpu', 'cuda', 'auto'], default='auto')
     args = parser.parse_args()
 
     main(args=args)

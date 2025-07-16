@@ -1,12 +1,9 @@
-
 import os
-import pandas
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
+import torch
 from utils.mypath import MyPath
-import ast
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 class SWAT(Dataset):
@@ -91,9 +88,10 @@ class SWAT(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        ts_org = torch.from_numpy(self.data[index]).float().to(device)  # cuda
+        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
         if len(self.targets) > 0:
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long).to(device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
             class_name = self.classes[target]
         else:
             target = 0

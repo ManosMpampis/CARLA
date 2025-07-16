@@ -1,10 +1,8 @@
-
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from scipy.spatial.distance import euclidean
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """ 
     AugmentedDataset
@@ -13,8 +11,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class AugmentedDataset(Dataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, device=torch.device("cpu")):
         super(AugmentedDataset, self).__init__()
+        self.device = device
         self.current_epoch = 0
         self.samples = [{} for _ in range(len(dataset))]  # Initialized with empty dictionaries
         transform = dataset.transform
@@ -34,16 +33,16 @@ class AugmentedDataset(Dataset):
 
     def create_pairs(self):
         mmean, sstd = self.dataset.get_info()
-        mmean = torch.tensor(mmean, dtype=torch.float32).to(device)
-        sstd = torch.tensor(sstd, dtype=torch.float32).to(device)
+        mmean = torch.tensor(mmean, dtype=torch.float32, device=self.device)
+        sstd = torch.tensor(sstd, dtype=torch.float32, device=self.device)
         # min_data, max_data = self.dataset.get_info()
         # range_val = (max_data - min_data) + 1e-20
         for index in range(len(self.dataset)):
             item = self.dataset.__getitem__(index)
             # ts_org = item['ts_org']
             # ts_trg = item['target']
-            ts_org = item['ts_org'].clone().detach().to(device)
-            ts_trg = item['target'].clone().detach().to(device)
+            ts_org = item['ts_org'].clone().detach().to(self.device)
+            ts_trg = item['target'].clone().detach().to(self.device)
             
 
 
@@ -58,7 +57,7 @@ class AugmentedDataset(Dataset):
                 rand_nei = np.random.randint(index - 10, index)
                 sample_nei = self.dataset.__getitem__(rand_nei)
                 # ts_w_augment = sample_nei['ts_org']
-                ts_w_augment = sample_nei['ts_org'].clone().detach().to(device)
+                ts_w_augment = sample_nei['ts_org'].clone().detach().to(self.device)
             else:
                 ts_w_augment = self.augmentation_transform(ts_org)
 
@@ -95,9 +94,10 @@ class AugmentedDataset(Dataset):
     Returns a ts with one of its neighbors.
 """
 class NeighborsDataset(Dataset):
-    def __init__(self, dataset, transform, N_indices, F_indices, p):
+    def __init__(self, dataset, transform, N_indices, F_indices, p, device=torch.device("cpu")):
         super(NeighborsDataset, self).__init__()
         
+        self.device = device
         if isinstance(transform, dict):
             self.anchor_transform = transform['standard']
             self.neighbor_transform = transform['augment']
@@ -106,7 +106,7 @@ class NeighborsDataset(Dataset):
             self.neighbor_transform = transform
        
         dataset.transform = None
-        all_data = dataset.data.to(device)
+        all_data = dataset.data.to(self.device)
         self.dataset = dataset
 
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
@@ -116,8 +116,8 @@ class NeighborsDataset(Dataset):
             self.FN_indices = FN_indices[:, -p['num_neighbors']:]
         #assert( int(self.indices.shape[0]/4) == len(self.dataset) )
 
-        self.dataset.data = dataset.data.to(device)
-        self.dataset.targets = dataset.targets.to(device)
+        self.dataset.data = dataset.data.to(self.device)
+        self.dataset.targets = dataset.targets.to(self.device)
         num_samples = self.dataset.data.shape[0]
         NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
         FN_index = np.array([np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)])

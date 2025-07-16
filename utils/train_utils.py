@@ -1,19 +1,18 @@
-
 import torch
 import numpy as np
 from torch import Tensor
 
 from utils.utils import AverageMeter, ProgressMeter
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, device='cuda'):
+
+def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, device=torch.device("cpu")):
 
     losses = AverageMeter('Loss', ':.4e')
     progress = ProgressMeter(len(train_loader),
         [losses],
         prefix="Epoch: [{}]".format(epoch+1))
 
-    model.to(device)
+    model = model.to(device)
     model.train()
 
     for i, batch in enumerate(train_loader):
@@ -49,7 +48,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, d
     return loss
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, device=torch.device("cpu")):
     """ 
     Train w/ classification-Loss
     """
@@ -60,6 +59,8 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
     progress = ProgressMeter(len(train_loader),
         [total_losses, consistency_losses, inconsistency_losses, entropy_losses],
         prefix="Epoch: [{}]".format(epoch+1))
+
+    model = model.to(device)
 
     if update_cluster_head_only:
         model.eval() # No need to update BN

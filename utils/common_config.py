@@ -79,61 +79,61 @@ def get_model(p, pretrain_path=None):
 
 
 def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
-                      to_neighbors_dataset=False, split=None, data=None, label=None):
+                      to_neighbors_dataset=False, split=None, data=None, label=None, device=torch.device("cpu")):
     # Base dataset
     mean, std = 0, 0
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'yahoo':
         from data.Yahoo import Yahoo
         dataset = Yahoo(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                        data=data, label=label)
+                        data=data, label=label, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                       mean_data=None, std_data=None)
+                       mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swan':
         from data.Swan import Swan
         dataset = Swan(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'gecco':
         from data.GECCO import GECCO
         dataset = GECCO(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
     
     elif p['train_db_name'] == 'ucr':
         from data.UCR import UCR
         dataset = UCR(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
     else:
@@ -148,71 +148,56 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
         from data.custom_dataset import NeighborsDataset
         nindices = np.load(p['topk_neighbors_train_path'])
         findices = np.load(p['bottomk_neighbors_train_path'])
-        dataset = NeighborsDataset(dataset, None, nindices, findices, p)
+        dataset = NeighborsDataset(dataset, None, nindices, findices, p, device=device)
 
     dataset.mean = mean
     dataset.std = std
     return dataset
 
 
-def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
+def get_aug_train_dataset(p, transform, to_neighbors_dataset=False, device=torch.device("cpu")):
     dataloader = torch.load(p['contrastive_dataset'], weights_only=False)
     if to_neighbors_dataset:  # Dataset returns a ts and one of its nearest neighbors.
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_train_path'])
         F_indices = np.load(p['bottomk_neighbors_train_path'])
-        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p)
+        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p, device=device)
 
     return dataset
 
 
 def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False,
-                    mean_data=None, std_data=None, data=None, label=None):
+                    mean_data=None, std_data=None, data=None, label=None, device=torch.device("cpu")):
     # Base dataset
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, device=device)
 
     elif p['train_db_name'] == 'yahoo':
         from data.Yahoo import Yahoo
         dataset = Yahoo(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                        mean_data=mean_data, std_data=std_data, data=data, label=label)
+                        mean_data=mean_data, std_data=std_data, data=data, label=label, device=device)
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, device=device)
 
     elif p['val_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, device=device)
 
     elif p['val_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
-
-    elif p['val_db_name'] == 'swan':
-        from data.Swan import Swan
-        dataset = Swan(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
-
-    elif p['val_db_name'] == 'gecco':
-        from data.GECCO import GECCO
-        dataset = GECCO(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
-    
-    elif p['val_db_name'] == 'ucr':
-        from data.UCR import UCR
-        dataset = UCR(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, device=device)
 
     elif p['val_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, device=device)
 
     else:
         raise ValueError('Invalid validation dataset {}'.format(p['val_db_name']))
@@ -222,7 +207,7 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_val_path'])
         F_indices = np.load(p['bottomk_neighbors_val_path'])
-        dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, 5)  # Only use 5
+        dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, 5, device=device)  # Only use 5
 
     return dataset
 

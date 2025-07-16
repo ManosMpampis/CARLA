@@ -1,10 +1,9 @@
-
 import os
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
+import torch
 from utils.mypath import MyPath
-from sklearn.preprocessing import StandardScaler, RobustScaler
 
 
 class KPI(Dataset):
@@ -80,17 +79,18 @@ class KPI(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        ts_org = torch.from_numpy(self.data[index]).float().to(device)  # cuda
+        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
         if len(self.targets) > 0:
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long).to(device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
             class_name = self.classes[target]
         else:
             target = 0
             class_name = ''
 
-        ts_size = len(ts)
+        ts_size = len(ts_org)
 
-        out = {'ts_org': ts, 'target': target, 'meta': {'ts_size': ts_size, 'index': index, 'class_name': class_name}}
+        out = {'ts_org': ts_org, 'target': target, 'meta': {'ts_size': ts_size, 'index': index, 'class_name': class_name}}
 
         return out
 

@@ -1,13 +1,11 @@
-
 import random
 import numpy as np
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class NoiseTransformation(object):
-    def __init__(self, sigma):
+    def __init__(self, sigma, device=torch.device("cpu")):
+        self.device = device
         self.sigma = sigma
 
     def __call__(self, X):
@@ -18,7 +16,7 @@ class NoiseTransformation(object):
             X = X.cpu()  # Move tensor to CPU
         noise = np.random.normal(loc=0, scale=self.sigma, size=X.shape)  # NumPy operation
         
-        return torch.tensor(X.numpy() + noise, dtype=torch.float32, device=device)  # Move back to GPU
+        return torch.tensor(X.numpy() + noise, dtype=torch.float32, device=self.device)  # Move back to GPU
 
 class SubAnomaly(object):
     def __init__(self, portion_len):

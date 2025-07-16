@@ -17,7 +17,7 @@ class TSRepository(object):
 
     def weighted_knn(self, predictions):
         # perform weighted knn
-        retrieval_one_hot = torch.zeros(self.K, self.C).to(self.device)
+        retrieval_one_hot = torch.zeros(self.K, self.C, device=self.device)
         batchSize = predictions.shape[0]
         correlation = torch.matmul(predictions, self.features.t())
         yd, yi = correlation.topk(self.K, dim=1, largest=True, sorted=True)
@@ -131,7 +131,7 @@ class TSRepository(object):
         self.device = device
 
     def cpu(self):
-        self.to('cpu')
+        self.to(torch.device('cpu'))
 
     def cuda(self):
-        self.to('cuda:0')
+        self.to(torch.device('cuda'))
