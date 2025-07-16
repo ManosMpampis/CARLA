@@ -10,8 +10,4 @@ termcolor==3.1.0
 pyyaml==6.0.2
 easydict==1.13
 
-torch==2.7.1+cu128
-torchaudio==2.7.1+cu128
-torchvision==0.22.1+cu128
-
 torchmetrics==1.7.4
