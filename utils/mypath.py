@@ -1,4 +1,3 @@
-
 import os
 
 
@@ -8,24 +7,25 @@ class MyPath(object):
         db_names = {'msl', 'smap', 'smd', 'power', 'yahoo', 'kpi', 'swat', 'wadi', 'gecco', 'swan', 'ucr'}
         assert(database in db_names)
 
+        project_dir = os.path.join(os.path.dirname(__file__), '..')
         if database == 'msl' or database == 'smap':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/MSL_SMAP'
+            return f'{project_dir}/datasets/MSL_SMAP'
         elif database == 'ucr':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/UCR'
+            return f'{project_dir}/datasets/UCR'
         elif database == 'yahoo':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/Yahoo'
+            return f'{project_dir}/datasets/Yahoo'
         elif database == 'smd':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/SMD'
+            return f'{project_dir}/datasets/SMD'
         elif database == 'swat':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/SWAT'
+            return f'{project_dir}/datasets/SWAT'
         elif database == 'wadi':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/WADI'
+            return f'{project_dir}/datasets/WADI'
         elif database == 'kpi':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/KPI'
+            return f'{project_dir}/datasets/KPI'
         elif database == 'swan':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/Swan'
+            return f'{project_dir}/datasets/Swan'
         elif database == 'gecco':
-            return '/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/datasets/GECCO'
+            return f'{project_dir}/datasets/GECCO'
         
         else:
             raise NotImplementedError
