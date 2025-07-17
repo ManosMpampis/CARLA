@@ -131,21 +131,15 @@ class NeighborsDataset(Dataset):
         output = {}
         anchor = self.dataset.__getitem__(index)
         
-        #NN_index = np.random.choice(self.N_indices[index], 1)[0]
         NNeighbor = self.NNeighbor.__getitem__(index)
-        #FN_index = np.random.choice(self.F_indices[index], 1)[0]
         FNeighbor = self.FNeighbor.__getitem__(index)
 
-        #anchor['ts_org'] = self.anchor_transform(anchor['ts_org'])
-        #NNeighbor['ts_org'] = self.neighbor_transform(NNeighbor['ts_org'])
-        #FNeighbor['ts_org'] = self.neighbor_transform(FNeighbor['ts_org'])
-
-        output['anchor'] = anchor['ts_org']
-        output['NNeighbor'] = NNeighbor
-        output['FNeighbor'] = FNeighbor
-        output['possible_nneighbors'] = torch.from_numpy(self.NN_indices[index])
-        output['possible_fneighbors'] = torch.from_numpy(self.FN_indices[index])
-        output['target'] = anchor['target']
+        output['anchor'] = anchor['ts_org'].to(device=self.device, non_blocking=True)
+        output['NNeighbor'] = NNeighbor.to(device=self.device, non_blocking=True)
+        output['FNeighbor'] = FNeighbor.to(device=self.device, non_blocking=True)
+        output['possible_nneighbors'] = torch.as_tensor(self.NN_indices[index], device=self.device)
+        output['possible_fneighbors'] = torch.as_tensor(self.FN_indices[index], device=self.device)
+        output['target'] = torch.tensor(anchor['target'], device=self.device)
         
         return output
 

@@ -88,12 +88,6 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
                       mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
-    elif p['train_db_name'] == 'yahoo':
-        from data.Yahoo import Yahoo
-        dataset = Yahoo(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                        data=data, label=label, device=device)
-        mean, std = dataset.get_info()
-
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
@@ -112,24 +106,6 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
                       mean_data=None, std_data=None, device=device)
         mean, std = dataset.get_info()
 
-    elif p['train_db_name'] == 'swan':
-        from data.Swan import Swan
-        dataset = Swan(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
-        mean, std = dataset.get_info()
-
-    elif p['train_db_name'] == 'gecco':
-        from data.GECCO import GECCO
-        dataset = GECCO(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
-        mean, std = dataset.get_info()
-    
-    elif p['train_db_name'] == 'ucr':
-        from data.UCR import UCR
-        dataset = UCR(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
-        mean, std = dataset.get_info()
-
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
@@ -142,7 +118,7 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
     # Wrap into other dataset (__getitem__ changes)
     if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
         from data.custom_dataset import AugmentedDataset
-        dataset = AugmentedDataset(dataset)
+        dataset = AugmentedDataset(dataset, device=device)
 
     if to_neighbors_dataset:  # Dataset returns ts and its nearest and furthest neighbors.
         from data.custom_dataset import NeighborsDataset
@@ -173,11 +149,6 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
                       mean_data=mean_data, std_data=std_data, device=device)
-
-    elif p['train_db_name'] == 'yahoo':
-        from data.Yahoo import Yahoo
-        dataset = Yahoo(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                        mean_data=mean_data, std_data=std_data, data=data, label=label, device=device)
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
@@ -228,7 +199,7 @@ def inject_sub_anomaly(p):
     return SubAnomaly(p['anomaly_kwargs']['portion'])
 
 
-def get_train_transformations(p):
+def get_train_transformations(p, device=torch.device("cpu")):
     if p['augmentation_strategy'] == 'standard':
         # Standard augmentation strategy
         return transforms.Compose([
@@ -240,7 +211,7 @@ def get_train_transformations(p):
 
     elif p['augmentation_strategy'] == 'ts':
         return transforms.Compose([
-            NoiseTransformation(p['transformation_kwargs']['noise_sigma']),
+            NoiseTransformation(p['transformation_kwargs']['noise_sigma'], device=device),
             # Crop(p['transformation_kwargs']['crop_size'])
         ])
 
@@ -248,17 +219,17 @@ def get_train_transformations(p):
         raise ValueError('Invalid augmentation strategy {}'.format(p['augmentation_strategy']))
 
 
-def get_val_transformations(p):
-    return transforms.Compose([
-        transforms.CenterCrop(p['transformation_kwargs']['crop_size']),
-        transforms.ToTensor(),
-        transforms.Normalize(**p['transformation_kwargs']['normalize'])])
-
-
-def get_val_transformations1(p):
-    return transforms.Compose([
-        NoiseTransformation(p['transformation_kwargs']['noise_sigma'])
-    ])
+def get_val_transformations(p, mode='Noise', device=torch.device("cpu")):
+    if mode == 'Noise':
+        return transforms.Compose([
+        NoiseTransformation(p['transformation_kwargs']['noise_sigma'], device=device)])
+    elif mode == 'CenterCrop':
+        return transforms.Compose([
+            transforms.CenterCrop(p['transformation_kwargs']['crop_size']),
+            transforms.ToTensor(),
+            transforms.Normalize(**p['transformation_kwargs']['normalize'])])
+    else:
+        raise ValueError('Invalid validation set transformation mode {}'.format(mode))
 
 
 def get_optimizer(p, model, cluster_head_only=False):

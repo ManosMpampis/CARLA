@@ -1,13 +1,13 @@
 import argparse
 import os
 import torch
+from torch.utils.tensorboard import SummaryWriter 
 import pandas
 import numpy as np
 from utils.mypath import MyPath
 from termcolor import colored
 from utils.config import create_config
 from utils.common_config import get_train_transformations, get_val_transformations,\
-                                get_val_transformations1, \
                                 get_train_dataset, get_train_dataloader, get_aug_train_dataset,\
                                 get_val_dataset, get_val_dataloader,\
                                 get_optimizer, get_model, get_criterion,\
@@ -28,8 +28,6 @@ def set_seed(seed):
 set_seed(4)
 
 def main(args):
-    global best_f1
-    
     if args.device == 'auto':
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
@@ -43,10 +41,10 @@ def main(args):
 
     # Data
     print(colored('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'], 'green'))
-    train_transformations = get_train_transformations(p)
+    train_transformations = get_train_transformations(p, device=device)
     sanomaly = inject_sub_anomaly(p)
-    val_transformations = get_val_transformations1(p)
-    train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True)
+    val_transformations = get_val_transformations(p, device=device)
+    train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True, device=device)
     train_dataloader = get_train_dataloader(p, train_dataset)
 
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
@@ -75,48 +73,8 @@ def main(args):
             info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False, device=device)
             val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std, device=device)
 
-    elif p['train_db_name'] == 'yahoo':
-        filename = os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'Yahoo/', p['fname'])
-        dataset = []
-        # print(filename)
-        df = pandas.read_csv(filename)
-        dataset.append({
-            'value': df['value'].tolist(),
-            'label': df['is_anomaly'].tolist()
-        })
-
-        ts = dataset[0]
-        data = np.array(ts['value'])
-        labels = np.array(ts['label'])
-        l = len(data) // 2
-
-        n = 0
-        while adfuller(data[:l], 1)[1] > 0.05 or adfuller(data[:l])[1] > 0.05:
-            data = np.diff(data)
-            labels = labels[1:]
-            n += 1
-        l -= n
-
-        all_train_data = data[:l]
-        all_test_data = data[l:]
-        all_train_labels = labels[:l]
-        all_test_labels= labels[l:]
-
-        mean, std = all_train_data.mean(), all_train_data.std()
-        all_test_data = (all_test_data - mean) / std
-
-        TRAIN_TS = all_train_data
-        train_label = all_train_labels
-        TEST_TS = all_test_data
-        test_label = all_test_labels
-
-        base_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                          to_augmented_dataset=True, data=TRAIN_TS, label=train_label, device=device)
-        val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, base_dataset.mean, base_dataset.std,
-                                        TEST_TS, test_label, device=device)
-
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
-        or p['train_db_name'] == 'swan' or p['train_db_name'] == 'gecco' or p['train_db_name'] == 'wadi' or p['train_db_name'] == 'ucr':
+        or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
         base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True, device=device)
         val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, base_dataset.mean,
                                       base_dataset.std, device=device)
@@ -129,7 +87,7 @@ def main(args):
 
     # Model
     model = get_model(p, p['pretext_model'])
-    model = torch.nn.DataParallel(model)
+    #model = torch.nn.DataParallel(model)
     model = model.to(device)
 
     # Optimizer
@@ -154,7 +112,6 @@ def main(args):
         best_loss = checkpoint['best_loss']
         best_loss_head = checkpoint['best_loss_head']
         normal_label = checkpoint['normal_label']
-
     else:
         print(colored('-- No checkpoint file at {} -- new model initialised'.format(p['classification_checkpoint']), 'green'))
         start_epoch = 0
@@ -216,6 +173,7 @@ if __name__ == "__main__":
     parser.add_argument('--config_exp', help='Location of experiments config file', type=str, default='configs/classification/carla_classification_smd.yml')
     parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
     parser.add_argument('--device', help='Device used to load the model', type=str, choices=['cpu', 'cuda', 'auto'], default='auto')
+    parser.add_argument('--verilog', help='Enable logging messages level', type=str, choices=['0', '1', '2'], default='2')
     args = parser.parse_args()
 
     main(args=args)

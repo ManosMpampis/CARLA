@@ -9,7 +9,7 @@ from utils.config import create_config
 from utils.common_config import get_criterion, get_model, get_train_dataset,\
                                 get_val_dataset, get_train_dataloader,\
                                 get_val_dataloader, get_train_transformations,\
-                                get_val_transformations, get_val_transformations1, get_optimizer,\
+                                get_val_transformations, get_optimizer,\
                                 adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import contrastive_evaluate
 from utils.repository import TSRepository
@@ -51,7 +51,7 @@ def main(args):
     train_transforms = get_train_transformations(p)
 
     sanomaly = inject_sub_anomaly(p)
-    val_transforms = get_val_transformations1(p)
+    val_transforms = get_val_transformations(p, device=device)
 
 
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':

@@ -9,6 +9,7 @@ from sklearn import metrics
 from scipy.optimize import linear_sum_assignment
 from losses.losses import entropy
 from sklearn.metrics import precision_recall_curve, confusion_matrix
+from torchmetrics import PrecisionRecallCurve
 
 @torch.no_grad()
 def contrastive_evaluate(val_loader, model, ts_repository):
@@ -35,7 +36,6 @@ def contrastive_evaluate(val_loader, model, ts_repository):
 @torch.no_grad()
 def get_predictions(p, dataloader, model, return_features=False, is_training=False):
     # Make predictions on a dataset with neighbors
-    global features, nneighbors, fneighbors
     model.eval()
     predictions = [[] for _ in range(p['num_heads'])]
     probs = [[] for _ in range(p['num_heads'])]
@@ -49,7 +49,6 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         include_neighbors = True
         nneighbors = []
         fneighbors = []
-
     else:
         key_ = 'ts_org'
         include_neighbors = False
@@ -66,9 +65,9 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 
         if isinstance(ts, np.ndarray):
             ts = torch.from_numpy(ts).float()
-            targets.append(torch.from_numpy(batch['target']))
+            targets.append(torch.as_tensor(batch['target'], device=next(model.parameters()).device))
         else:
-            targets.append(batch['target'])
+            targets.append(batch['target'])  # it should be in CUDA
 
         res = model(ts.view(bs, h, w), forward_pass='return_all')
         output = res['output']
@@ -82,9 +81,10 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         if include_neighbors:
             nneighbors.append(batch['possible_nneighbors'])
             fneighbors.append(batch['possible_fneighbors'])
-
-    predictions = [torch.cat(pred_, dim = 0).cpu() for pred_ in predictions]
-    probs = [torch.cat(prob_, dim=0).cpu() for prob_ in probs]
+    
+    #TODO: check what happens in multiple heads
+    predictions = [torch.cat(pred_, dim = 0) for pred_ in predictions]  # [torch.cat(pred_, dim = 0).cpu() for pred_ in predictions]
+    probs = [torch.cat(prob_, dim=0) for prob_ in probs]  # [torch.cat(prob_, dim=0).cpu() for prob_ in probs]
     targets = torch.cat(targets, dim=0)
 
     if include_neighbors:
@@ -126,6 +126,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 @torch.no_grad()
 def classification_evaluate(predictions):
     # Evaluate model based on classification loss.
+    device = predictions[0]['predictions'].device
     num_heads = len(predictions)
     output = []
 
@@ -134,7 +135,7 @@ def classification_evaluate(predictions):
         probs = head['probabilities']
         neighbors = head['neighbors']
         fneighbors = head['fneighbors']
-        org_anchors = torch.arange(neighbors.size(0)).view(-1,1).expand_as(neighbors)
+        org_anchors = torch.arange(neighbors.size(0), device=device).view(-1,1).expand_as(neighbors)
 
         # Entropy loss
         entropy_loss = entropy(torch.mean(probs, dim=0), input_as_probabilities=True).item()
@@ -143,18 +144,18 @@ def classification_evaluate(predictions):
         similarity = torch.matmul(probs, probs.t())
         neighbors = neighbors.contiguous().view(-1)
         anchors = org_anchors.contiguous().view(-1)
-        similarity = similarity[anchors, neighbors]
-        ones = torch.ones_like(similarity)
-        consistency_loss = F.binary_cross_entropy(similarity, ones).item()
+        similarity_n = similarity[anchors, neighbors]
+        ones = torch.ones_like(similarity_n)
+        consistency_loss = F.binary_cross_entropy(similarity_n, ones).item()
 
-        similarity = torch.matmul(probs, probs.t())
+
         fneighbors = fneighbors.contiguous().view(-1)
-        anchors = org_anchors.contiguous().view(-1)
-        similarity = similarity[anchors, fneighbors]
-        ones = torch.ones_like(similarity)
-        inconsistency_loss = F.binary_cross_entropy(similarity, ones).item()
+        # anchors = org_anchors.contiguous().view(-1)
+        similarity_fn = similarity[anchors, fneighbors]
+        ones = torch.ones_like(similarity_fn)
+        inconsistency_loss = F.binary_cross_entropy(similarity_fn, ones).item()
 
-        # Total loss
+        # Total loss #TODO: check loss weights
         total_loss = 5*entropy_loss + consistency_loss - 0*inconsistency_loss
 
         output.append({'entropy': entropy_loss, 'consistency': consistency_loss, 'inconsistency': inconsistency_loss, 'total_loss': total_loss})
@@ -178,11 +179,18 @@ def pr_evaluate(all_predictions, class_names=None,
     num_classes = torch.unique(targets).numel()
     num_elems = targets.size(0)
 
-    scores = 1-np.array(probs)[:,majority_label]
-    # labels = np.array(targets).tolist() CUDA
-    labels = np.array(targets.cpu().numpy()).tolist()
+    scores_np = 1-np.array(probs.cpu())[:, majority_label]
+    labels_np = np.array(targets.cpu()).tolist()
 
-    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
+    precision_np, recall_np, thresholds_np = precision_recall_curve(labels_np, scores_np, pos_label=1)
+
+    scores = 1-probs[:, majority_label]
+    # labels = np.array(targets).tolist() CUDA
+    labels = targets
+
+    pr_curve = PrecisionRecallCurve(task="binary")
+    precision, recall, thresholds = pr_curve(scores, labels)
+    
     try:
         f1_score = 2*precision*recall / (precision+recall)
         if np.isnan(f1_score).any():
