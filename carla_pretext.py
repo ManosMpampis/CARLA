@@ -147,11 +147,13 @@ def main(args):
 
     ts_repository_base = TSRepository(len(train_dataset),
                                       p['model_kwargs']['features_dim'],
-                                      p['num_classes'], p['criterion_kwargs']['temperature']).to(device)
+                                      p['num_classes'], p['criterion_kwargs']['temperature'])
+    ts_repository_base.to(device)
 
     ts_repository_val = TSRepository(len(val_dataset),
                                      p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature']).to(device)
+                                     p['num_classes'], p['criterion_kwargs']['temperature'])
+    ts_repository_val.to(device)
 
     criterion = get_criterion(p).to(device)
 

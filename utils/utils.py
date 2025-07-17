@@ -87,7 +87,9 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
 
             ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True) #cuda
-            targets = torch.LongTensor([2]*ts_w_augment.shape[0], device=device, non_blocking=True)
+            targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device=device)
+
+            # targets = torch.LongTensor([2]*ts_w_augment.shape[0], device=device)
             # ts_w_augment = torch.from_numpy(ts_w_augment).float() #cuda
             output = model(ts_w_augment.reshape(b, h, w))
             ts_repository.update(output, targets)
@@ -95,7 +97,9 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
 
             ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True) #cuda
-            targets = torch.LongTensor([4]*ts_ss_augment.shape[0], device=device, non_blocking=True)
+            targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device=device)
+            
+            #targets = torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device=device, non_blocking=True)
             # ts_ss_augment = torch.from_numpy(ts_ss_augment).float() #cuda
             con_data = torch.cat((con_data, ts_ss_augment), dim=0)
             con_target = torch.cat((con_target, targets), dim=0)

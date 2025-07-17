@@ -69,9 +69,9 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
 
     for i, batch in enumerate(train_loader):
         # Forward pass
-        anchors = batch['anchor'].to(device) #.cuda(non_blocking=True)
-        nneighbors = batch['NNeighbor'].to(device) #.cuda(non_blocking=True)
-        fneighbors = batch['FNeighbor'].to(device)  #.cuda(non_blocking=True)
+        anchors = batch['anchor'].to(device, non_blocking=True)
+        nneighbors = batch['NNeighbor'].to(device, non_blocking=True)
+        fneighbors = batch['FNeighbor'].to(device, non_blocking=True)
 
         if anchors.ndim == 3:
             b, w, h = anchors.shape
