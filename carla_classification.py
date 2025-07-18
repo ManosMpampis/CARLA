@@ -44,8 +44,11 @@ def main(args):
     train_transformations = get_train_transformations(p, device=device)
     sanomaly = inject_sub_anomaly(p)
     val_transformations = get_val_transformations(p, device=device)
+    # In the self-supervised state we use as data the triplets with saves anchors of the first stage
     train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True, device=device)
     train_dataloader = get_train_dataloader(p, train_dataset)
+    # In order to correctly measure the similarity matrics, all values need to be checkes, during train we have drop_last
+    tst_dataloader = get_val_dataloader(p, train_dataset)
 
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         if p['fname'] == 'All':
@@ -75,9 +78,13 @@ def main(args):
 
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
         or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
-        base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True, device=device)
-        val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, base_dataset.mean,
-                                      base_dataset.std, device=device)
+        base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True, device=device)  # used only to mean and std
+        dataset_mean = base_dataset.mean
+        dataset_std = base_dataset.std
+        del base_dataset
+
+        val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean,
+                                      dataset_std, device=device)
     else:
         raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
 
@@ -120,45 +127,43 @@ def main(args):
         normal_label = 0
 
 
-    best_f1 = -1 * np.inf
+    best_f1 = -1 * torch.tensor(float("inf"), device=device)
     # best_loss = np.inf
     print(colored('\n- Training:', 'blue'))
     for epoch in range(start_epoch, p['epochs']):
         print(colored('-- Epoch %d/%d' %(epoch+1, p['epochs']), 'blue'))
 
         lr = adjust_learning_rate(p, optimizer, epoch)
-        self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
+        total_losses, consistency_losses, inconsistency_losses, entropy_losses = \
+            self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
                                       p['update_cluster_head_only'], device=device)
 
         if (epoch == p['epochs']-1):
-            tst_dl = get_val_dataloader(p, train_dataset)
-            predictions, _ = get_predictions(p, tst_dl, model, True, True)
+            predictions, _ = get_predictions(p, tst_dataloader, model, True, True)
         else:
-            tst_dl = get_val_dataloader(p, train_dataset)
-            predictions = get_predictions(p, tst_dl, model, False, False)
+            predictions = get_predictions(p, tst_dataloader, model, False, False)
 
         label_counts = torch.bincount(predictions[0]['predictions'])
-        majority_label = label_counts.argmax()
+        nomral_label = label_counts.argmax()  # majority_label
 
-        classification_stats = classification_evaluate(predictions)
+        classification_stats = classification_evaluate(predictions, **p['criterion_kwargs'])
         lowest_loss_head = classification_stats['lowest_loss_head']
         lowest_loss = classification_stats['lowest_loss']
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
-        rep_f1 = pr_evaluate(predictions, compute_confusion_matrix=False, majority_label=majority_label)
+        rep_f1 = pr_evaluate(predictions, majority_label=nomral_label)
 
         if rep_f1 > best_f1:
             best_f1 = rep_f1
-            nomral_label = majority_label
             # print('New Checkpoint ...')
-            torch.save({'model': model.module.state_dict(), 'head': best_loss_head, 'normal_label': normal_label}, p['classification_model'])
+            torch.save({'model': model.state_dict(), 'head': best_loss_head, 'normal_label': nomral_label}, p['classification_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                        'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
+                        'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': nomral_label},
                        p['classification_checkpoint'])
 
 
     model_checkpoint = torch.load(p['classification_model'], map_location='cpu')
-    model.module.load_state_dict(model_checkpoint['model'])
+    model.load_state_dict(model_checkpoint['model'])
     torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
                 'epoch': p['epochs'], 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
                p['classification_checkpoint'])

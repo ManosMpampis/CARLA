@@ -82,7 +82,9 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         anchors = anchors.reshape(b, h, w)
         nneighbors = nneighbors.reshape(b, h, w)
         fneighbors = fneighbors.reshape(b, h, w)
-       
+
+        optimizer.zero_grad()
+
         if update_cluster_head_only: # Only calculate gradient for backprop of linear layer
             with torch.no_grad():
                 anchors_features = model(anchors, forward_pass='backbone')
@@ -132,9 +134,10 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         total_loss_final = torch.sum(torch.stack(total_loss, dim=0))
         assert total_loss_final.requires_grad, "Total loss does not require grad!"
 
-        optimizer.zero_grad()
         total_loss_final.backward()
         optimizer.step()
 
         if i % 100 == 0:
             progress.display(i)
+    
+    return total_losses.avg, consistency_losses.avg, inconsistency_losses.avg, entropy_losses.avg

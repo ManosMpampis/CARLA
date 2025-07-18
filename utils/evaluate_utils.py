@@ -8,8 +8,9 @@ from data.custom_dataset import NeighborsDataset
 from sklearn import metrics
 from scipy.optimize import linear_sum_assignment
 from losses.losses import entropy
-from sklearn.metrics import precision_recall_curve, confusion_matrix
-from torchmetrics import PrecisionRecallCurve
+from torchmetrics.functional.classification import confusion_matrix
+from torchmetrics.functional import precision_recall_curve
+import os
 
 @torch.no_grad()
 def contrastive_evaluate(val_loader, model, ts_repository):
@@ -42,7 +43,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     targets = []
     if return_features:
         ft_dim = get_feature_dimensions_backbone(p)
-        features = torch.zeros((len(dataloader.sampler), ft_dim)) #.cuda()
+        features = torch.zeros((len(dataloader.sampler), ft_dim))
 
     if isinstance(dataloader.dataset, NeighborsDataset): # Also return the neighbors
         key_ = 'anchor'
@@ -72,7 +73,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         res = model(ts.view(bs, h, w), forward_pass='return_all')
         output = res['output']
         if return_features:
-            features[ptr: ptr+bs] = res['features']
+            features[ptr: ptr+bs] = res['features'].cpu()
             ptr += bs
         for i, output_i in enumerate(output):
             predictions[i].append(torch.argmax(output_i, dim=1))
@@ -103,7 +104,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 
         feat_df = pd.DataFrame(feat_np, columns=fhdr)
 
-        prob_np = np.array(out[0]['probabilities'])
+        prob_np = out[0]['probabilities'].cpu().numpy()
         phdr = [str(x) for x in range(prob_np.shape[1])] + ['Class']
         # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
         prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
@@ -124,7 +125,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 
 
 @torch.no_grad()
-def classification_evaluate(predictions):
+def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1, inconsistency_weight=0):
     # Evaluate model based on classification loss.
     device = predictions[0]['predictions'].device
     num_heads = len(predictions)
@@ -156,7 +157,7 @@ def classification_evaluate(predictions):
         inconsistency_loss = F.binary_cross_entropy(similarity_fn, ones).item()
 
         # Total loss #TODO: check loss weights
-        total_loss = 5*entropy_loss + consistency_loss - 0*inconsistency_loss
+        total_loss = consistency_weight*consistency_loss - entropy_weight*entropy_loss - inconsistency_weight*inconsistency_loss
 
         output.append({'entropy': entropy_loss, 'consistency': consistency_loss, 'inconsistency': inconsistency_loss, 'total_loss': total_loss})
 
@@ -168,53 +169,42 @@ def classification_evaluate(predictions):
 
 
 @torch.no_grad()
-def pr_evaluate(all_predictions, class_names=None,
-                compute_purity=True, compute_confusion_matrix=True,
-                confusion_matrix_file=None, majority_label=0):
+def pr_evaluate(all_predictions, class_names=None, majority_label=0):
 
     head = all_predictions[0]
     targets = head['targets'] #.cuda()
-    predictions = head['predictions'] #.cuda()
+    # predictions = head['predictions'] #.cuda()
     probs = head['probabilities'] #.cuda()
-    num_classes = torch.unique(targets).numel()
-    num_elems = targets.size(0)
-
-    scores_np = 1-np.array(probs.cpu())[:, majority_label]
-    labels_np = np.array(targets.cpu()).tolist()
-
-    precision_np, recall_np, thresholds_np = precision_recall_curve(labels_np, scores_np, pos_label=1)
+    # num_classes = torch.unique(targets).numel()
+    # num_elems = targets.size(0)
 
     scores = 1-probs[:, majority_label]
-    # labels = np.array(targets).tolist() CUDA
-    labels = targets
 
-    pr_curve = PrecisionRecallCurve(task="binary")
-    precision, recall, thresholds = pr_curve(scores, labels)
+    precision, recall, thresholds = precision_recall_curve(scores, targets, task='binary')
     
     try:
         f1_score = 2*precision*recall / (precision+recall)
-        if np.isnan(f1_score).any():
-            f1_score = np.nan_to_num(f1_score)
-            print('f1: Nan --> 0')
+        if torch.isnan(f1_score).any():
+            f1_score = torch.nan_to_num(f1_score)
+            print('f1: Nan --> 0')     
     except ZeroDivisionError:
         f1_score = [0.0]
         print('f1: 0 --> 0')
 
-    best_f1_index = np.argmax(f1_score)
+    best_f1_index = torch.argmax(f1_score)
 
     rep_f1 = f1_score[best_f1_index]
 
     if class_names=='Anom':
         best_threshold = thresholds[best_f1_index]
         anomalies = [1 if s >= best_threshold else 0 for s in scores]
-        best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
+        best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
         print("Anomalies --> TP: ", best_tp, ", TN: ", best_tn, ", FN: ", best_fn, ", FP: ", best_fp)
         print(majority_label)
-        print(metrics.classification_report(labels, anomalies))
+        print(metrics.classification_report(targets, anomalies))
 
     return rep_f1
 
 def replace_majority_label(flat_preds, majority_label):
-    #unique_labels = torch.unique(flat_preds)
     new_pred = torch.where(flat_preds == majority_label, 0, 1)
     return new_pred

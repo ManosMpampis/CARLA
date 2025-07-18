@@ -1,6 +1,5 @@
 import os
 import torch
-import numpy as np
 import errno
 from data.ra_dataset import SaveAugmentedDataset
 

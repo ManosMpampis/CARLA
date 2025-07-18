@@ -36,22 +36,26 @@ class ClusteringModel(nn.Module):
         assert(self.nheads > 0)
         self.cluster_head = nn.ModuleList([nn.Linear(self.backbone_dim, nclusters) for _ in range(self.nheads)])
 
-    def forward(self, x, forward_pass='default'):
+    def head(self, input, head=None):
+        if head is None:
+            return [cluster_head(input) for cluster_head in self.cluster_head]
+        return self.cluster_head[head](input)
+    
+    def forward(self, x, forward_pass='default', head=None):
         if forward_pass == 'default':
             features = self.backbone(x)
-            out = [cluster_head(features) for cluster_head in self.cluster_head]
+            return self.head(features, head)
 
         elif forward_pass == 'backbone':
-            out = self.backbone(x)
+            return self.backbone(x)
 
         elif forward_pass == 'head':
-            out = [cluster_head(x) for cluster_head in self.cluster_head]
+            return self.head(features, head)
 
         elif forward_pass == 'return_all':
             features = self.backbone(x)
-            out = {'features': features, 'output': [cluster_head(features) for cluster_head in self.cluster_head]}
+            return {'features': features, 'output': self.head(features, head)}
         
         else:
             raise ValueError('Invalid forward pass {}'.format(forward_pass))        
 
-        return out

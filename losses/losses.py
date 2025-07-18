@@ -45,10 +45,11 @@ def entropy(x, input_as_probabilities):
 
 
 class ClassificationLoss(nn.Module):
-    def __init__(self, entropy_weight = 2.0, inconsistency_weight=0.0):
+    def __init__(self, entropy_weight = 2.0, inconsistency_weight=0.0, consistency_weight=1.0):
         super(ClassificationLoss, self).__init__()
         self.softmax = nn.Softmax(dim = 1)
         self.bce = nn.BCELoss()
+        self.consistency_weight = consistency_weight
         self.entropy_weight = entropy_weight 
         self.inconsistency_weight = inconsistency_weight
 
@@ -74,7 +75,7 @@ class ClassificationLoss(nn.Module):
 
         # DiSimilarity in output space
         negsimilarity = torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze()
-        zeros = torch.zeros_like(negsimilarity)
+        zeros = torch.ones_like(negsimilarity)
         inconsistency_loss = self.bce(negsimilarity, zeros)
         
         # Entropy loss
@@ -82,7 +83,7 @@ class ClassificationLoss(nn.Module):
         #-torch.sum(anchors_prob * torch.log(anchors_prob + 1e-12), dim=-1).mean() #
 
         # Total loss
-        total_loss = consistency_loss - self.entropy_weight * entropy_loss + self.inconsistency_weight * inconsistency_loss
+        total_loss = self.consistency_weight*consistency_loss - self.entropy_weight * entropy_loss - self.inconsistency_weight * inconsistency_loss
 
         return total_loss, consistency_loss, inconsistency_loss, entropy_loss
 

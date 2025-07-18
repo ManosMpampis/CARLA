@@ -5,6 +5,7 @@ setup: classification
 criterion: classification
 criterion_kwargs:
    entropy_weight: 2
+   consistency_weight: 1
    inconsistency_weight: 0
 
 # Weight update
