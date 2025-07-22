@@ -130,29 +130,60 @@ def main(args):
 
     best_f1 = -1 * torch.tensor(float("inf"), device=device)
     print(colored('\n- Training:', 'blue'))
+    
+    import time
     for epoch in range(start_epoch, p['epochs']):
         print(colored('-- Epoch %d/%d' %(epoch+1, p['epochs']), 'blue'))
 
         lr = adjust_learning_rate(p, optimizer, epoch)
+        
+        # torch.cuda.synchronize()
+        # start_time = time.time()
+
         total_losses, consistency_losses, inconsistency_losses, entropy_losses = \
             self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
-                                      p['update_cluster_head_only'], device=device)
+                                    p['update_cluster_head_only'])
+        # torch.cuda.synchronize()
+        # end_time = time.time()
+        # inference_time = end_time - start_time
 
+        # print(f'Inference time with gpu sync: {inference_time:.4f} sencods')
+
+        # torch.cuda.synchronize()
+        # start_time = time.time()
         if (epoch == p['epochs']-1):
             predictions, _ = get_predictions(p, tst_dataloader, model, True, True)
         else:
             predictions = get_predictions(p, tst_dataloader, model, False, False)
 
+        # torch.cuda.synchronize()
+        # end_time = time.time()
+        # inference_time = end_time - start_time
+
+        # print(f'Get prediction tst time with gpu sync: {inference_time:.4f} sencods')
+        # torch.cuda.synchronize()
+        # start_time = time.time()
         label_counts = torch.bincount(predictions[0]['predictions'])
         nomral_label = label_counts.argmax()  # majority_label
 
         classification_stats = classification_evaluate(predictions, **p['criterion_kwargs'])
         lowest_loss_head = classification_stats['lowest_loss_head']
         lowest_loss = classification_stats['lowest_loss']
+
+        # torch.cuda.synchronize()
+        # end_time = time.time()
+        # inference_time = end_time - start_time
+
+        # print(f'Class evaluate time with gpu sync: {inference_time:.4f} sencods')
+        # torch.cuda.synchronize()
+        # start_time = time.time()
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
         rep_f1 = pr_evaluate(predictions, majority_label=nomral_label)
-
+        # torch.cuda.synchronize()
+        # end_time = time.time()
+        # inference_time = end_time - start_time
+        # print(f'Evaluate time with gpu sync: {inference_time:.4f} sencods')
         if rep_f1 > best_f1:
             best_f1 = rep_f1
             # print('New Checkpoint ...')
