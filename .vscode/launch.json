@@ -11,5 +11,19 @@
             "program": "${file}",
             "console": "integratedTerminal"
         }
+        {
+            "name": "Python Debugger: pretext",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/carla_pretext.py",
+            "console": "integratedTerminal"
+        }
+        {
+            "name": "Python Debugger: classification",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/manos/Documents/EKETA/HYPER_AI/gits/CARLA/carla_classification.py",
+            "console": "integratedTerminal"
+        }
     ]
 }
