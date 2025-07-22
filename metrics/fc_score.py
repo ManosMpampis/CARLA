@@ -47,7 +47,7 @@ def main():
     # pred_labels[51:55] = 1
     # true_events = get_events(y_test)
     prec_t, rec_e, fscore_c = get_composite_fscore_raw(pred_labels, y_test, return_prec_rec=True)
-#     print("Prec_t: {}, rec_e: {}, fscore_c: {}".format(prec_t, rec_e, fscore_c))
+    # print(f"Prec_t: {prec_t}, rec_e: {rec_e}, fscore_c: {fscore_c}")
 
 
 if __name__ == "__main__":

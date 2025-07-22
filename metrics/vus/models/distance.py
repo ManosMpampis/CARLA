@@ -45,6 +45,7 @@ class Euclidean:
         self.decision_scores_  = []
         self.norm = norm
         self.X_train = 2
+
     def measure(self, X, Y, index):
         """Derive the decision score based on the given distance measure 
         Parameters
@@ -343,7 +344,7 @@ class SSA_DISTANCE:
             try:
                 fit['Y'+str(i)]= X2[i]
             except:
-                print(X2.shape, X2)
+                print(f"{X2.shape}, {X2}")
             fit['rep'].append(np.array([i, X2[i]]))
             if i+1 >= len(X2):
                     break
@@ -359,7 +360,8 @@ class SSA_DISTANCE:
                 if i >= len(X2):
                     break
                 d = np.abs(X2[i]- (k * i+b)) 
-        return fit   
+        return fit
+    
     def set_param(self):
         '''update the parameters with the detector that is used. 
         Since the SSA measure doens't need the attributes of detector
@@ -420,7 +422,7 @@ class SSA_DISTANCE:
             score = 0
         self.decision_scores_.append((start_index, score))
         if len(X2) == 1:
-            print('Error! SSA measure doesn\'t apply to singleton' )
+            print('Error! SSA measure doesn\'t apply to singleton')
         else:
             return score  
 
@@ -444,6 +446,7 @@ class Fourier:
     def __init__(self, power = 2):
         self.decision_scores_  = []
         self.power = power
+
     def set_param(self):
         '''update the parameters with the detector that is used 
         since the FFT measure doens't need the attributes of detector
@@ -846,3 +849,4 @@ class TWED:
         self.M = DP
         self.decision_scores_.append((start_index, distance))
         return distance
+    

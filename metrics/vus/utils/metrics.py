@@ -1,6 +1,7 @@
 from sklearn import metrics
 import numpy as np
 import math
+from utils.utils import log
 # import matplotlib.pyplot as plt
 
 class metricor:
@@ -115,7 +116,7 @@ class metricor:
             print('Score must not be none.')
             return None
         
-        #area under curve
+        # area under curve
         auc = metrics.roc_auc_score(label, score)
         # plor ROC curve
         if plot_ROC:
@@ -123,7 +124,7 @@ class metricor:
             # display = metrics.RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=auc)
             # display.plot()            
             
-        #precision, recall, F
+        # precision, recall, F
         
         preds = score > (np.mean(score)+coeff*np.std(score))
         if np.sum(preds) == 0:
@@ -199,13 +200,13 @@ class metricor:
         i = 0
         j = 0 
         while j < len(label):
-            # print(i)
+            # print(f"i: {i}")
             while label[i] == 0:
                 i+=1
                 if i >= len(label):
                     break
             j = i+1
-            # print('j'+str(j))
+            # print(f"j: {j}")
             if j >= len(label):
                 if j==len(label):
                     L.append((i,j-1))
@@ -290,7 +291,7 @@ class metricor:
         # P_new = np.sum(labels)
         recall = min(TP/P_new,1)
         # recall = TP/np.sum(labels)
-        # print('recall '+str(recall))
+        # print(f'recall: {recall}')
         
         
         existence = 0

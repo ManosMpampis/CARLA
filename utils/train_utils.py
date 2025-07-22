@@ -5,12 +5,13 @@ from torch import Tensor
 from utils.utils import AverageMeter, ProgressMeter
 
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss):
+def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, verbose_dict={"verbose": 1, "file_path": None}):
 
     losses = AverageMeter('Loss', ':.4e')
     progress = ProgressMeter(len(train_loader),
         [losses],
-        prefix="Epoch: [{}]".format(epoch+1))
+        prefix="Epoch: [{}]".format(epoch+1),
+        verbose_dict=verbose_dict)
 
     model.train()
     device = next(model.parameters()).device
@@ -46,7 +47,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss):
     return loss
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, verbose_dict={"verbose": 1, "file_path": None}):
     """ 
     Train w/ classification-Loss
     """
@@ -56,7 +57,8 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
     entropy_losses = AverageMeter('Entropy', ':.4e')
     progress = ProgressMeter(len(train_loader),
         [total_losses, consistency_losses, inconsistency_losses, entropy_losses],
-        prefix="Epoch: [{}]".format(epoch+1))
+        prefix="Epoch: [{}]".format(epoch+1),
+        verbose_dict=verbose_dict)
 
     if update_cluster_head_only:
         model.eval() # No need to update BN

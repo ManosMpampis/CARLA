@@ -110,7 +110,7 @@ class ResNetRepresentation(nn.Module):
             ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
         ])
 
-        #self.avgpool = nn.AdaptiveAvgPool1d(1)
+        # self.avgpool = nn.AdaptiveAvgPool1d(1)
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)

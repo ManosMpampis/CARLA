@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 import torch
+
 from utils.mypath import MyPath
+from utils.utils import log
 
 
 class WADI(Dataset):
@@ -43,7 +45,7 @@ class WADI(Dataset):
         temp = np.asarray(fr.iloc[:, 3:123])
 
         if np.any(sum(np.isnan(temp))!=0):
-            print('Data contains NaN which replaced with zero')
+            log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
         self.mean, self.std = mean_data, std_data

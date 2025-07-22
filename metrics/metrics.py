@@ -42,8 +42,8 @@ if __name__ == '__main__':
     y_test = np.load("data/events_pred_MSL.npy")+0
     pred_labels = np.load("data/events_gt_MSL.npy")+0
     anomaly_scores = np.load("data/events_scores_MSL.npy")
-    print(len(y_test), max(anomaly_scores), min(anomaly_scores))
+    print(f"{len(y_test)} {max(anomaly_scores)} {min(anomaly_scores)}")
     score_list_simple = combine_all_evaluation_scores(y_test, pred_labels, anomaly_scores)
 
     for key, value in score_list_simple.items():
-        print('{0:21} :{1:10f}'.format(key, value))
+        print(f'{key:21} :{value:10f}')

@@ -2,6 +2,8 @@ import random
 import numpy as np
 import torch
 
+from utils.utils import log
+
 class NoiseTransformation(object):
     def __init__(self, sigma):
         self.sigma = sigma
@@ -58,7 +60,6 @@ class SubAnomaly(object):
         # Set the scale_factor if not provided
         if scale_factor is None:
             scale_factor = np.random.uniform(0.1, 2.0, window.shape[1])
-            print('test')
 
         # Randomly select the start index for the subsequence
         if start_index is None:
@@ -144,7 +145,7 @@ class SubAnomaly(object):
                                                           subsequence_length=subsequence_length,
                                                           start_index = start_index)
                     case _:
-                        print('error')
+                        log('Anomaly selection error')
 
         else:
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
@@ -185,7 +186,7 @@ class SubAnomaly(object):
                                                       subsequence_length=subsequence_length,
                                                       start_index = start_index)
                 case _:
-                        print('error')
+                        log('Anomaly selection error')
 
         return anomalous_window
 

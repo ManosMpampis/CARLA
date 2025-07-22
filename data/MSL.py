@@ -2,9 +2,11 @@ import os
 import pandas
 import numpy as np
 from torch.utils.data import Dataset
-from utils.mypath import MyPath
 import ast
 import torch
+
+from utils.mypath import MyPath
+from utils.utils import log
 
 
 class MSL(Dataset):
@@ -46,7 +48,7 @@ class MSL(Dataset):
         file_path = os.path.join(self.root, self.base_folder, fname+'.npy')
         temp = np.load(file_path)
         if np.any(sum(np.isnan(temp))!=0):
-            print('Data contains NaN which replaced with zero')
+            log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
         if self.train:
@@ -90,7 +92,6 @@ class MSL(Dataset):
         ts_org = torch.as_tensor(self.data[index], dtype=torch.float32)
 
         if len(self.targets) > 0:
-            # target = self.targets[index].astype(int)
             target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
             class_name = self.classes[target]
         else:

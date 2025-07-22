@@ -1,10 +1,13 @@
-import argparse
 import os
+import random
+import argparse
+
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import pandas
-from utils.mypath import MyPath
 
+from utils.mypath import MyPath
 from utils.config import create_config
 from utils.common_config import get_criterion, get_model, get_train_dataset,\
                                 get_val_dataset, get_train_dataloader,\
@@ -14,10 +17,8 @@ from utils.common_config import get_criterion, get_model, get_train_dataset,\
 from utils.evaluate_utils import contrastive_evaluate
 from utils.repository import TSRepository
 from utils.train_utils import pretext_train
-from utils.utils import fill_ts_repository
-from termcolor import colored
-from statsmodels.tsa.stattools import adfuller
-import random
+from utils.utils import fill_ts_repository, log
+
 
 def set_seed(seed):
     random.seed(seed)
@@ -30,17 +31,21 @@ def set_seed(seed):
 set_seed(4)
 
 def main(args):
-    # # Set PyTorch-specific threading options
     if args.device == 'auto':
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         device = torch.device(args.device)
     
-    print(colored('CARLA Pretext stage --> ', 'yellow'))
     p = create_config(args.config_env, args.config_exp, args.fname)
 
+    # Initialize logging
+    verbose = args.verbose
+    file_path=os.path.join(p['experiment_dir'], "pretext.txt") if verbose>=2 else None
+    verbose_dict={"verbose": verbose, "file_path": file_path}
+
+    log('CARLA Pretext stage --> ', verbose=verbose, file_path=file_path, color='yellow')
+
     model = get_model(p)
-    best_model = None
     model = model.to(device)
 
     train_transforms = get_train_transformations(p)
@@ -87,7 +92,7 @@ def main(args):
     val_dataloader = get_val_dataloader(p, val_dataset)
     base_dataloader = get_val_dataloader(p, train_dataset)
 
-    print('Dataset contains {}/{} train/val samples'.format(len(train_dataset), len(val_dataset)))
+    log(f'Dataset contains {train_dataset}/{val_dataset} train/val samples', verbose=verbose, file_path=file_path)
 
     criterion = get_criterion(p).to(device)
 
@@ -95,27 +100,27 @@ def main(args):
  
     # Checkpoint
     if os.path.exists(p['pretext_checkpoint']):
-        print(colored('Restart from checkpoint {}'.format(p['pretext_checkpoint']), 'blue'))
+        log(f"Restart from checkpoint {p['pretext_checkpoint']}", verbose=verbose, file_path=file_path, color='blue')
         checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
         optimizer.load_state_dict(checkpoint['optimizer'])
         model.load_state_dict(checkpoint['model'])
         model = model.to(device)
         start_epoch = checkpoint['epoch']
     else:
-        print(colored('No checkpoint file at {}'.format(p['pretext_checkpoint']), 'blue'))
+        log(f'No checkpoint file at {p["pretext_checkpoint"]}', verbose=verbose, file_path=file_path, color='blue')
         start_epoch = 0
     
     # Training
     pretext_best_loss = torch.tensor(float("inf"), device=device)
     prev_loss = torch.tensor(float(0), device=device)
     for epoch in range(start_epoch, p['epochs']):
-        print(colored('Epoch %d/%d' %(epoch+1, p['epochs']), 'yellow'))
-        print(colored('-'*15, 'yellow'))
+        log(f'Epoch {epoch+1}/{p['epochs']}', verbose=verbose, file_path=file_path, color='yellow')
+        log('-'*15, verbose=verbose, file_path=file_path, color='yellow')
 
         lr = adjust_learning_rate(p, optimizer, epoch)
-        print('Adjusted learning rate to {:.5f}'.format(lr))
+        log(f'Adjusted learning rate to {lr:.5f}', verbose=verbose, file_path=file_path)
         
-        # print('EPOCH ----> ', epoch)
+        # log(f'EPOCH ----> {epoch}', verbose=verbose, file_path=file_path)
         tmp_loss = pretext_train(train_dataloader, model, criterion, optimizer, epoch, prev_loss)
         
         # Checkpoint
@@ -124,7 +129,7 @@ def main(args):
             torch.save({'model': model.state_dict()}, p['pretext_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
                         'epoch': epoch + 1, 'best_loss': pretext_best_loss},
-                       p['pretext_checkpoint'])
+                        p['pretext_checkpoint'])
 
 
     model_checkpoint = torch.load(p['pretext_model'], map_location='cpu')
@@ -143,32 +148,32 @@ def main(args):
 
     # Mine the topk nearest neighbors at the very end (Train)
     # These will be served as input to the classification loss.
-    print(colored('Fill TS Repository for mining the nearest/furthest neighbors (train) ...', 'blue'))
+    log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...', verbose=verbose, file_path=file_path, color='blue')
     ts_repository_aug = TSRepository(len(train_dataset) * 2,
                                      p['model_kwargs']['features_dim'],
                                      p['num_classes'], p['criterion_kwargs']['temperature'])  # need size of repository == 1+num_of_anomalies
     ts_repository_aug.to(device)
     
-    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug)
+    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug, verbose_dict=verbose_dict)
     out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
     np.save(p['pretext_features_train_path'], out_pre)
     topk = 10
-    print('Mine the nearest neighbors (Top-%d)' %(topk))
+    log(f'Mine the nearest neighbors (Top-{topk})', verbose=verbose, file_path=file_path)
     kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)
     np.save(p['topk_neighbors_train_path'], knearest)
     np.save(p['bottomk_neighbors_train_path'], kfurtherst)
 
     # Mine the topk nearest neighbors at the very end (Val)
     # These will be used for validation.
-    print(colored('Fill TS Repository for mining the nearest/furthest neighbors (val) ...', 'blue'))
+    log('Fill TS Repository for mining the nearest/furthest neighbors (val) ...', verbose=verbose, file_path=file_path, color='blue')
 
-    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None)
+    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None, verbose_dict=verbose_dict)
     out_pre = np.column_stack((ts_repository_val.features.cpu().numpy(), ts_repository_val.targets.cpu().numpy()))
 
     np.save(p['pretext_features_test_path'], out_pre)
     topk = 10
-    print('Mine the nearest and furthest neighbors (Top-%d)' %(topk))
+    log(f'Mine the nearest and furthest neighbors (Top-{topk})', verbose=verbose, file_path=file_path)
     kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)
     np.save(p['topk_neighbors_val_path'], knearest)
     np.save(p['bottomk_neighbors_val_path'], kfurtherst)
@@ -181,6 +186,8 @@ if __name__ == '__main__':
     parser.add_argument('--config_exp', help='Config file for the experiment', type=str, default='configs/pretext/carla_pretext_smd.yml')
     parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
     parser.add_argument('--device', help='Device used to load the model', type=str, choices=['cpu', 'cuda', 'auto'], default='auto')
+    parser.add_argument('--verbose', help='Enable logging messages level. 0: No verbose, 1: Terminal infor, 2: Terminal and file', type=int, choices=[0, 1, 2], default=2)
+    parser.add_argument('--tensorboard', help='Enable tensorboard logging', type=int, choices=[0, 1], default=1)
     args = parser.parse_args()
 
     main(args=args)

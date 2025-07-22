@@ -1,11 +1,13 @@
 import argparse
 import os
+import random
+
 import torch
 from torch.utils.tensorboard import SummaryWriter 
 import pandas
 import numpy as np
+
 from utils.mypath import MyPath
-from termcolor import colored
 from utils.config import create_config
 from utils.common_config import get_train_transformations, get_val_transformations,\
                                 get_train_dataset, get_train_dataloader, get_aug_train_dataset,\
@@ -14,8 +16,7 @@ from utils.common_config import get_train_transformations, get_val_transformatio
                                 adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
 from utils.train_utils import self_sup_classification_train
-from statsmodels.tsa.stattools import adfuller
-import random
+from utils.utils import log
 
 def set_seed(seed):
     random.seed(seed)
@@ -34,13 +35,19 @@ def main(args):
         device = torch.device(args.device)
 
     p = create_config(args.config_env, args.config_exp, args.fname)
-    print(colored('CARLA Self-supervised Classification stage --> ', 'yellow'))
+    
+    # Initialize logging
+    verbose = args.verbose
+    file_path=os.path.join(p['experiment_dir'], "classification.txt") if verbose>=2 else None
+    verbose_dict={"verbose": verbose, "file_path": file_path}
+
+    log('CARLA Self-supervised Classification stage --> ', verbose=verbose, file_path=file_path, color='yellow')
 
     # CUDNN
    # torch.backends.cudnn.benchmark = True
 
     # Data
-    print(colored('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'], 'green'))
+    log(f"\n- Get dataset and dataloaders for {p['train_db_name']} dataset - timeseries {p['fname']}", verbose=verbose, file_path=file_path, color='green')
     train_transformations = get_train_transformations(p)
     sanomaly = inject_sub_anomaly(p)
     val_transformations = get_val_transformations(p)
@@ -91,11 +98,10 @@ def main(args):
 
     val_dataloader = get_val_dataloader(p, val_dataset)
 
-    print(colored('-- Train samples size: %d - Test samples size: %d' %(len(train_dataset), len(val_dataset)), 'green'))
+    log(f'-- Train samples size: {len(train_dataset)} - Test samples size: {len(val_dataset)}', verbose=verbose, file_path=file_path, color='green')
 
     # Model
     model = get_model(p, p['pretext_model'])
-    #model = torch.nn.DataParallel(model)
     model = model.to(device)
 
     # Optimizer
@@ -103,16 +109,16 @@ def main(args):
 
     # Warning
     if p['update_cluster_head_only']:
-        print(colored('WARNING: classification will only update the cluster head', 'red'))
+        log('WARNING: classification will only update the cluster head', verbose=verbose, file_path=file_path, color='red')
 
     # Loss function
     criterion = get_criterion(p)
     criterion = criterion.to(device)
 
-    print(colored('\n- Model initialisation', 'green'))
+    log('\n- Model initialisation', verbose=verbose, file_path=file_path, color='green')
     # Checkpoint
     if os.path.exists(p['classification_checkpoint']):
-        print(colored('-- Model initialised from last checkpoint: {}'.format(p['classification_checkpoint']), 'green'))
+        log(f'-- Model initialised from last checkpoint: {p['classification_checkpoint']}', verbose=verbose, file_path=file_path, color='green')
         checkpoint = torch.load(p['classification_checkpoint'], map_location='cpu')
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -121,7 +127,7 @@ def main(args):
         best_loss_head = checkpoint['best_loss_head']
         normal_label = checkpoint['normal_label']
     else:
-        print(colored('-- No checkpoint file at {} -- new model initialised'.format(p['classification_checkpoint']), 'green'))
+        log(f'-- No checkpoint file at {p["classification_checkpoint"]} -- new model initialised', verbose=verbose, file_path=file_path, color='green')
         start_epoch = 0
         best_loss = 1e4
         best_loss_head = None
@@ -129,11 +135,11 @@ def main(args):
 
 
     best_f1 = -1 * torch.tensor(float("inf"), device=device)
-    print(colored('\n- Training:', 'blue'))
+    log('\n- Training:', verbose=verbose, file_path=file_path, color='blue')
     
     import time
     for epoch in range(start_epoch, p['epochs']):
-        print(colored('-- Epoch %d/%d' %(epoch+1, p['epochs']), 'blue'))
+        log(f'-- Epoch {epoch+1}/{p['epochs']}', verbose=verbose, file_path=file_path, color='blue')
 
         lr = adjust_learning_rate(p, optimizer, epoch)
         
@@ -142,7 +148,7 @@ def main(args):
 
         total_losses, consistency_losses, inconsistency_losses, entropy_losses = \
             self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
-                                    p['update_cluster_head_only'])
+                                    p['update_cluster_head_only'], verbose_dict=verbose_dict)
         # torch.cuda.synchronize()
         # end_time = time.time()
         # inference_time = end_time - start_time
@@ -186,7 +192,7 @@ def main(args):
         # print(f'Evaluate time with gpu sync: {inference_time:.4f} sencods')
         if rep_f1 > best_f1:
             best_f1 = rep_f1
-            # print('New Checkpoint ...')
+            # log('New Checkpoint ...', verbose=verbose, file_path=file_path)
             torch.save({'model': model.state_dict(), 'head': best_loss_head, 'normal_label': nomral_label}, p['classification_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
                         'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': nomral_label},
@@ -208,7 +214,12 @@ if __name__ == "__main__":
     parser.add_argument('--config_exp', help='Location of experiments config file', type=str, default='configs/classification/carla_classification_smd.yml')
     parser.add_argument('--fname', help='Config the file name of Dataset', type=str, default='machine-1-1.txt')
     parser.add_argument('--device', help='Device used to load the model', type=str, choices=['cpu', 'cuda', 'auto'], default='auto')
-    parser.add_argument('--verilog', help='Enable logging messages level', type=str, choices=['0', '1', '2'], default='2')
+    parser.add_argument('--verbose', help='Enable logging messages level. 0: No verbose, 1: Terminal infor, 2: Terminal and file', type=int, choices=[0, 1, 2], default=2)
+    parser.add_argument('--tensorboard', help='Enable tensorboard logging', type=int, choices=[0, 1], default=1)
     args = parser.parse_args()
+
+    global verbose, file_path
+    file_path = None
+    verbose = args.verbose
 
     main(args=args)

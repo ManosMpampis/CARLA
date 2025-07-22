@@ -98,7 +98,7 @@ def compute_anomaly_acc_percentage(methods_scores,label,slidingWindow,methods_ke
         pos_b = max(0,pos_b - step_b)
         list_pos.append((pos_b,pos_a))
     methods_acc = {}
-    print(list_pos)
+    print(f"{list_pos}")
     for i,methods_score in enumerate(tqdm(methods_keys)):
         dict_acc = {
             'R_AUC_ROC':      [],

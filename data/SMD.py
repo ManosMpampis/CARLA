@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 import torch
+
 from utils.mypath import MyPath
+from utils.utils import log
 
 
 class SMD(Dataset):
@@ -37,7 +39,7 @@ class SMD(Dataset):
         temp = np.asarray(temp)
 
         if np.any(sum(np.isnan(temp))!=0):
-            print('Data contains NaN which replaced with zero')
+            log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
         self.mean, self.std = mean_data, std_data
@@ -47,7 +49,7 @@ class SMD(Dataset):
             labels = np.zeros_like(temp)
         else:
             if not self.std.all():
-                print('AugmentedDataset: sstd contains zeros')
+                log('AugmentedDataset: sstd contains zeros')
             self.std[self.std == 0.0] = 1.0
             temp = (temp - self.mean) / self.std
 

@@ -19,7 +19,7 @@ def main():
     # pred_labels[51:55] = 1
     # true_events = get_events(y_test)
     confusion_matric = MCC(y_test, pred_labels)
-#     print(confusion_matric)
+    # print(f"{confusion_matric}")
 
 
 if __name__ == "__main__":

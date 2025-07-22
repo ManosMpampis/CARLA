@@ -67,7 +67,7 @@ def main():
     scores = combine_all_evaluation_scores(y_test, pred_labels, anomaly_scores)
     # scores = test(y_test, pred_labels)
     for key,value in scores.items():
-        print(key,' : ',value)
+        print(f"{key} : {value}")
 
     
 if __name__ == "__main__":

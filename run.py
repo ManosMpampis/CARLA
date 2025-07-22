@@ -12,14 +12,14 @@ import subprocess
 all_files = os.listdir(os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'SMD/train'))
 file_list = [file for file in all_files if file.startswith('machine-')]
 file_list = sorted(file_list)
-print(file_list)
+log(f"{file_list}", verbose=verbose, file_path=file_path)
 
 # file_list = os.listdir(os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'UCR'))                        
 # file_list = sorted(file_list)
 
 # for filename in files: #['swat']: #files: #data_info['chan_id']:
 #     if filename != 'GECCO':
-#         print(filename)
+#         log(filename, verbose=verbose, file_path=file_path)
         
 #         # Run the pretext script
 #         subprocess.run([
@@ -41,7 +41,7 @@ index = file_list.index("machine-3-11.txt")
 for filename in file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:
     if filename != 'GECCO':
-        print(filename)
+        log(filename, verbose=verbose, file_path=file_path)
         genmodel = 'gen_anom_' + filename+'.pth'
 
         # Run the pretext script

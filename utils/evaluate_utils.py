@@ -2,13 +2,15 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from utils.common_config import get_feature_dimensions_backbone
-from utils.utils import AverageMeter
-from data.custom_dataset import NeighborsDataset
 from sklearn import metrics
-from losses.losses import entropy
 from torchmetrics.functional.classification import confusion_matrix
 from torchmetrics.functional import precision_recall_curve
+
+from utils.common_config import get_feature_dimensions_backbone
+from utils.utils import AverageMeter, log
+from data.custom_dataset import NeighborsDataset
+from losses.losses import entropy
+
 
 @torch.no_grad()
 def contrastive_evaluate(val_loader, model, ts_repository):
@@ -167,7 +169,10 @@ def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1,
 
 
 @torch.no_grad()
-def pr_evaluate(all_predictions, class_names=None, majority_label=0):
+def pr_evaluate(all_predictions, class_names=None, majority_label=0, verbose_dict={"verbose": 1, "file_path": None}):
+    
+    verbose = verbose_dict["verbose"]
+    file_path = verbose_dict["file_path"]
 
     head = all_predictions[0]
     targets = head['targets']
@@ -181,10 +186,10 @@ def pr_evaluate(all_predictions, class_names=None, majority_label=0):
         f1_score = 2*precision*recall / (precision+recall)
         if torch.isnan(f1_score).any():
             f1_score = torch.nan_to_num(f1_score)
-            print('f1: Nan --> 0')     
+            log('f1: Nan --> 0', verbose=verbose, file_path=file_path)     
     except ZeroDivisionError:
         f1_score = [0.0]
-        print('f1: 0 --> 0')
+        log('f1: 0 --> 0', verbose=verbose, file_path=file_path)
 
     best_f1_index = torch.argmax(f1_score)
 
@@ -194,12 +199,8 @@ def pr_evaluate(all_predictions, class_names=None, majority_label=0):
         best_threshold = thresholds[best_f1_index]
         anomalies = [1 if s >= best_threshold else 0 for s in scores]
         best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
-        print("Anomalies --> TP: ", best_tp, ", TN: ", best_tn, ", FN: ", best_fn, ", FP: ", best_fp)
-        print(majority_label)
-        print(metrics.classification_report(targets, anomalies))
+        log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}", verbose=verbose, file_path=file_path)
+        log(f"Mazority label: {majority_label}", verbose=verbose, file_path=file_path)
+        log(metrics.classification_report(targets, anomalies), verbose=verbose, file_path=file_path)
 
     return rep_f1
-
-def replace_majority_label(flat_preds, majority_label):
-    new_pred = torch.where(flat_preds == majority_label, 0, 1)
-    return new_pred

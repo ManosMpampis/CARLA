@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 import torch
+
 from utils.mypath import MyPath
+from utils.utils import log
 
 
 class KPI(Dataset):
@@ -43,7 +45,7 @@ class KPI(Dataset):
         labels = np.asarray(temp['label'])
 
         if np.any(sum(np.isnan(data))!=0):
-            print('Data contains NaN which replaced with zero')
+            log('Data contains NaN which replaced with zero')
             data = np.nan_to_num(data)
 
         self.mean, self.std = mean_data, std_data

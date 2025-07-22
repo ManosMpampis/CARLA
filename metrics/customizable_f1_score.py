@@ -108,7 +108,7 @@ def main():
     # pred_labels[51:55] = 1
     # true_events = get_events(y_test)
     Rf = customizable_f1_score(y_test, pred_labels)
-    print("Rf: {}".format(Rf))
+    print(f"Rf: {Rf}")
 
 
 if __name__ == "__main__":

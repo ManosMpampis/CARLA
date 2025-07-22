@@ -181,7 +181,7 @@ def compute_score(methods,slidingWindow,data,X_data,data_train,data_test,X_train
 
         #end_time = time.time()
         #time_exec = end_time - start_time
-        #print(method,"\t time: {}".format(time_exec))
+        #print(f"{method}\t time: {time_exec}")
         methods_scores[method] = score
         
     return methods_scores

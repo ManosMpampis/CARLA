@@ -3,6 +3,8 @@ import torch
 from torch.utils.data import Dataset
 from scipy.spatial.distance import euclidean
 
+from utils.utils import log
+
 
 """ 
     AugmentedDataset
@@ -50,7 +52,7 @@ class AugmentedDataset(Dataset):
             ts_ss_augment = self.subseq_anomaly(ts_org)
             # sstd = np.where((sstd == 0.0), 1.0, sstd)
             if not sstd.all():
-                print('AugmentedDataset: sstd contains zeros')
+                log('AugmentedDataset: sstd contains zeros')
             sstd = torch.where(sstd == 0.0, torch.tensor(1.0), sstd)
 
             self.samples[index] = {

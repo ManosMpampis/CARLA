@@ -22,6 +22,7 @@ def create_config(config_file_env, config_file_exp, fname):
     pretext_dir = os.path.join(base_dir, fname+'/pretext')
     mkdir_if_missing(base_dir)
     mkdir_if_missing(pretext_dir)
+    cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
     cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint.pth.tar')

@@ -1,6 +1,9 @@
 import os
-import torch
 import errno
+
+import torch
+from termcolor import colored
+
 from data.ra_dataset import SaveAugmentedDataset
 
 
@@ -37,7 +40,9 @@ class AverageMeter(object):
 
 
 class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix=""):
+    def __init__(self, num_batches, meters, prefix="", verbose_dict={"verbose": 1, "file_path": None}):
+        self.verbose = verbose_dict["verbose"]
+        self.file_path = verbose_dict["file_path"]
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
         self.prefix = prefix
@@ -45,7 +50,7 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
+        log(('\t'.join(entries)), verbose=self.verbose, file_path=self.file_path)
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
@@ -54,7 +59,7 @@ class ProgressMeter(object):
 
 
 @torch.no_grad()
-def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None):
+def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, verbose_dict={"verbose": 1, "file_path": None}):
     """_summary_
 
     Args:
@@ -65,7 +70,11 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
         real_aug (bool, optional): Determines if the method save the new values to the Time Series Repositorys. Defaults to False.
         ts_repository_aug (TSRepository, optional): Time series repository filled with original anchors and negative neighbors. Defaults to None.
         device (torch.device, optional): Device to use for torch. Defaults to torch.device("cpu").
+        verbose_dict (dict): Verbose variables for logging.
     """
+    verbose = verbose_dict["verbose"]
+    file_path = verbose_dict["file_path"]
+    
     model.eval()
     device = next(model.parameters()).device
 
@@ -88,7 +97,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
         ts_repository.update(output, targets)
         if ts_repository_aug != None: ts_repository_aug.update(output, targets)
         if i % 100 == 0:
-            print('Fill TS Repository [%d/%d]' %(i, len(loader)))
+            log(f'Fill TS Repository [{i}/{len(loader)}]', verbose=verbose, file_path=file_path)
 
         if real_aug:
             con_data = torch.cat((con_data, ts_org), dim=0)
@@ -118,3 +127,14 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
                                                  batch_size=p['batch_size'], pin_memory=True,
                                                  drop_last=False, shuffle=False)
         torch.save(con_loader, p['contrastive_dataset'])
+
+def log(string, verbose=1, file_path=None, color=None):
+    if verbose >= 1:
+        if file_path is not None and verbose >= 2:
+            with open(file_path, 'a') as f:
+                f.write(string + '\n')
+                f.flush()
+        if color is not None:
+            string = colored(string, color)
+        print(string)
+    return
