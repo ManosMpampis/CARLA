@@ -70,7 +70,7 @@ class TSRepository(object):
         else:
             return k_furthest_neighbours, k_nearest_neighbours
 
-    def furthest_nearest_neighbors(self, topk):
+    def furthest_nearest_neighbors(self, topk, use_defualt=True, mine_with_labels=False, mine_with_no_labels=False, nneighbors=None, fneighbors=None):
         features = self.features
 
         # # Compute pairwise distances
@@ -92,18 +92,39 @@ class TSRepository(object):
         # k_furthest_neighbours = ids[:, -1:]
         # k_nearest_neighbours = ids[:, 1:]
 
+        if use_defualt:
+            d = features.shape[1]
+            index = faiss.IndexFlatL2(d)
+            # index.add(features)
+            index.add(features.cpu().numpy())  # CUDA
 
-        d = features.shape[1]
-        index = faiss.IndexFlatL2(d)
-        # index.add(features)
-        index.add(features.cpu().numpy())  # CUDA
+            xq = np.random.random(d)
+            _, ids = index.search(xq.reshape(1, -1).astype(np.float32), len(features))
+            sz = ids.shape[1]
+            k_furthest_neighbours = ids.reshape(sz, 1)[::-1]
+            k_nearest_neighbours = ids[:, :].reshape(sz, 1)
+        
+        # Mine interpatation if we do not use data labeling
+        elif mine_with_no_labels:
+            d = features.shape[1]
+            index = faiss.IndexFlatL2(d)
+            index.add(features.cpu().numpy())
 
-        xq = np.random.random(d)
-        _, ids = index.search(xq.reshape(1, -1).astype(np.float32), len(features))
-        sz = ids.shape[1]
-        k_furthest_neighbours = ids.reshape(sz, 1)[::-1]
-        k_nearest_neighbours = ids[:, :].reshape(sz, 1)
+            _, k_nearest_neighbours = index.search(features.cpu().numpy(), len(features))
+            k_furthest_neighbours = ids[::-1]
 
+        # Mine interpatation if we use data labeling
+        elif mine_with_labels:
+            d = features.shape[1]
+            index = faiss.IndexFlatL2(d)
+            index.add(nneighbors.cpu().numpy())
+
+            _, k_nearest_neighbours = index.search(features.cpu().numpy(), len(nneighbors))
+
+            index = faiss.IndexFlatL2(d)
+            index.add(fneighbors.cpu().numpy())
+
+            _, k_furthest_neighbours = index.search(features.cpu().numpy(), len(features))[::-1]
         return k_furthest_neighbours, k_nearest_neighbours
 
 
