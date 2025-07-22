@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -89,14 +88,16 @@ class ClassificationLoss(nn.Module):
 
 class PretextLoss(nn.Module):
     # Based on the implementation of SupContrast
-    def __init__(self, bs, temperature, initial_margin=1.0, adjust_factor=0.1):
+    def __init__(self, bs, temperature, initial_margin=1.0, adjust_factor=0.1, paper_loss=False):
         super(PretextLoss, self).__init__()
-        self.temperature = temperature
+        self.temperature = temperature  # mse loss is the same as torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
         self.bs = bs
         self.margin = initial_margin
         self.adjust_factor = adjust_factor
+        self.paper_loss = paper_loss
 
-    def forward(self, features, current_loss=None):
+
+    def forward(self, features, current_loss=0):
         """
         input:
             - features: hidden feature representation of shape [b, 3, dim]
@@ -111,11 +112,15 @@ class PretextLoss(nn.Module):
         positive = F.normalize(features_pos, dim=-1)
         negative = F.normalize(features_subseq, dim=-1)
 
-        # self.margin = 5
-        if current_loss is not None:
-            self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
+        self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
+
+        if self.paper_loss:
+            # actual loss of paper = distance from positives - distance from negatives + margin
+            # TODO: add weights
+            return torch.clamp(F.mse_loss(anchor, positive) - F.mse_loss(anchor, negative) + self.margin, min=0.0)
 
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
+        # Hear we find all the distances of negatives to anchors and corelate each anchor with the lowest distance negative example
         negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
         hard_negative_distance = torch.min(negative_distance, dim=1)[0]
         loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
