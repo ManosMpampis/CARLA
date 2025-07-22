@@ -41,13 +41,14 @@ def main(args):
 
     # Data
     print(colored('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'], 'green'))
-    train_transformations = get_train_transformations(p, device=device)
+    train_transformations = get_train_transformations(p)
     sanomaly = inject_sub_anomaly(p)
-    val_transformations = get_val_transformations(p, device=device)
+    val_transformations = get_val_transformations(p)
     # In the self-supervised state we use as data the triplets with saves anchors of the first stage
-    train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True, device=device)
+    train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True)
     train_dataloader = get_train_dataloader(p, train_dataset)
-    # In order to correctly measure the similarity matrics, all values need to be checkes, during train we have drop_last
+    # In order to correctly measure the similarity matrics, all values need to be checkes,
+    # during train we have drop_last so we add second dataloader
     tst_dataloader = get_val_dataloader(p, train_dataset)
 
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
@@ -60,31 +61,31 @@ def main(args):
                 p['fname'] = file_name
                 if ii == 0 :
                     base_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                                     to_neighbors_dataset=True, device=device)
+                                                     to_neighbors_dataset=True)
                     val_dataset = get_val_dataset(p, val_transformations, sanomaly, True, base_dataset.mean,
-                                                  base_dataset.std, device=device)
+                                                  base_dataset.std)
                 else:
                     new_base_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                                     to_neighbors_dataset=True, device=device)
+                                                     to_neighbors_dataset=True)
                     new_val_dataset = get_val_dataset(p, val_transformations, sanomaly, True, new_base_dataset.mean,
-                                                  new_base_dataset.std, device=device)
+                                                  new_base_dataset.std)
                     val_dataset.concat_ds(new_val_dataset)
                     base_dataset.concat_ds(new_base_dataset)
                 ii+=1
         else:
             #base_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True)
-            info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False, device=device)
-            val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std, device=device)
+            info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False)
+            val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std)
 
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
         or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
-        base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True, device=device)  # used only to mean and std
+        base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True)  # used only to mean and std
         dataset_mean = base_dataset.mean
         dataset_std = base_dataset.std
         del base_dataset
 
         val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean,
-                                      dataset_std, device=device)
+                                      dataset_std)
     else:
         raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
 
@@ -128,7 +129,6 @@ def main(args):
 
 
     best_f1 = -1 * torch.tensor(float("inf"), device=device)
-    # best_loss = np.inf
     print(colored('\n- Training:', 'blue'))
     for epoch in range(start_epoch, p['epochs']):
         print(colored('-- Epoch %d/%d' %(epoch+1, p['epochs']), 'blue'))
@@ -160,7 +160,6 @@ def main(args):
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
                         'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': nomral_label},
                        p['classification_checkpoint'])
-
 
     model_checkpoint = torch.load(p['classification_model'], map_location='cpu')
     model.load_state_dict(model_checkpoint['model'])

@@ -6,24 +6,21 @@ from utils.common_config import get_feature_dimensions_backbone
 from utils.utils import AverageMeter
 from data.custom_dataset import NeighborsDataset
 from sklearn import metrics
-from scipy.optimize import linear_sum_assignment
 from losses.losses import entropy
 from torchmetrics.functional.classification import confusion_matrix
 from torchmetrics.functional import precision_recall_curve
-import os
 
 @torch.no_grad()
 def contrastive_evaluate(val_loader, model, ts_repository):
     top1 = AverageMeter('Acc@1', ':6.2f')
     model.eval()
+    device = next(model.parameters()).device
 
     for batch in val_loader:
-        ts_org = batch['ts_org'] #.cuda(non_blocking=True)
-        target = batch['target'] #.cuda(non_blocking=True)
-        ts_org = torch.from_numpy(ts_org).float()
-        #ts_org=torch.unsqueeze(ts_org, dim=1)
+        ts_org = batch['ts_org'].to(device, non_blocking=True)
+        target = batch['target'].to(device, non_blocking=True)
+        
         b, w, h = ts_org.shape
-        target = torch.from_numpy(target)
         output = model(ts_org.view(b, h, w))
 
         output = ts_repository.weighted_knn(output)
@@ -38,6 +35,8 @@ def contrastive_evaluate(val_loader, model, ts_repository):
 def get_predictions(p, dataloader, model, return_features=False, is_training=False):
     # Make predictions on a dataset with neighbors
     model.eval()
+    device = next(model.parameters()).device
+
     predictions = [[] for _ in range(p['num_heads'])]
     probs = [[] for _ in range(p['num_heads'])]
     targets = []
@@ -57,7 +56,6 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     ptr = 0
     for batch in dataloader:
         ts = batch[key_]
-        #ts = torch.unsqueeze(ts, dim=1)
         if ts.ndim == 3:
             bs, w, h = ts.shape
         else:
@@ -68,8 +66,9 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             ts = torch.from_numpy(ts).float()
             targets.append(torch.as_tensor(batch['target'], device=next(model.parameters()).device))
         else:
-            targets.append(batch['target'])  # it should be in CUDA
-
+            ts = ts.to(device, non_blocking=True)
+            targets.append(batch['target'].to(device, non_blocking=True))
+            
         res = model(ts.view(bs, h, w), forward_pass='return_all')
         output = res['output']
         if return_features:
@@ -99,14 +98,14 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     if return_features:
         feat_np = features.numpy()  # save features in csv
         fhdr = [str(x) for x in range(feat_np.shape[1])] + ['Class']
-        # feat_np = np.hstack((feat_np, np.array(targets)[np.newaxis].T)) CUDA
+        
         feat_np = np.hstack((feat_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
 
         feat_df = pd.DataFrame(feat_np, columns=fhdr)
 
         prob_np = out[0]['probabilities'].cpu().numpy()
         phdr = [str(x) for x in range(prob_np.shape[1])] + ['Class']
-        # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
+        
         prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
         prob_df = pd.DataFrame(prob_np, columns=phdr)
 
@@ -120,7 +119,6 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         return out, features.cpu()
 
     else:
-        # tmp = np.array(out[0]['probabilities'])
         return out
 
 
@@ -133,9 +131,9 @@ def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1,
 
     for head in predictions:
         # Neighbors and anchors
-        probs = head['probabilities']
-        neighbors = head['neighbors']
-        fneighbors = head['fneighbors']
+        probs = head['probabilities'].to(device, non_blocking=True)
+        neighbors = head['neighbors'].to(device, non_blocking=True)
+        fneighbors = head['fneighbors'].to(device, non_blocking=True)
         org_anchors = torch.arange(neighbors.size(0), device=device).view(-1,1).expand_as(neighbors)
 
         # Entropy loss
@@ -172,11 +170,8 @@ def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1,
 def pr_evaluate(all_predictions, class_names=None, majority_label=0):
 
     head = all_predictions[0]
-    targets = head['targets'] #.cuda()
-    # predictions = head['predictions'] #.cuda()
-    probs = head['probabilities'] #.cuda()
-    # num_classes = torch.unique(targets).numel()
-    # num_elems = targets.size(0)
+    targets = head['targets']
+    probs = head['probabilities']
 
     scores = 1-probs[:, majority_label]
 

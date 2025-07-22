@@ -54,17 +54,29 @@ class ProgressMeter(object):
 
 
 @torch.no_grad()
-def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, device=torch.device("cpu")):
+def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None):
+    """_summary_
+
+    Args:
+        p (dict): configuration dictionary
+        loader (torch.utils.data.DataLoader): Dataset loader to be used to generate near and far neighbors
+        model (torch.nn.Module): Trained model to use for filling time serires repository
+        ts_repository (TSRepository): Time series repository to be filled.
+        real_aug (bool, optional): Determines if the method save the new values to the Time Series Repositorys. Defaults to False.
+        ts_repository_aug (TSRepository, optional): Time series repository filled with original anchors and negative neighbors. Defaults to None.
+        device (torch.device, optional): Device to use for torch. Defaults to torch.device("cpu").
+    """
     model.eval()
+    device = next(model.parameters()).device
+
     ts_repository.reset()
     if ts_repository_aug != None: ts_repository_aug.reset()
-    if real_aug:
-        ts_repository.resize(3)
+    if real_aug: ts_repository.resize(3)
 
     con_data = torch.tensor([], device=device)
     con_target = torch.tensor([], device=device)
     for i, batch in enumerate(loader): 
-        ts_org = batch['ts_org'].to(device, non_blocking=True) #cuda
+        ts_org = batch['ts_org'].to(device, non_blocking=True)
         targets = batch['target'].to(device, non_blocking=True)
         if ts_org.ndim == 3:
             b, w, h = ts_org.shape
@@ -72,7 +84,6 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             b, w = ts_org.shape
             h = 1
 
-        # ts_org = torch.from_numpy(ts_org).float(). #cuda
         output = model(ts_org.reshape(b, h, w))
         ts_repository.update(output, targets)
         if ts_repository_aug != None: ts_repository_aug.update(output, targets)
@@ -81,15 +92,11 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
         if real_aug:
             con_data = torch.cat((con_data, ts_org), dim=0)
-            # con_target = torch.cat((con_target, torch.from_numpy(targets).float()), dim=0)
-            con_target = torch.cat((con_target, targets), dim=0) #cuda
+            con_target = torch.cat((con_target, targets), dim=0)
 
-
-            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True) #cuda
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
             targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device=device)
 
-            # targets = torch.LongTensor([2]*ts_w_augment.shape[0], device=device)
-            # ts_w_augment = torch.from_numpy(ts_w_augment).float() #cuda
             output = model(ts_w_augment.reshape(b, h, w))
             ts_repository.update(output, targets)
             # ts_repository_aug.update(output, targets)
@@ -98,8 +105,6 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True) #cuda
             targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device=device)
             
-            #targets = torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device=device, non_blocking=True)
-            # ts_ss_augment = torch.from_numpy(ts_ss_augment).float() #cuda
             con_data = torch.cat((con_data, ts_ss_augment), dim=0)
             con_target = torch.cat((con_target, targets), dim=0)
             output = model(ts_ss_augment.reshape(b, h, w))
@@ -108,7 +113,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
 
     if real_aug:
-        con_dataset = SaveAugmentedDataset(con_data, con_target)
+        con_dataset = SaveAugmentedDataset(con_data.cpu(), con_target.cpu())
         con_loader = torch.utils.data.DataLoader(con_dataset, num_workers=p['num_workers'],
                                                  batch_size=p['batch_size'], pin_memory=True,
                                                  drop_last=False, shuffle=False)

@@ -16,10 +16,9 @@ class Yahoo(Dataset):
     """
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('yahoo'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, data=None, label=None, device=torch.device("cpu")):
+    def __init__(self, fname, root=MyPath.db_root_dir('yahoo'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, data=None, label=None):
 
         super(Yahoo, self).__init__()
-        self.device = device
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -61,10 +60,9 @@ class Yahoo(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
-        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32)
         if len(self.targets) > 0:
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
             class_name = self.classes[target]
         else:
             target = 0

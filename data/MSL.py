@@ -10,10 +10,9 @@ import torch
 class MSL(Dataset):
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, device=torch.device("cpu")):
+    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None):
 
         super(MSL, self).__init__()
-        self.device = device
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -88,13 +87,11 @@ class MSL(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        # ts_org = self.data[index]
-        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
-        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32)
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
             class_name = self.classes[target]
         else:
             target = 0

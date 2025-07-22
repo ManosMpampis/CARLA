@@ -3,10 +3,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
+
 
 EPS=1e-8
-
 
 class MaskedCrossEntropyLoss(nn.Module):
     def __init__(self):
@@ -120,31 +119,9 @@ class PretextLoss(nn.Module):
         negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
         hard_negative_distance = torch.min(negative_distance, dim=1)[0]
         loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
-        # clamped_distance = torch.clamp(self.margin + positive_distance - negative_distance, min=0.0)
-        # loss = torch.sum(clamped_distance, dim=1)
         loss = torch.mean(loss)
 
         return loss
-
-        # anchor = features_org
-        # positive = features_pos
-        # negative2 = features_subseq
-        # margin = 5
-
-        # positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
-        # # negative_distance1 = torch.clamp(margin - (torch.sum((anchor - negative1) ** 2, dim=-1)), min=0.0)
-        # # negative_distance2 = torch.clamp(margin - (torch.sum((anchor - negative2) ** 2, dim=-1)), min=0.0)
-        # # negative_distance3 = torch.clamp(margin - (torch.sum((anchor - negative3) ** 2, dim=-1)), min=0.0)
-        # # loss = positive_distance + negative_distance1 + negative_distance2 + negative_distance3
-
-        # #negative_distance = torch.sum((anchor - negative2) ** 2, dim=-1) #/ self.temperature
-        # negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative2, 2), dim=2)
-        # clamped_distance = torch.clamp(margin + positive_distance - negative_distance, min=0.0)
-        # loss = torch.sum(clamped_distance, dim=1)
-        # loss = torch.mean(loss)
-
-        # return loss
-
 
     def cosine_similarity(self, x1, x2):
         dot_product = torch.sum(x1 * x2, dim=1)
@@ -154,5 +131,3 @@ class PretextLoss(nn.Module):
 
     def euclidan_dist(self, x1, x2):
         return torch.sqrt(((x1 - x2)**2).sum(dim=1))
-
-

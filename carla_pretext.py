@@ -31,8 +31,6 @@ set_seed(4)
 
 def main(args):
     # # Set PyTorch-specific threading options
-    # torch.set_num_threads(1)
-    # torch.set_num_interop_threads(1) 
     if args.device == 'auto':
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
@@ -44,15 +42,11 @@ def main(args):
     model = get_model(p)
     best_model = None
     model = model.to(device)
-   
-    # CUDNN
-    # torch.backends.cudnn.benchmark = True
 
     train_transforms = get_train_transformations(p)
 
     sanomaly = inject_sub_anomaly(p)
-    val_transforms = get_val_transformations(p, device=device)
-
+    val_transforms = get_val_transformations(p)
 
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         if p['fname'] == 'All':
@@ -67,97 +61,36 @@ def main(args):
                                                   split='train+unlabeled', device=device)
                     val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
                                               train_dataset.std, device=device)
-                    # base_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                    #                                  split='train')
                 else:
                     new_train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                                  split='train+unlabeled', device=device)
+                                                  split='train+unlabeled')
                     new_val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, new_train_dataset.mean,
-                                                  new_train_dataset.std, device=device)
+                                                  new_train_dataset.std)
 
                     train_dataset.concat_ds(new_train_dataset)
                     val_dataset.concat_ds(new_val_dataset)
-                    # base_dataset.concat_ds(new_train_dataset)
 
                 ii += 1
         else:
             train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                              split='train+unlabeled', device=device)
+                                              split='train+unlabeled')
             val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                          train_dataset.std, device=device)
-            # base_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-            #                                  split='train') # Dataset w/o augs for knn eval
-
-    elif p['train_db_name'] == 'yahoo':
-        filename = os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'Yahoo/', p['fname'])
-        dataset = []
-
-        print(filename)
-        df = pandas.read_csv(filename)
-        dataset.append({
-            'value': df['value'].tolist(),
-            'label': df['is_anomaly'].tolist()
-        })
-
-        ts = dataset[0]
-        data = np.array(ts['value'])
-        labels = np.array(ts['label'])
-        l = len(data) // 2
-
-        n = 0
-        while adfuller(data[:l], 1)[1] > 0.05 or adfuller(data[:l])[1] > 0.05:
-            data = np.diff(data)
-            labels = labels[1:]
-            n += 1
-        l -= n
-
-        all_train_data = data[:l]
-        all_test_data = data[l:]
-        all_train_labels = labels[:l]
-        all_test_labels= labels[l:]
-
-        TRAIN_TS = all_train_data
-        TEST_TS = all_test_data
-        train_label = all_train_labels
-        test_label = all_test_labels
-
-        print(">>>", "train/test w. shapes of {}/{}".format(np.shape(TRAIN_TS), np.shape(TEST_TS)))
-
-        train_dataset = get_train_dataset(p, train_transforms, sanomaly,
-                                          to_augmented_dataset=True, data=TRAIN_TS, label=train_label, device=device)
-        val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                          train_dataset.std, TEST_TS, test_label, device=device)
-        # base_dataset = get_train_dataset(p, train_transforms, sanomaly,
-        #                                   to_augmented_dataset=True, data=TRAIN_TS, label=train_label)
-
+                                          train_dataset.std)
+            
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
         or p['train_db_name'] == 'swan' or p['train_db_name'] == 'gecco' or p['train_db_name'] == 'wadi' or p['train_db_name'] == 'ucr':
-        train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True, device=device)
+        train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True)
         val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                      train_dataset.std, device=device)
+                                      train_dataset.std)
 
     train_dataloader = get_train_dataloader(p, train_dataset)
     val_dataloader = get_val_dataloader(p, val_dataset)
     base_dataloader = get_val_dataloader(p, train_dataset)
 
     print('Dataset contains {}/{} train/val samples'.format(len(train_dataset), len(val_dataset)))
-    
-    # TS Repository
-    # base_dataset = get_train_dataset(p, train_transforms, panomaly, sanomaly, to_augmented_dataset=True, split='train')
-
-    ts_repository_base = TSRepository(len(train_dataset),
-                                      p['model_kwargs']['features_dim'],
-                                      p['num_classes'], p['criterion_kwargs']['temperature'])
-    ts_repository_base.to(device)
-
-    ts_repository_val = TSRepository(len(val_dataset),
-                                     p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature'])
-    ts_repository_val.to(device)
 
     criterion = get_criterion(p).to(device)
 
-    # optimizer = get_optimizer(p, model)
     optimizer = torch.optim.Adam(model.parameters(), lr=p['optimizer_kwargs']['lr'])
  
     # Checkpoint
@@ -168,15 +101,13 @@ def main(args):
         model.load_state_dict(checkpoint['model'])
         model = model.to(device)
         start_epoch = checkpoint['epoch']
-
     else:
         print(colored('No checkpoint file at {}'.format(p['pretext_checkpoint']), 'blue'))
         start_epoch = 0
-        model = model.to(device)
     
     # Training
-    pretext_best_loss = np.inf
-    prev_loss = None
+    pretext_best_loss = torch.tensor(float("inf"), device=device)
+    prev_loss = torch.tensor(float(0), device=device)
     for epoch in range(start_epoch, p['epochs']):
         print(colored('Epoch %d/%d' %(epoch+1, p['epochs']), 'yellow'))
         print(colored('-'*15, 'yellow'))
@@ -185,24 +116,40 @@ def main(args):
         print('Adjusted learning rate to {:.5f}'.format(lr))
         
         # print('EPOCH ----> ', epoch)
-        tmp_loss = pretext_train(train_dataloader, model, criterion, optimizer, epoch, prev_loss, device=device)
+        tmp_loss = pretext_train(train_dataloader, model, criterion, optimizer, epoch, prev_loss)
         
         # Checkpoint
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
-            best_model = model
+            torch.save({'model': model.state_dict()}, p['pretext_model'])
+            torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
+                        'epoch': epoch + 1, 'best_loss': pretext_best_loss},
+                       p['pretext_checkpoint'])
 
-    # Save final model
-    torch.save(best_model.state_dict(), p['pretext_model'])
+
+    model_checkpoint = torch.load(p['pretext_model'], map_location='cpu')
+    model.load_state_dict(model_checkpoint['model'])
+    
+    # TS Repository
+    ts_repository_base = TSRepository(len(train_dataset),
+                                      p['model_kwargs']['features_dim'],
+                                      p['num_classes'], p['criterion_kwargs']['temperature'])
+    ts_repository_base.to(device)
+
+    ts_repository_val = TSRepository(len(val_dataset),
+                                     p['model_kwargs']['features_dim'],
+                                     p['num_classes'], p['criterion_kwargs']['temperature'])
+    ts_repository_val.to(device)
 
     # Mine the topk nearest neighbors at the very end (Train)
     # These will be served as input to the classification loss.
     print(colored('Fill TS Repository for mining the nearest/furthest neighbors (train) ...', 'blue'))
     ts_repository_aug = TSRepository(len(train_dataset) * 2,
                                      p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature']) #need size of repository == 1+num_of_anomalies
-    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug, device=device)
-    # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
+                                     p['num_classes'], p['criterion_kwargs']['temperature'])  # need size of repository == 1+num_of_anomalies
+    ts_repository_aug.to(device)
+    
+    fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug)
     out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
     np.save(p['pretext_features_train_path'], out_pre)
@@ -216,8 +163,7 @@ def main(args):
     # These will be used for validation.
     print(colored('Fill TS Repository for mining the nearest/furthest neighbors (val) ...', 'blue'))
 
-    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None, device=device)
-    # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
+    fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None)
     out_pre = np.column_stack((ts_repository_val.features.cpu().numpy(), ts_repository_val.targets.cpu().numpy()))
 
     np.save(p['pretext_features_test_path'], out_pre)

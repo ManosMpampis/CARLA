@@ -5,16 +5,15 @@ from torch import Tensor
 from utils.utils import AverageMeter, ProgressMeter
 
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, device=torch.device("cpu")):
+def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss):
 
     losses = AverageMeter('Loss', ':.4e')
     progress = ProgressMeter(len(train_loader),
         [losses],
         prefix="Epoch: [{}]".format(epoch+1))
 
-    model = model.to(device)
     model.train()
-
+    device = next(model.parameters()).device
     for i, batch in enumerate(train_loader):
         ts_org = batch['ts_org'].float().to(device, non_blocking=True)
         ts_w_augmented = batch['ts_w_augment'].float().to(device, non_blocking=True)
@@ -28,17 +27,16 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, d
 
         input_: Tensor = torch.cat([ts_org, ts_w_augmented, ts_ss_augmented], dim=0).view(b * 3, h, w)
 
+        optimizer.zero_grad()
+
         output = model(input_)
         
-        if prev_loss is not None:
-            loss = criterion(output, prev_loss)
-        else:
-            loss = criterion(output)
+        loss = criterion(output, prev_loss)
+
 
         losses.update(loss.item())
         prev_loss = loss.item()
 
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -48,7 +46,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, d
     return loss
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, device=torch.device("cpu")):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False):
     """ 
     Train w/ classification-Loss
     """
@@ -60,12 +58,11 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         [total_losses, consistency_losses, inconsistency_losses, entropy_losses],
         prefix="Epoch: [{}]".format(epoch+1))
 
-    model = model.to(device)
-
     if update_cluster_head_only:
         model.eval() # No need to update BN
     else:
         model.train() # Update BN
+    device = next(model.parameters()).device
 
     for i, batch in enumerate(train_loader):
         # Forward pass
@@ -139,5 +136,5 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
 
         if i % 100 == 0:
             progress.display(i)
-    
+    progress.display(i+1)
     return total_losses.avg, consistency_losses.avg, inconsistency_losses.avg, entropy_losses.avg

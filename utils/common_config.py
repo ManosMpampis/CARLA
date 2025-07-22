@@ -59,7 +59,7 @@ def get_model(p, pretrain_path=None):
         state = torch.load(pretrain_path, map_location='cpu')
 
         if p['setup'] == 'classification':  # Weights are supposed to be transfered from contrastive training
-            missing = model.load_state_dict(state, strict=False)
+            missing = model.load_state_dict(state['model'], strict=False)
             assert (set(missing[1]) == {
                 'contrastive_head.0.weight', 'contrastive_head.0.bias',
                 'contrastive_head.2.weight', 'contrastive_head.2.bias'}
@@ -79,37 +79,37 @@ def get_model(p, pretrain_path=None):
 
 
 def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
-                      to_neighbors_dataset=False, split=None, data=None, label=None, device=torch.device("cpu")):
+                      to_neighbors_dataset=False, split=None, data=None, label=None):
     # Base dataset
     mean, std = 0, 0
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
+                      mean_data=None, std_data=None)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                       mean_data=None, std_data=None, device=device)
+                       mean_data=None, std_data=None)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
+                      mean_data=None, std_data=None)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
+                      mean_data=None, std_data=None)
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, device=device)
+                      mean_data=None, std_data=None)
         mean, std = dataset.get_info()
 
     else:
@@ -118,57 +118,57 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
     # Wrap into other dataset (__getitem__ changes)
     if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
         from data.custom_dataset import AugmentedDataset
-        dataset = AugmentedDataset(dataset, device=device)
+        dataset = AugmentedDataset(dataset)
 
     if to_neighbors_dataset:  # Dataset returns ts and its nearest and furthest neighbors.
         from data.custom_dataset import NeighborsDataset
         nindices = np.load(p['topk_neighbors_train_path'])
         findices = np.load(p['bottomk_neighbors_train_path'])
-        dataset = NeighborsDataset(dataset, None, nindices, findices, p, device=device)
+        dataset = NeighborsDataset(dataset, None, nindices, findices, p)
 
     dataset.mean = mean
     dataset.std = std
     return dataset
 
 
-def get_aug_train_dataset(p, transform, to_neighbors_dataset=False, device=torch.device("cpu")):
+def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
     dataloader = torch.load(p['contrastive_dataset'], weights_only=False)
     if to_neighbors_dataset:  # Dataset returns a ts and one of its nearest neighbors.
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_train_path'])
         F_indices = np.load(p['bottomk_neighbors_train_path'])
-        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p, device=device)
+        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p)
 
     return dataset
 
 
 def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False,
-                    mean_data=None, std_data=None, data=None, label=None, device=torch.device("cpu")):
+                    mean_data=None, std_data=None, data=None, label=None):
     # Base dataset
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, device=device)
+                      mean_data=mean_data, std_data=std_data)
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, device=device)
+                      mean_data=mean_data, std_data=std_data)
 
     elif p['val_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, device=device)
+                      mean_data=mean_data, std_data=std_data)
 
     elif p['val_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, device=device)
+                      mean_data=mean_data, std_data=std_data)
 
     elif p['val_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, device=device)
+                      mean_data=mean_data, std_data=std_data)
 
     else:
         raise ValueError('Invalid validation dataset {}'.format(p['val_db_name']))
@@ -178,20 +178,20 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_val_path'])
         F_indices = np.load(p['bottomk_neighbors_val_path'])
-        dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, 5, device=device)  # Only use 5
+        dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, 5)  # Only use 5
 
     return dataset
 
 
-def get_train_dataloader(p, dataset):
+def get_train_dataloader(p, dataset, pin_memory=True):
     return torch.utils.data.DataLoader(dataset, num_workers=p['num_workers'],
-                                       batch_size=p['batch_size'], pin_memory=False, collate_fn=collate_custom,
+                                       batch_size=p['batch_size'], pin_memory=pin_memory, collate_fn=collate_custom,
                                        drop_last=True, shuffle=True)
 
 
-def get_val_dataloader(p, dataset):
+def get_val_dataloader(p, dataset, pin_memory=True):
     return torch.utils.data.DataLoader(dataset, num_workers=p['num_workers'],
-                                       batch_size=p['batch_size'], pin_memory=False, collate_fn=collate_custom,
+                                       batch_size=p['batch_size'], pin_memory=pin_memory, collate_fn=collate_custom,
                                        drop_last=False, shuffle=False)
 
 
@@ -199,7 +199,7 @@ def inject_sub_anomaly(p):
     return SubAnomaly(p['anomaly_kwargs']['portion'])
 
 
-def get_train_transformations(p, device=torch.device("cpu")):
+def get_train_transformations(p):
     if p['augmentation_strategy'] == 'standard':
         # Standard augmentation strategy
         return transforms.Compose([
@@ -211,18 +211,17 @@ def get_train_transformations(p, device=torch.device("cpu")):
 
     elif p['augmentation_strategy'] == 'ts':
         return transforms.Compose([
-            NoiseTransformation(p['transformation_kwargs']['noise_sigma'], device=device),
-            # Crop(p['transformation_kwargs']['crop_size'])
+            NoiseTransformation(p['transformation_kwargs']['noise_sigma']),
         ])
 
     else:
         raise ValueError('Invalid augmentation strategy {}'.format(p['augmentation_strategy']))
 
 
-def get_val_transformations(p, mode='Noise', device=torch.device("cpu")):
+def get_val_transformations(p, mode='Noise'):
     if mode == 'Noise':
         return transforms.Compose([
-        NoiseTransformation(p['transformation_kwargs']['noise_sigma'], device=device)])
+        NoiseTransformation(p['transformation_kwargs']['noise_sigma'])])
     elif mode == 'CenterCrop':
         return transforms.Compose([
             transforms.CenterCrop(p['transformation_kwargs']['crop_size']),

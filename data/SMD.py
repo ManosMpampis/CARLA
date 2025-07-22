@@ -46,17 +46,10 @@ class SMD(Dataset):
             self.std = np.std(temp , axis=0)
             labels = np.zeros_like(temp)
         else:
+            if not self.std.all():
+                print('AugmentedDataset: sstd contains zeros')
             self.std[self.std == 0.0] = 1.0
             temp = (temp - self.mean) / self.std
-
-        # if self.train:
-        #     min_column = np.amin(temp, axis=0)
-        #     max_column = np.amax(temp, axis=0)
-        #     self.mean, self.std = min_column, max_column 
-        # else:
-        #     self.mean, self.std = mean_data, std_data
-        #     range_val = (std_data - mean_data) + 1e-20
-        #     temp = (temp - mean_data) / range_val
 
         self.targets = np.asarray(labels)
         self.data = np.asarray(temp)
@@ -83,8 +76,6 @@ class SMD(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        # ts_org = self.data[index]
-        # ts_org = torch.from_numpy(self.data[index]).to(dtype=torch.float32, device=self.device)  # cuda
         ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
 
         if len(self.targets) > 0:

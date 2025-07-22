@@ -2,21 +2,16 @@ import random
 import numpy as np
 import torch
 
-
 class NoiseTransformation(object):
-    def __init__(self, sigma, device=torch.device("cpu")):
-        self.device = device
+    def __init__(self, sigma):
         self.sigma = sigma
 
     def __call__(self, X):
         """
         Adding random Gaussian noise with mean 0
         """
-        if X.device.type == 'cuda':  # Check if X is on GPU
-            X = X.cpu()  # Move tensor to CPU
-        noise = np.random.normal(loc=0, scale=self.sigma, size=X.shape)  # NumPy operation
-        
-        return torch.tensor(X.numpy() + noise, dtype=torch.float32, device=self.device)  # Move back to GPU
+        noise = torch.normal(mean=torch.zeros_like(X, device=X.device), std=torch.ones_like(X, device=X.device) * self.sigma)
+        return X + noise
 
 class SubAnomaly(object):
     def __init__(self, portion_len):
@@ -88,8 +83,8 @@ class SubAnomaly(object):
         # Trend
         if trend_factor is None:
             trend_factor = np.random.normal(1, 0.5)
-        coef = 1
-        if np.random.uniform() < 0.5: coef = -1
+        coef = -1 if (np.random.uniform() < 0.5) else 1
+        
         anomalous_subsequence = anomalous_subsequence + coef * trend_factor
 
         if shapelet_factor:
