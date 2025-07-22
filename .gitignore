@@ -1,6 +1,6 @@
 venv
 results
-datasets
+datasets/*
 
 data/__pycache__
 losses/__pycache__
