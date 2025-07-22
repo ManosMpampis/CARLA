@@ -10,9 +10,8 @@ import pandas
 from utils.mypath import MyPath
 from utils.config import create_config
 from utils.common_config import get_criterion, get_model, get_train_dataset,\
-                                get_val_dataset, get_train_dataloader,\
-                                get_val_dataloader, get_train_transformations,\
-                                get_val_transformations, get_optimizer,\
+                                get_val_dataset,\
+                                get_dataloader, get_transformations, get_optimizer,\
                                 adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import contrastive_evaluate
 from utils.repository import TSRepository
@@ -48,49 +47,15 @@ def main(args):
     model = get_model(p)
     model = model.to(device)
 
-    train_transforms = get_train_transformations(p)
+    train_transforms = get_transformations(p)
 
     sanomaly = inject_sub_anomaly(p)
-    val_transforms = get_val_transformations(p)
+    val_transforms = get_transformations(p)
+    val_dataset, train_dataset = get_val_dataset(p, train_transforms, val_transforms, sanomaly)
 
-    if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
-        if p['fname'] == 'All':
-            with open(os.path.join(MyPath.db_root_dir('msl'), 'labeled_anomalies.csv'), 'r') as file:
-                csv_reader = pandas.read_csv(file, delimiter=',')
-            data_info = csv_reader[csv_reader['spacecraft'] == p['train_db_name']]
-            ii = 0
-            for file_name in data_info['chan_id']:
-                p['fname'] = file_name
-                if ii == 0 :
-                    train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                                  split='train+unlabeled', device=device)
-                    val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                              train_dataset.std, device=device)
-                else:
-                    new_train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                                  split='train+unlabeled')
-                    new_val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, new_train_dataset.mean,
-                                                  new_train_dataset.std)
-
-                    train_dataset.concat_ds(new_train_dataset)
-                    val_dataset.concat_ds(new_val_dataset)
-
-                ii += 1
-        else:
-            train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True,
-                                              split='train+unlabeled')
-            val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                          train_dataset.std)
-            
-    elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
-        or p['train_db_name'] == 'swan' or p['train_db_name'] == 'gecco' or p['train_db_name'] == 'wadi' or p['train_db_name'] == 'ucr':
-        train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True)
-        val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
-                                      train_dataset.std)
-
-    train_dataloader = get_train_dataloader(p, train_dataset)
-    val_dataloader = get_val_dataloader(p, val_dataset)
-    base_dataloader = get_val_dataloader(p, train_dataset)
+    train_dataloader = get_dataloader(p, train_dataset, drop_last=True, shuffle=True)
+    val_dataloader = get_dataloader(p, val_dataset)
+    base_dataloader = get_dataloader(p, train_dataset)
 
     log(f'Dataset contains {train_dataset}/{val_dataset} train/val samples', verbose=verbose, file_path=file_path)
 
@@ -104,15 +69,18 @@ def main(args):
         checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
         optimizer.load_state_dict(checkpoint['optimizer'])
         model.load_state_dict(checkpoint['model'])
-        model = model.to(device)
+        model = model.to(device, non_blocking=True)
         start_epoch = checkpoint['epoch']
+        pretext_best_loss = checkpoint['pretext_best_loss'].to(device, non_blocking=True)
+        pretext_previous_loss = checkpoint['pretext_previous_loss'].to(device, non_blocking=True)
     else:
         log(f'No checkpoint file at {p["pretext_checkpoint"]}', verbose=verbose, file_path=file_path, color='blue')
         start_epoch = 0
+        pretext_best_loss = torch.tensor(float("inf"), device=device)
+        pretext_previous_loss = torch.tensor(float(0), device=device)
     
     # Training
-    pretext_best_loss = torch.tensor(float("inf"), device=device)
-    prev_loss = torch.tensor(float(0), device=device)
+    
     for epoch in range(start_epoch, p['epochs']):
         log(f'Epoch {epoch+1}/{p['epochs']}', verbose=verbose, file_path=file_path, color='yellow')
         log('-'*15, verbose=verbose, file_path=file_path, color='yellow')
@@ -121,14 +89,15 @@ def main(args):
         log(f'Adjusted learning rate to {lr:.5f}', verbose=verbose, file_path=file_path)
         
         # log(f'EPOCH ----> {epoch}', verbose=verbose, file_path=file_path)
-        tmp_loss = pretext_train(train_dataloader, model, criterion, optimizer, epoch, prev_loss)
+        tmp_loss = pretext_train(train_dataloader, model, criterion, optimizer, epoch, pretext_previous_loss)
         
         # Checkpoint
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
             torch.save({'model': model.state_dict()}, p['pretext_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                        'epoch': epoch + 1, 'best_loss': pretext_best_loss},
+                        'epoch': epoch + 1, 'pretext_best_loss': pretext_best_loss,
+                        'pretext_previous_loss': pretext_previous_loss},
                         p['pretext_checkpoint'])
 
 

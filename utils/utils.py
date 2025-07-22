@@ -1,20 +1,19 @@
 import os
+import logging
+import time
 import errno
 
 import torch
 from termcolor import colored
 
-from data.ra_dataset import SaveAugmentedDataset
 
-
-def mkdir_if_missing(directory):
+def mkdir(directory):
     if not os.path.exists(directory):
         try:
             os.makedirs(directory)
         except OSError as e:
             if e.errno != errno.EEXIST:
                 raise
-
 
 class AverageMeter(object):
     def __init__(self, name, fmt=':f'):
@@ -40,9 +39,8 @@ class AverageMeter(object):
 
 
 class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix="", verbose_dict={"verbose": 1, "file_path": None}):
-        self.verbose = verbose_dict["verbose"]
-        self.file_path = verbose_dict["file_path"]
+    def __init__(self, num_batches, meters, prefix="", logger=None):
+        self.logger = EmptyLogger() if logger is None else logger
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
         self.prefix = prefix
@@ -50,7 +48,7 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        log(('\t'.join(entries)), verbose=self.verbose, file_path=self.file_path)
+        self.logger.log(('\t'.join(entries)))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
@@ -59,7 +57,7 @@ class ProgressMeter(object):
 
 
 @torch.no_grad()
-def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, verbose_dict={"verbose": 1, "file_path": None}):
+def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, logger=None):
     """_summary_
 
     Args:
@@ -72,8 +70,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
         device (torch.device, optional): Device to use for torch. Defaults to torch.device("cpu").
         verbose_dict (dict): Verbose variables for logging.
     """
-    verbose = verbose_dict["verbose"]
-    file_path = verbose_dict["file_path"]
+    logger = EmptyLogger() if logger is None else logger
     
     model.eval()
     device = next(model.parameters()).device
@@ -97,7 +94,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
         ts_repository.update(output, targets)
         if ts_repository_aug != None: ts_repository_aug.update(output, targets)
         if i % 100 == 0:
-            log(f'Fill TS Repository [{i}/{len(loader)}]', verbose=verbose, file_path=file_path)
+            logger.log(f'Fill TS Repository [{i}/{len(loader)}]')
 
         if real_aug:
             con_data = torch.cat((con_data, ts_org), dim=0)
@@ -122,6 +119,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
 
     if real_aug:
+        from data.ra_dataset import SaveAugmentedDataset
         con_dataset = SaveAugmentedDataset(con_data.cpu(), con_target.cpu())
         con_loader = torch.utils.data.DataLoader(con_dataset, num_workers=p['num_workers'],
                                                  batch_size=p['batch_size'], pin_memory=True,
@@ -138,3 +136,150 @@ def log(string, verbose=1, file_path=None, color=None):
             string = colored(string, color)
         print(string)
     return
+
+class Logger:
+    def __init__(self, verbose=1, file_path="./", use_tensorboard=True):
+        
+        self.verbose = verbose
+        self.use_tensorboard = use_tensorboard
+
+        self._name = "Self-Awareness"
+        self._version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        self.log_dir = os.path.join(file_path, f"-{self._version}")
+
+        self._init_logger()
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def version(self):
+        return self._version
+        
+    def _init_logger(self):
+        self.logger = logging.getLogger(name=self.name)
+        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
+
+        # create file handler
+        if self.verbose == 0:
+            h = logging.NullHandler()
+        elif self.verbose == 1:
+            h = logging.StreamHandler()
+        elif self.verbose >= 2:
+            mkdir(self.log_dir)
+            h = logging.FileHandler(os.path.join(self.log_dir, "logs.txt"))
+        h.setLevel(logging.INFO)
+        # set file formatter
+        fmt = "[%(asctime)s]: %(message)s"
+        formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+        h.setFormatter(formatter)
+
+        # add the handlers to the logger
+        self.logger.addHandler(h)
+
+        self.log_metrics = self._do_nothing
+        self.scalar_summary = self._do_nothing
+        self.finalize = self._do_nothing
+        # add tensorboard handler
+        if self.use_tensorboard:
+            try:
+                from torch.utils.tensorboard import SummaryWriter
+            except ImportError:
+                raise ImportError(
+                    'Please run "pip install future tensorboard" to install '
+                    "the dependencies to use torch.utils.tensorboard "
+                    "(applicable to PyTorch 1.1 or higher)"
+                ) from None
+            self.log(
+                "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
+            )
+            self.experiment = SummaryWriter(log_dir=self.log_dir)
+            self.log_metrics = self._log_metrics
+            self.scalar_summary = self._scalar_summary
+            self.finalize = self._finalize
+
+
+    def info(self, string):
+        self.logger.info(string)
+
+    def log(self, string):
+        self.logger.info(string)
+
+    def dump_cfg(self, cfg_node):
+        with open(os.path.join(self.log_dir, "train_cfg.yml"), "w") as f:
+            cfg_node.dump(stream=f)
+
+    def log_hyperparams(self, params):
+        self.logger.info(f"hyperparams: {params}")
+
+    def _log_metrics(self, metrics, step):
+        self.logger.info(f"Val_metrics: {metrics}")
+        for k, v in metrics.items():
+            self.experiment.add_scalars("Val_metrics/" + k, {"Val": v}, step)
+
+    def _finalize(self):
+        self.experiment.flush()
+        self.experiment.close()
+        self.save()
+
+    def _scalar_summary(self, tag, phase, value, step):
+        self.experiment.add_scalars(tag, {phase: value}, step)
+
+    def _do_nothing(self, *args, **kwargs):
+        pass
+
+class EmptyLogger:
+    def __init__(self, verbose=None, file_path="./", use_tensorboard=True):
+        self._name = "empty"
+        self._version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+
+        self._init_logger()
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def version(self):
+        return self._version
+        
+    def _init_logger(self):
+        self.logger = logging.getLogger(name=self.name)
+        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
+
+        h = logging.NullHandler()
+        h.setLevel(logging.INFO)
+        # set file formatter
+        fmt = "[%(asctime)s]: %(message)s"
+        formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+        h.setFormatter(formatter)
+
+        # add the handlers to the logger
+        self.logger.addHandler(h)
+
+        self.log_metrics = self._do_nothing
+        self.scalar_summary = self._do_nothing
+        self.finalize = self._do_nothing
+        
+
+
+    def info(self, string):
+        self.logger.info(string)
+
+    def log(self, string):
+        self.logger.info(string)
+
+    def dump_cfg(self, cfg_node):
+        pass
+
+    def log_hyperparams(self, params):
+        self.logger.info(f"hyperparams: {params}")
+
+
+if __name__ == "__main__":
+    logger = Logger(verbose=0, file_path="./", use_tensorboard=False)
+    logger.log("test")
+    logger.log('test2')

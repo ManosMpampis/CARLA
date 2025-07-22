@@ -1,7 +1,7 @@
 import os
 import yaml
 from easydict import EasyDict
-from utils.utils import mkdir_if_missing
+from utils.utils import mkdir
 
 def create_config(config_file_env, config_file_exp, fname):
     # Config for environment path
@@ -20,8 +20,8 @@ def create_config(config_file_env, config_file_exp, fname):
     # Set paths for pretext task (These directories are needed in every stage)
     base_dir = os.path.join(root_dir, cfg['train_db_name'])
     pretext_dir = os.path.join(base_dir, fname+'/pretext')
-    mkdir_if_missing(base_dir)
-    mkdir_if_missing(pretext_dir)
+    mkdir(base_dir)
+    mkdir(pretext_dir)
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
@@ -41,8 +41,8 @@ def create_config(config_file_env, config_file_exp, fname):
     if cfg['setup'] in ['classification']:
         base_dir = os.path.join(root_dir, cfg['train_db_name'])
         classification_dir = os.path.join(base_dir, fname+ '/classification')
-        mkdir_if_missing(base_dir)
-        mkdir_if_missing(classification_dir)
+        mkdir(base_dir)
+        mkdir(classification_dir)
         cfg['classification_dir'] = classification_dir
         cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
         cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')

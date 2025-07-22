@@ -1,10 +1,13 @@
 import os
 import math
 import numpy as np
+import pandas
 import torch
 import torchvision.transforms as transforms
+
 from data.augment import NoiseTransformation, SubAnomaly
 from utils.collate import collate_custom
+from utils.mypath import MyPath
 
 
 def get_criterion(p):
@@ -141,8 +144,47 @@ def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
 
     return dataset
 
+def get_val_dataset(p, train_transformations, val_transformations, sanomaly):
+    if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
+        if p['fname'] == 'All':
+            with open(os.path.join(MyPath.db_root_dir('msl'), 'labeled_anomalies.csv'), 'r') as file:
+                csv_reader = pandas.read_csv(file, delimiter=',')
+            data_info = csv_reader[csv_reader['spacecraft'] == p['train_db_name']]
+            ii = 0
+            for file_name in data_info['chan_id']:
+                p['fname'] = file_name
+                if ii == 0 :
+                    train_dataset = get_train_dataset(p, train_transformations, sanomaly,
+                                                    to_neighbors_dataset=True)
+                    val_dataset = _get_val_dataset(p, val_transformations, sanomaly, True, train_dataset.mean,
+                                                train_dataset.std)
+                else:
+                    new_train_dataset = get_train_dataset(p, train_transformations, sanomaly,
+                                                    to_neighbors_dataset=True)
+                    new_val_dataset = _get_val_dataset(p, val_transformations, sanomaly, True, new_train_dataset.mean,
+                                                new_train_dataset.std)
+                    val_dataset.concat_ds(new_val_dataset)
+                    base_dataset.concat_ds(new_train_dataset)
+                ii+=1
+        else:
+            #base_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset=True)
+            info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False)
+            val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std)
 
-def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False,
+    elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
+        or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
+        train_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True)  # used only to mean and std
+        dataset_mean = train_dataset.mean
+        dataset_std = train_dataset.std
+
+        val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean,
+                                    dataset_std)
+    else:
+        raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
+    return val_dataset, train_dataset
+
+
+def _get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False,
                     mean_data=None, std_data=None, data=None, label=None):
     # Base dataset
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
@@ -183,23 +225,17 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
     return dataset
 
 
-def get_train_dataloader(p, dataset, pin_memory=True):
+def get_dataloader(p, dataset, pin_memory=True, drop_last=False, shuffle=False):
     return torch.utils.data.DataLoader(dataset, num_workers=p['num_workers'],
                                        batch_size=p['batch_size'], pin_memory=pin_memory, collate_fn=collate_custom,
-                                       drop_last=True, shuffle=True)
-
-
-def get_val_dataloader(p, dataset, pin_memory=True):
-    return torch.utils.data.DataLoader(dataset, num_workers=p['num_workers'],
-                                       batch_size=p['batch_size'], pin_memory=pin_memory, collate_fn=collate_custom,
-                                       drop_last=False, shuffle=False)
+                                       drop_last=drop_last, shuffle=shuffle)
 
 
 def inject_sub_anomaly(p):
     return SubAnomaly(p['anomaly_kwargs']['portion'])
 
 
-def get_train_transformations(p):
+def get_transformations(p):
     if p['augmentation_strategy'] == 'standard':
         # Standard augmentation strategy
         return transforms.Compose([
@@ -216,19 +252,6 @@ def get_train_transformations(p):
 
     else:
         raise ValueError('Invalid augmentation strategy {}'.format(p['augmentation_strategy']))
-
-
-def get_val_transformations(p, mode='Noise'):
-    if mode == 'Noise':
-        return transforms.Compose([
-        NoiseTransformation(p['transformation_kwargs']['noise_sigma'])])
-    elif mode == 'CenterCrop':
-        return transforms.Compose([
-            transforms.CenterCrop(p['transformation_kwargs']['crop_size']),
-            transforms.ToTensor(),
-            transforms.Normalize(**p['transformation_kwargs']['normalize'])])
-    else:
-        raise ValueError('Invalid validation set transformation mode {}'.format(mode))
 
 
 def get_optimizer(p, model, cluster_head_only=False):

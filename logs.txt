@@ -1,0 +1,2 @@
+INFO:root:Using Tensorboard, logs will be saved in ./logs-2025-07-22-21-37-44
+INFO:root:test

@@ -9,14 +9,14 @@ import numpy as np
 
 from utils.mypath import MyPath
 from utils.config import create_config
-from utils.common_config import get_train_transformations, get_val_transformations,\
-                                get_train_dataset, get_train_dataloader, get_aug_train_dataset,\
-                                get_val_dataset, get_val_dataloader,\
+from utils.common_config import get_transformations, get_train_dataset,\
+                                get_aug_train_dataset,\
+                                get_val_dataset, get_dataloader,\
                                 get_optimizer, get_model, get_criterion,\
                                 adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
 from utils.train_utils import self_sup_classification_train
-from utils.utils import log
+from utils.utils import log, Logger
 
 def set_seed(seed):
     random.seed(seed)
@@ -43,60 +43,22 @@ def main(args):
 
     log('CARLA Self-supervised Classification stage --> ', verbose=verbose, file_path=file_path, color='yellow')
 
-    # CUDNN
-   # torch.backends.cudnn.benchmark = True
-
     # Data
     log(f"\n- Get dataset and dataloaders for {p['train_db_name']} dataset - timeseries {p['fname']}", verbose=verbose, file_path=file_path, color='green')
-    train_transformations = get_train_transformations(p)
+    train_transformations = get_transformations(p)
     sanomaly = inject_sub_anomaly(p)
-    val_transformations = get_val_transformations(p)
+    val_transformations = get_transformations(p)
     # In the self-supervised state we use as data the triplets with saves anchors of the first stage
     train_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True)
-    train_dataloader = get_train_dataloader(p, train_dataset)
+    train_dataloader = get_dataloader(p, train_dataset, drop_last=True, shuffle=True)
     # In order to correctly measure the similarity matrics, all values need to be checkes,
     # during train we have drop_last so we add second dataloader
-    tst_dataloader = get_val_dataloader(p, train_dataset)
+    tst_dataloader = get_dataloader(p, train_dataset)
 
-    if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
-        if p['fname'] == 'All':
-            with open(os.path.join(MyPath.db_root_dir('msl'), 'labeled_anomalies.csv'), 'r') as file:
-                csv_reader = pandas.read_csv(file, delimiter=',')
-            data_info = csv_reader[csv_reader['spacecraft'] == p['train_db_name']]
-            ii = 0
-            for file_name in data_info['chan_id']:
-                p['fname'] = file_name
-                if ii == 0 :
-                    base_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                                     to_neighbors_dataset=True)
-                    val_dataset = get_val_dataset(p, val_transformations, sanomaly, True, base_dataset.mean,
-                                                  base_dataset.std)
-                else:
-                    new_base_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                                     to_neighbors_dataset=True)
-                    new_val_dataset = get_val_dataset(p, val_transformations, sanomaly, True, new_base_dataset.mean,
-                                                  new_base_dataset.std)
-                    val_dataset.concat_ds(new_val_dataset)
-                    base_dataset.concat_ds(new_base_dataset)
-                ii+=1
-        else:
-            #base_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset = True)
-            info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False)
-            val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std)
+    val_dataset, artifact = get_val_dataset(p, train_transformations, val_transformations, sanomaly)
+    del artifact
 
-    elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
-        or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
-        base_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True)  # used only to mean and std
-        dataset_mean = base_dataset.mean
-        dataset_std = base_dataset.std
-        del base_dataset
-
-        val_dataset = get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean,
-                                      dataset_std)
-    else:
-        raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
-
-    val_dataloader = get_val_dataloader(p, val_dataset)
+    val_dataloader = get_dataloader(p, val_dataset)
 
     log(f'-- Train samples size: {len(train_dataset)} - Test samples size: {len(val_dataset)}', verbose=verbose, file_path=file_path, color='green')
 
@@ -193,18 +155,18 @@ def main(args):
         if rep_f1 > best_f1:
             best_f1 = rep_f1
             # log('New Checkpoint ...', verbose=verbose, file_path=file_path)
-            torch.save({'model': model.state_dict(), 'head': best_loss_head, 'normal_label': nomral_label}, p['classification_model'])
+            torch.save({'model': model.state_dict(), 'normal_label': nomral_label}, p['classification_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                        'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': nomral_label},
+                        'epoch': epoch + 1, 'normal_label': nomral_label},
                        p['classification_checkpoint'])
 
     model_checkpoint = torch.load(p['classification_model'], map_location='cpu')
     model.load_state_dict(model_checkpoint['model'])
     torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                'epoch': p['epochs'], 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
+                'epoch': p['epochs'], 'normal_label': normal_label},
                p['classification_checkpoint'])
     normal_label = model_checkpoint['normal_label']
-    tst_dl = get_val_dataloader(p, val_dataset)
+    tst_dl = get_dataloader(p, val_dataset)
     predictions, _ = get_predictions(p, tst_dl, model, True)
 
 if __name__ == "__main__":
@@ -217,9 +179,5 @@ if __name__ == "__main__":
     parser.add_argument('--verbose', help='Enable logging messages level. 0: No verbose, 1: Terminal infor, 2: Terminal and file', type=int, choices=[0, 1, 2], default=2)
     parser.add_argument('--tensorboard', help='Enable tensorboard logging', type=int, choices=[0, 1], default=1)
     args = parser.parse_args()
-
-    global verbose, file_path
-    file_path = None
-    verbose = args.verbose
 
     main(args=args)

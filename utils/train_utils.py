@@ -5,13 +5,15 @@ from torch import Tensor
 from utils.utils import AverageMeter, ProgressMeter
 
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, verbose_dict={"verbose": 1, "file_path": None}):
-
+def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, logger=None):
+    """ 
+    Train epoch w/ pretext-Loss
+    """
     losses = AverageMeter('Loss', ':.4e')
     progress = ProgressMeter(len(train_loader),
         [losses],
         prefix="Epoch: [{}]".format(epoch+1),
-        verbose_dict=verbose_dict)
+        logger=logger)
 
     model.train()
     device = next(model.parameters()).device
@@ -47,9 +49,9 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, v
     return loss
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, verbose_dict={"verbose": 1, "file_path": None}):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, logger=None):
     """ 
-    Train w/ classification-Loss
+    Train epoch w/ classification-Loss
     """
     total_losses = AverageMeter('Total Loss', ':.4e')
     consistency_losses = AverageMeter('Consistency Loss', ':.4e')
@@ -58,7 +60,7 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
     progress = ProgressMeter(len(train_loader),
         [total_losses, consistency_losses, inconsistency_losses, entropy_losses],
         prefix="Epoch: [{}]".format(epoch+1),
-        verbose_dict=verbose_dict)
+        logger=logger)
 
     if update_cluster_head_only:
         model.eval() # No need to update BN
@@ -139,4 +141,4 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         if i % 100 == 0:
             progress.display(i)
     progress.display(i+1)
-    return total_losses.avg, consistency_losses.avg, inconsistency_losses.avg, entropy_losses.avg
+    return
