@@ -39,8 +39,8 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     model.eval()
     device = next(model.parameters()).device
 
-    predictions = [[] for _ in range(p['num_heads'])]
-    probs = [[] for _ in range(p['num_heads'])]
+    predictions = []
+    probs = []
     targets = []
     if return_features:
         ft_dim = get_feature_dimensions_backbone(p)
@@ -76,26 +76,26 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         if return_features:
             features[ptr: ptr+bs] = res['features'].cpu()
             ptr += bs
-        for i, output_i in enumerate(output):
-            predictions[i].append(torch.argmax(output_i, dim=1))
-            probs[i].append(F.softmax(output_i, dim=1))
+        
+        predictions.append(torch.argmax(output, dim=1))
+        probs.append(F.softmax(output, dim=1))
 
         if include_neighbors:
             nneighbors.append(batch['possible_nneighbors'])
             fneighbors.append(batch['possible_fneighbors'])
     
     #TODO: check what happens in multiple heads
-    predictions = [torch.cat(pred_, dim = 0) for pred_ in predictions]  # [torch.cat(pred_, dim = 0).cpu() for pred_ in predictions]
-    probs = [torch.cat(prob_, dim=0) for prob_ in probs]  # [torch.cat(prob_, dim=0).cpu() for prob_ in probs]
+    predictions = torch.cat(predictions, dim=0)
+    probs = torch.cat(probs, dim=0)
     targets = torch.cat(targets, dim=0)
 
     if include_neighbors:
         nneighbors = torch.cat(nneighbors, dim=0)
         fneighbors = torch.cat(fneighbors, dim=0)
-        out = [{'predictions': pred_, 'probabilities': prob_, 'targets': targets, 'neighbors': nneighbors, 'fneighbors': fneighbors} for pred_, prob_ in zip(predictions, probs)]
+        out = {'predictions': predictions, 'probabilities': probs, 'targets': targets, 'neighbors': nneighbors, 'fneighbors': fneighbors}
 
     else:
-        out = [{'predictions': pred_, 'probabilities': prob_, 'targets': targets} for pred_, prob_ in zip(predictions, probs)]
+        out = {'predictions': predictions, 'probabilities': probs, 'targets': targets}
 
     if return_features:
         feat_np = features.numpy()  # save features in csv
@@ -105,7 +105,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 
         feat_df = pd.DataFrame(feat_np, columns=fhdr)
 
-        prob_np = out[0]['probabilities'].cpu().numpy()
+        prob_np = out['probabilities'].cpu().numpy()
         phdr = [str(x) for x in range(prob_np.shape[1])] + ['Class']
         
         prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
@@ -127,45 +127,38 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 @torch.no_grad()
 def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1, inconsistency_weight=0):
     # Evaluate model based on classification loss.
-    device = predictions[0]['predictions'].device
-    num_heads = len(predictions)
-    output = []
+    device = predictions['predictions'].device
 
-    for head in predictions:
-        # Neighbors and anchors
-        probs = head['probabilities'].to(device, non_blocking=True)
-        neighbors = head['neighbors'].to(device, non_blocking=True)
-        fneighbors = head['fneighbors'].to(device, non_blocking=True)
-        org_anchors = torch.arange(neighbors.size(0), device=device).view(-1,1).expand_as(neighbors)
+    # Neighbors and anchors
+    probs = predictions['probabilities'].to(device, non_blocking=True)
+    neighbors = predictions['neighbors'].to(device, non_blocking=True)
+    fneighbors = predictions['fneighbors'].to(device, non_blocking=True)
+    org_anchors = torch.arange(neighbors.size(0), device=device).view(-1,1).expand_as(neighbors)
 
-        # Entropy loss
-        entropy_loss = entropy(torch.mean(probs, dim=0), input_as_probabilities=True).item()
+    # Entropy loss
+    entropy_loss = entropy(torch.mean(probs, dim=0), input_as_probabilities=True).item()
 
-        # Consistency loss
-        similarity = torch.matmul(probs, probs.t())
-        neighbors = neighbors.contiguous().view(-1)
-        anchors = org_anchors.contiguous().view(-1)
-        similarity_n = similarity[anchors, neighbors]
-        ones = torch.ones_like(similarity_n)
-        consistency_loss = F.binary_cross_entropy(similarity_n, ones).item()
+    # Consistency loss
+    similarity = torch.matmul(probs, probs.t())
+    neighbors = neighbors.contiguous().view(-1)
+    anchors = org_anchors.contiguous().view(-1)
+    similarity_n = similarity[anchors, neighbors]
+    ones = torch.ones_like(similarity_n)
+    consistency_loss = F.binary_cross_entropy(similarity_n, ones).item()
 
 
-        fneighbors = fneighbors.contiguous().view(-1)
-        # anchors = org_anchors.contiguous().view(-1)
-        similarity_fn = similarity[anchors, fneighbors]
-        ones = torch.ones_like(similarity_fn)
-        inconsistency_loss = F.binary_cross_entropy(similarity_fn, ones).item()
+    fneighbors = fneighbors.contiguous().view(-1)
+    # anchors = org_anchors.contiguous().view(-1)
+    similarity_fn = similarity[anchors, fneighbors]
+    ones = torch.ones_like(similarity_fn)
+    inconsistency_loss = F.binary_cross_entropy(similarity_fn, ones).item()
 
-        # Total loss #TODO: check loss weights
-        total_loss = consistency_weight*consistency_loss - entropy_weight*entropy_loss - inconsistency_weight*inconsistency_loss
+    # Total loss #TODO: check loss weights
+    total_loss = consistency_weight*consistency_loss - entropy_weight*entropy_loss - inconsistency_weight*inconsistency_loss
 
-        output.append({'entropy': entropy_loss, 'consistency': consistency_loss, 'inconsistency': inconsistency_loss, 'total_loss': total_loss})
+    output = {'entropy': entropy_loss, 'consistency': consistency_loss, 'inconsistency': inconsistency_loss, 'total_loss': total_loss}
 
-    total_losses = [output_['total_loss'] for output_ in output]
-    lowest_loss_head = np.argmin(total_losses)
-    lowest_loss = np.min(total_losses)
-
-    return {'classification': output, 'lowest_loss_head': lowest_loss_head, 'lowest_loss': lowest_loss}
+    return {'classification': output}
 
 
 @torch.no_grad()
@@ -173,7 +166,7 @@ def pr_evaluate(all_predictions, class_names=None, majority_label=0, logger=None
     
     logger = EmptyLogger() if logger is None else logger
 
-    head = all_predictions[0]
+    head = all_predictions
     targets = head['targets']
     probs = head['probabilities']
 

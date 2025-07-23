@@ -108,39 +108,23 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
             nneighbors_output = model(nneighbors)
             fneighbors_output = model(fneighbors)
 
-            # Ensure model output is iterable
-        if not isinstance(anchors_output, (list, tuple)):
-            anchors_output = [anchors_output]
-            nneighbors_output = [nneighbors_output]
-            fneighbors_output = [fneighbors_output]
-
         # Loss for every head
         total_loss, consistency_loss, inconsistency_loss, entropy_loss = [], [], [], []
-        for anchors_output_subhead, nneighbors_output_subhead, fneighbors_output_subhead in zip(anchors_output, nneighbors_output, fneighbors_output):
-            total_loss_, consistency_loss_, inconsistency_loss_, entropy_loss_ = criterion(anchors_output_subhead,
-                                                                         nneighbors_output_subhead, fneighbors_output_subhead)
-            total_loss.append(total_loss_)
-            consistency_loss.append(consistency_loss_)
-            inconsistency_loss.append(inconsistency_loss_)
-            entropy_loss.append(entropy_loss_)
+        
+        total_loss, consistency_loss, inconsistency_loss, entropy_loss = criterion(anchors_output, nneighbors_output, fneighbors_output)
 
         # Aggregate losses and check for NaN
-        total_loss_values = [v.item() for v in total_loss if not torch.isnan(v)]
-        consistency_loss_values = [v.item() for v in consistency_loss if not torch.isnan(v)]
-        inconsistency_loss_values = [v.item() for v in inconsistency_loss if not torch.isnan(v)]
-        entropy_loss_values = [v.item() for v in entropy_loss if not torch.isnan(v)]
+        assert(not torch.isnan(total_loss))
+        assert(not torch.isnan(consistency_loss))
+        assert(not torch.isnan(inconsistency_loss))
+        assert(not torch.isnan(entropy_loss))
 
-        if total_loss_values:
-            total_losses.update(np.mean(total_loss_values))
-        if consistency_loss_values:
-            consistency_losses.update(np.mean(consistency_loss_values))
-        if inconsistency_loss_values:
-            inconsistency_losses.update(np.mean(inconsistency_loss_values))
-        if entropy_loss_values:
-            entropy_losses.update(np.mean(entropy_loss_values))
+        total_losses.update(total_loss.item())
+        consistency_losses.update(consistency_loss.item())
+        inconsistency_losses.update(inconsistency_loss.item())
+        entropy_losses.update(entropy_loss.item())
 
-        total_loss_final = torch.sum(torch.stack(total_loss, dim=0))
-        assert total_loss_final.requires_grad, "Total loss does not require grad!"
+        assert total_loss.requires_grad, "Total loss does not require grad!"
 
         total_loss.backward()
         optimizer.step()

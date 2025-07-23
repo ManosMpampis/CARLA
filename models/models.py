@@ -34,12 +34,15 @@ class ClusteringModel(nn.Module):
         self.nheads = nheads
         assert(isinstance(self.nheads, int))
         assert(self.nheads > 0)
-        self.cluster_head = nn.ModuleList([nn.Linear(self.backbone_dim, nclusters) for _ in range(self.nheads)])
+        assert(self.nheads == 1)
+        # self.cluster_head = nn.ModuleList([nn.Linear(self.backbone_dim, nclusters) for _ in range(self.nheads)])
+        self.cluster_head = nn.Linear(self.backbone_dim, nclusters)
 
     def head(self, input, head=None):
-        if head is None:
-            return [cluster_head(input) for cluster_head in self.cluster_head]
-        return self.cluster_head[head](input)
+        # if head is None:
+        #     return [cluster_head(input) for cluster_head in self.cluster_head]
+        # return self.cluster_head[head](input)
+        return self.cluster_head(input)
     
     def forward(self, x, forward_pass='default', head=None):
         if forward_pass == 'default':
