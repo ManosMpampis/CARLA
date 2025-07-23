@@ -20,7 +20,7 @@ class WADI(Dataset):
     """
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('wadi'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None):
+    def __init__(self, fname, root=MyPath.db_root_dir('wadi'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, wsz=400, stride=10):
 
         super(WADI, self).__init__()
         self.root = root
@@ -32,7 +32,6 @@ class WADI(Dataset):
         self.data = []
         self.targets = []
         labels = []
-        wsz, stride = 400, 10
 
         if self.train:
             fname += '_14days_new.csv'

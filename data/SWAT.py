@@ -20,7 +20,7 @@ class SWAT(Dataset):
     """
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('swat'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None):
+    def __init__(self, fname, root=MyPath.db_root_dir('swat'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, wsz=200, stride=10):
 
         super(SWAT, self).__init__()
         self.root = root
@@ -32,7 +32,6 @@ class SWAT(Dataset):
         self.data = []
         self.targets = []
         labels = []
-        wsz, stride = 200, 10
 
         if self.train:
             fname += '_train.csv'

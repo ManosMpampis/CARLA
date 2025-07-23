@@ -12,7 +12,7 @@ class SMD(Dataset):
 
     base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('smd'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, device=torch.device("cpu")):
+    def __init__(self, fname, root=MyPath.db_root_dir('smd'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, device=torch.device("cpu"), wsz=200, stride=5):
 
         super(SMD, self).__init__()
         self.device = device
@@ -25,7 +25,6 @@ class SMD(Dataset):
         self.data = []
         self.targets = []
         labels = []
-        wsz, stride = 200, 5
 
         if self.train:
             self.base_folder += 'train'

@@ -21,6 +21,8 @@ res_kwargs:
 # Dataset
 train_db_name: smd
 val_db_name: smd
+window_size: 200
+window_stride: 5
 num_classes: 10
 num_neighbors: 5
 
