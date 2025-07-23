@@ -17,10 +17,23 @@ from utils.common_config import get_transformations, get_train_dataset,\
 from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
 from utils.repository import TSRepository
 from utils.train_utils import self_sup_classification_train, pretext_train
-from utils.utils import fill_ts_repository, log, Logger
+from utils.utils import fill_ts_repository, Logger
+
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+set_seed(4)
+
 
 class CARLA:
-    def __init__(self, config_env, config_exp, fname, device, verbose, tensorboard):
+    def __init__(self, config_env, config_exp, fname, device, verbose, tensorboard, version=None):
         """_summary_
 
         Args:
@@ -37,21 +50,25 @@ class CARLA:
         else:
             self.device = torch.device(device)
 
-        self.p = create_config(config_env, config_exp, fname)
+        self.p = create_config(config_env, config_exp, fname, version)
+        self.version = self.p['version']
 
         self.verbose = verbose
-        self.file_path=os.path.join(self.p['experiment_dir'], "classification.txt") if verbose>=2 else None
-        self.verbose_dict={"verbose": verbose, "file_path": self.file_path}
+        self.file_path=self.p['experiment_dir']
 
-        self.logger = Logger(verbose=verbose, file_path=self.file_path, use_tensorboard=tensorboard)
+        self.logger = Logger(self.p['version'], verbose=verbose, file_path=self.file_path,
+                             use_tensorboard=tensorboard, file_name=self.p['setup'])
 
-        self.model = get_model(self.p, self.p['pretext_model'])
+        self.model = get_model(self.p)
+        self.logger.add_graph(self.model, torch.rand(self.p['res_kwargs']['in_channels'], self.p['window_size']).unsqueeze(0))
+        
         self.model = self.model.to(self.device)
 
-        self.mazority_label = torch.tensor(0, dtype=torch.long, device=self.device)
+        self.majority_label = torch.tensor(0, dtype=torch.long, device=self.device)
     
     def train_pretext(self):
         self.logger.log('CARLA Pretext stage --> ')
+        self.logger.log_hyperparams(self.p)
 
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
@@ -93,12 +110,17 @@ class CARLA:
 
             self.logger.log(f'Adjusted learning rate to {lr:.5f}')
             lr = adjust_learning_rate(self.p, self.optimizer, self.epoch)
+            self.logger.log(f'Adjusted learning rate to {lr:.5f}')
+            self.logger.scalar_summary('Train Pretex', 'learning_rate', lr, self.epoch)
 
-            tmp_loss = pretext_train(train_dataloader, self.model, criterion, self.optimizer, epoch, self.pretext_previous_loss, self.logger)
-            
+
+            tmp_loss_dict = pretext_train(train_dataloader, self.model, criterion, self.optimizer, self.epoch, self.pretext_previous_loss, self.logger)
+            for loss, value in tmp_loss_dict.items():
+                self.logger.scalar_summary("Train Pretex", loss, value, self.epoch)
+
             # Checkpoint
-            if tmp_loss <= self.pretext_best_loss:
-                self.pretext_best_loss = tmp_loss
+            if tmp_loss_dict['Total Loss'] <= self.pretext_best_loss:
+                self.pretext_best_loss = tmp_loss_dict['Total Loss']
                 self.save(type="pretext", checkpoint=True)
                 self.save(type="pretext", checkpoint=False)
 
@@ -112,6 +134,7 @@ class CARLA:
     def train_classification(self):
 
         self.logger.log('CARLA Self-supervised Classification stage --> ')
+        self.logger.log_hyperparams(self.p)
 
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
@@ -164,55 +187,29 @@ class CARLA:
             self.logger.log(f'-- Epoch {epoch+1}/{end_epoch}')
 
             lr = adjust_learning_rate(self.p, self.optimizer, self.epoch)
-            
-            # torch.cuda.synchronize()
-            # start_time = time.time()
+            self.logger.scalar_summary('Train Classification', 'learning_rate', lr, self.epoch)
 
-            self_sup_classification_train(train_dataloader, self.model, criterion, self.optimizer, epoch,
+            tmp_loss_dict = self_sup_classification_train(train_dataloader, self.model, criterion, self.optimizer, self.epoch,
                                           self.p['update_cluster_head_only'], self.logger)
-            
-            
-            # torch.cuda.synchronize()
-            # end_time = time.time()
-            # inference_time = end_time - start_time
+            for loss, value in tmp_loss_dict.items():
+                self.logger.scalar_summary("Train Classification", loss, value, self.epoch)
 
-            # print(f'Inference time with gpu sync: {inference_time:.4f} sencods')
-
-            # torch.cuda.synchronize()
-            # start_time = time.time()
             if (epoch == self.p['epochs']-1):
                 predictions, _ = get_predictions(self.p, tst_dataloader, self.model, True, True)
             else:
                 predictions = get_predictions(self.p, tst_dataloader, self.model, False, False)
 
-            # torch.cuda.synchronize()
-            # end_time = time.time()
-            # inference_time = end_time - start_time
+            label_counts = torch.bincount(predictions['predictions'])
+            self.majority_label = label_counts.argmax()
 
-            # print(f'Get prediction tst time with gpu sync: {inference_time:.4f} sencods')
-            # torch.cuda.synchronize()
-            # start_time = time.time()
-            label_counts = torch.bincount(predictions[0]['predictions'])
-            self.mazority_label = label_counts.argmax()
+            classification_losses = classification_evaluate(predictions, **self.p['criterion_kwargs'])
 
-            classification_stats = classification_evaluate(predictions, **p['criterion_kwargs'])
-            lowest_loss_head = classification_stats['lowest_loss_head']
-            lowest_loss = classification_stats['lowest_loss']
+            metrics = self.eval_classification(val_dataloader)
+            rep_f1 = metrics["rep_f1"]
 
-            # torch.cuda.synchronize()
-            # end_time = time.time()
-            # inference_time = end_time - start_time
-
-            # print(f'Class evaluate time with gpu sync: {inference_time:.4f} sencods')
-            # torch.cuda.synchronize()
-            # start_time = time.time()
-            predictions = get_predictions(self.p, val_dataloader, self.model, False, False)
-
-            rep_f1 = pr_evaluate(predictions, majority_label=self.mazority_label)
-            # torch.cuda.synchronize()
-            # end_time = time.time()
-            # inference_time = end_time - start_time
-            # print(f'Evaluate time with gpu sync: {inference_time:.4f} sencods')
+            for metric, value in metrics.items():
+                self.logger.scalar_summary("Train Val Dataset Evaluation", metric, value, self.epoch)
+            
             if rep_f1 > best_f1:
                 best_f1 = rep_f1
                 # log('New Checkpoint ...', verbose=verbose, file_path=file_path)
@@ -321,3 +318,6 @@ class CARLA:
         np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)
         np.save(self.p['bottomk_neighbors_val_path'], kfurtherst)
+    
+    def close(self):
+        self.logger.finalize()

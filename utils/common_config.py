@@ -88,31 +88,31 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                       mean_data=None, std_data=None)
+                       mean_data=None, std_data=None, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     else:
@@ -164,7 +164,7 @@ def get_val_dataset(p, train_transformations, val_transformations, sanomaly):
                     new_val_dataset = _get_val_dataset(p, val_transformations, sanomaly, True, new_train_dataset.mean,
                                                 new_train_dataset.std)
                     val_dataset.concat_ds(new_val_dataset)
-                    base_dataset.concat_ds(new_train_dataset)
+                    train_dataset.concat_ds(new_train_dataset)
                 ii+=1
         else:
             #base_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset=True)
@@ -177,8 +177,7 @@ def get_val_dataset(p, train_transformations, val_transformations, sanomaly):
         dataset_mean = train_dataset.mean
         dataset_std = train_dataset.std
 
-        val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean,
-                                    dataset_std)
+        val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean, dataset_std)
     else:
         raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
     return val_dataset, train_dataset
@@ -190,27 +189,27 @@ def _get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=Fals
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
 
     elif p['val_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
 
     elif p['val_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
 
     elif p['val_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
 
     else:
         raise ValueError('Invalid validation dataset {}'.format(p['val_db_name']))

@@ -18,11 +18,10 @@ def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
     kernel, dilation, stride = weight.size(2), dilation[0], stride[0]
     l_out = l_in = input.size(2)
     padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-    if padding % 2 != 0:
-        input = F.pad(input, [0, 1])
+    input = F.pad(input, [0, padding % 2])
 
     return F.conv1d(input=input, weight=weight, bias=bias, stride=stride,
-                    padding=padding // 2,
+                    padding=int(padding // 2),
                     dilation=dilation, groups=groups)
 
 class ConvBlock(nn.Module):

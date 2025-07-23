@@ -7,7 +7,7 @@ from torchmetrics.functional.classification import confusion_matrix
 from torchmetrics.functional import precision_recall_curve
 
 from utils.common_config import get_feature_dimensions_backbone
-from utils.utils import AverageMeter, log
+from utils.utils import AverageMeter, EmptyLogger
 from data.custom_dataset import NeighborsDataset
 from losses.losses import entropy
 
@@ -169,10 +169,9 @@ def classification_evaluate(predictions, entropy_weight=2, consistency_weight=1,
 
 
 @torch.no_grad()
-def pr_evaluate(all_predictions, class_names=None, majority_label=0, verbose_dict={"verbose": 1, "file_path": None}):
+def pr_evaluate(all_predictions, class_names=None, majority_label=0, logger=None):
     
-    verbose = verbose_dict["verbose"]
-    file_path = verbose_dict["file_path"]
+    logger = EmptyLogger() if logger is None else logger
 
     head = all_predictions[0]
     targets = head['targets']
@@ -186,10 +185,10 @@ def pr_evaluate(all_predictions, class_names=None, majority_label=0, verbose_dic
         f1_score = 2*precision*recall / (precision+recall)
         if torch.isnan(f1_score).any():
             f1_score = torch.nan_to_num(f1_score)
-            log('f1: Nan --> 0', verbose=verbose, file_path=file_path)     
+            logger.log('f1: Nan --> 0')     
     except ZeroDivisionError:
         f1_score = [0.0]
-        log('f1: 0 --> 0', verbose=verbose, file_path=file_path)
+        logger.log('f1: 0 --> 0')
 
     best_f1_index = torch.argmax(f1_score)
 
@@ -199,8 +198,8 @@ def pr_evaluate(all_predictions, class_names=None, majority_label=0, verbose_dic
         best_threshold = thresholds[best_f1_index]
         anomalies = [1 if s >= best_threshold else 0 for s in scores]
         best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
-        log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}", verbose=verbose, file_path=file_path)
-        log(f"Mazority label: {majority_label}", verbose=verbose, file_path=file_path)
-        log(metrics.classification_report(targets, anomalies), verbose=verbose, file_path=file_path)
+        logger.log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}")
+        logger.log(f"Mazority label: {majority_label}")
+        logger.log(metrics.classification_report(targets, anomalies))
 
     return rep_f1

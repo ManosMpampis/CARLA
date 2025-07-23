@@ -138,15 +138,15 @@ def log(string, verbose=1, file_path=None, color=None):
     return
 
 class Logger:
-    def __init__(self, verbose=1, file_path="./", use_tensorboard=True):
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log'):
         
         self.verbose = verbose
         self.use_tensorboard = use_tensorboard
 
         self._name = "Self-Awareness"
-        self._version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-        self.log_dir = os.path.join(file_path, f"-{self._version}")
-
+        self._version = version
+        self.log_dir = os.path.join(file_path)
+        self.file_name = file_name
         self._init_logger()
 
     @property
@@ -165,23 +165,31 @@ class Logger:
         # create file handler
         if self.verbose == 0:
             h = logging.NullHandler()
-        elif self.verbose == 1:
+
+            # add the handlers to the logger
+            self.logger.addHandler(h)
+        if self.verbose >= 1:
             h = logging.StreamHandler()
-        elif self.verbose >= 2:
+            h.setLevel(logging.INFO)
+            # set file formatter
+            fmt = "[%(asctime)s]: %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+            h.setFormatter(formatter)
+
+            # add the handlers to the logger
+            self.logger.addHandler(h)
+        if self.verbose >= 2:
             mkdir(self.log_dir)
-            h = logging.FileHandler(os.path.join(self.log_dir, "logs.txt"))
-        h.setLevel(logging.INFO)
-        # set file formatter
-        fmt = "[%(asctime)s]: %(message)s"
-        formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
-        h.setFormatter(formatter)
+            h = logging.FileHandler(os.path.join(self.log_dir, f"{self.file_name}.txt"))
+            h.setLevel(logging.INFO)
+            # set file formatter
+            fmt = "[%(asctime)s]: %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+            h.setFormatter(formatter)
 
-        # add the handlers to the logger
-        self.logger.addHandler(h)
+            # add the handlers to the logger
+            self.logger.addHandler(h)
 
-        self.log_metrics = self._do_nothing
-        self.scalar_summary = self._do_nothing
-        self.finalize = self._do_nothing
         # add tensorboard handler
         if self.use_tensorboard:
             try:
@@ -195,10 +203,24 @@ class Logger:
             self.log(
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
-            self.experiment = SummaryWriter(log_dir=self.log_dir)
+            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, self.file_name, "tensorboard"))
+        self.init_tensorboard_functions()
+            
+    def init_tensorboard_functions(self):
+        if self.use_tensorboard:
             self.log_metrics = self._log_metrics
             self.scalar_summary = self._scalar_summary
-            self.finalize = self._finalize
+            self.add_figure = self._add_figure
+
+            self.pr_curv = self._pr_curv
+            self.add_graph = self._add_graph
+        else:
+            self.log_metrics = self._do_nothing
+            self.scalar_summary = self._do_nothing
+            self.add_figure = self._do_nothing
+
+            self.pr_curv = self._do_nothing
+            self.add_graph = self._do_nothing
 
 
     def info(self, string):
@@ -219,13 +241,41 @@ class Logger:
         for k, v in metrics.items():
             self.experiment.add_scalars("Val_metrics/" + k, {"Val": v}, step)
 
-    def _finalize(self):
-        self.experiment.flush()
-        self.experiment.close()
-        self.save()
+    def _scalar_summary(self, phase, tag, value, step):
+        self.experiment.add_scalars(phase, {tag: value}, step)
 
-    def _scalar_summary(self, tag, phase, value, step):
-        self.experiment.add_scalars(tag, {phase: value}, step)
+    def _add_figure(self, tag, figure, step):
+        import matplotlib
+        self.experiment.add_figure(tag, figure, step)
+
+    def _pr_curv(self, tag, labels, propabilites, step):
+        self.experiment.add_pr_curve(tag, labels, propabilites, step)
+
+    def _add_graph(self, model, input_to_model):
+        self.experiment.add_graph(model, input_to_model, False)
+
+    def finalize(self):
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+        if self.use_tensorboard:
+            self.experiment.flush()
+            self.experiment.close()
+        
+
+    def timer(self, method, *args):
+        torch.cuda.synchronize()
+        start_time = time.time()
+
+        output = method(*args)
+
+        torch.cuda.synchronize()
+        end_time = time.time()
+        time = end_time - start_time
+
+        self.log(f'[{method.__name__}] time: {time:.4f} sencods')
+        return output
 
     def _do_nothing(self, *args, **kwargs):
         pass
@@ -259,12 +309,15 @@ class EmptyLogger:
 
         # add the handlers to the logger
         self.logger.addHandler(h)
-
+        self.init_tensorboard_functions()
+        
+    def init_tensorboard_functions(self):
         self.log_metrics = self._do_nothing
         self.scalar_summary = self._do_nothing
-        self.finalize = self._do_nothing
-        
+        self.add_figure = self._do_nothing
 
+        self.pr_curv = self._do_nothing
+        self.add_graph = self._do_nothing
 
     def info(self, string):
         self.logger.info(string)
@@ -277,6 +330,15 @@ class EmptyLogger:
 
     def log_hyperparams(self, params):
         self.logger.info(f"hyperparams: {params}")
+
+    def _do_nothing(self, *args, **kwargs):
+        pass
+
+    def finalize(self):
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
 
 
 if __name__ == "__main__":

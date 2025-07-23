@@ -9,9 +9,13 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
     """ 
     Train epoch w/ pretext-Loss
     """
-    losses = AverageMeter('Loss', ':.4e')
+    total_l = AverageMeter('Total Loss', ':.4e')
+    positive_l = AverageMeter('Positive Distance Loss', ':.4e')
+    negative_l = AverageMeter('Negative Distance Loss', ':.4e')
+    margin_l = AverageMeter('Margin', ':.4e')
+
     progress = ProgressMeter(len(train_loader),
-        [losses],
+        [total_l, positive_l, negative_l, margin_l],
         prefix="Epoch: [{}]".format(epoch+1),
         logger=logger)
 
@@ -34,10 +38,13 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
 
         output = model(input_)
         
-        loss = criterion(output, prev_loss)
+        loss, positive_distance, hard_negative_distance = criterion(output, prev_loss)
+        margin = criterion.margin
 
-
-        losses.update(loss.item())
+        total_l.update(loss.item())
+        positive_l.update(positive_distance.item())
+        negative_l.update(hard_negative_distance.item())
+        margin_l.update(margin)
         prev_loss = loss.item()
 
         loss.backward()
@@ -46,7 +53,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         if i % 10 == 0:
             progress.display(i)
 
-    return loss
+    return {'Total Loss': total_l.avg, 'Positive Distance': positive_l.avg, 'Hard Negative Distance': negative_l.avg, 'margin': margin_l.avg}
 
 
 def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, logger=None):
@@ -135,10 +142,10 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         total_loss_final = torch.sum(torch.stack(total_loss, dim=0))
         assert total_loss_final.requires_grad, "Total loss does not require grad!"
 
-        total_loss_final.backward()
+        total_loss.backward()
         optimizer.step()
 
         if i % 100 == 0:
             progress.display(i)
     progress.display(i+1)
-    return
+    return {"Total Loss": total_losses.avg, "Consistency Loss":consistency_losses.avg, "Incosistency Loss": inconsistency_losses.avg, "Entropy Loss": entropy_losses.avg}

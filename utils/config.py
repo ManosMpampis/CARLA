@@ -1,9 +1,10 @@
 import os
+import time
 import yaml
 from easydict import EasyDict
 from utils.utils import mkdir
 
-def create_config(config_file_env, config_file_exp, fname):
+def create_config(config_file_env, config_file_exp, fname, version=None):
     # Config for environment path
     with open(config_file_env, 'r') as stream:
         root_dir = yaml.safe_load(stream)['root_dir']
@@ -18,10 +19,13 @@ def create_config(config_file_env, config_file_exp, fname):
         cfg[k] = v
 
     # Set paths for pretext task (These directories are needed in every stage)
-    base_dir = os.path.join(root_dir, cfg['train_db_name'])
-    pretext_dir = os.path.join(base_dir, fname+'/pretext')
+    version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) if version is None else version
+    base_dir = os.path.join(root_dir, f'{cfg['train_db_name']}/{fname}/{version}')
+    
+    pretext_dir = os.path.join(base_dir, 'pretext')
     mkdir(base_dir)
     mkdir(pretext_dir)
+    cfg['version'] = version
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
@@ -39,8 +43,7 @@ def create_config(config_file_env, config_file_exp, fname):
 
 
     if cfg['setup'] in ['classification']:
-        base_dir = os.path.join(root_dir, cfg['train_db_name'])
-        classification_dir = os.path.join(base_dir, fname+ '/classification')
+        classification_dir = os.path.join(base_dir, 'classification')
         mkdir(base_dir)
         mkdir(classification_dir)
         cfg['classification_dir'] = classification_dir

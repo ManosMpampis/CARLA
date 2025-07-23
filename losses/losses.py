@@ -125,8 +125,10 @@ class PretextLoss(nn.Module):
         hard_negative_distance = torch.min(negative_distance, dim=1)[0]
         loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
         loss = torch.mean(loss)
+        positive_distance = torch.mean(positive_distance)
+        hard_negative_distance = torch.mean(hard_negative_distance)
 
-        return loss
+        return loss, positive_distance, hard_negative_distance
 
     def cosine_similarity(self, x1, x2):
         dot_product = torch.sum(x1 * x2, dim=1)
