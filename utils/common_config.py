@@ -80,6 +80,24 @@ def get_model(p, pretrain_path=None):
 
     return model
 
+def load_pretext_backbone_to_model(p, model, pretrain_path):
+    if os.path.exists(pretrain_path):
+        state = torch.load(pretrain_path, map_location='cpu')
+
+        if p['setup'] == 'classification':  # Weights are supposed to be transfered from contrastive training
+            missing = model.load_state_dict(state['model'], strict=False)
+            assert (set(missing[1]) == {
+                'contrastive_head.0.weight', 'contrastive_head.0.bias',
+                'contrastive_head.2.weight', 'contrastive_head.2.bias'}
+                    or set(missing[1]) == {
+                        'contrastive_head.weight', 'contrastive_head.bias'})
+
+        else:
+            raise NotImplementedError
+
+    else:
+        raise ValueError('Path with pre-trained weights does not exist {}'.format(pretrain_path))
+    return
 
 def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
                       to_neighbors_dataset=False, split=None, data=None, label=None):

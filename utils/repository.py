@@ -146,9 +146,9 @@ class TSRepository(object):
         self.targets[self.ptr:self.ptr+b].copy_(targets.detach())
         self.ptr += b
 
-    def to(self, device):
-        self.features = self.features.to(device)
-        self.targets = self.targets.to(device)
+    def to(self, device, non_blocking=True):
+        self.features = self.features.to(device, non_blocking=non_blocking)
+        self.targets = self.targets.to(device, non_blocking=non_blocking)
         self.device = device
 
     def cpu(self):
