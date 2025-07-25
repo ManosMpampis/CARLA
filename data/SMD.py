@@ -100,6 +100,25 @@ class SMD(Dataset):
     def get_info(self):
         return self.mean, self.std
 
+    # def get_info(self):
+    #     return self.mean(), self.std()
+    
+    # @property
+    # def mean(self):
+    #     if isinstance(self.mean, list):
+    #         mean = sum(self.mean)/len(self.mean)
+    #     else:
+    #         mean = self.mean
+    #     return mean
+    
+    # @property
+    # def std(self):
+    #     if isinstance(self.mean, list):
+    #         std = sum(self.std)/len(self.std)
+    #     else:
+    #         std = self.std
+    #     return std
+
     def concat_ds(self, new_ds):
         self.data = np.concatenate((self.data, new_ds.data), axis=0)
         self.targets = np.concatenate((self.targets, new_ds.targets), axis=0)
