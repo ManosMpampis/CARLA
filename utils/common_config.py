@@ -99,6 +99,91 @@ def load_pretext_backbone_to_model(p, model, pretrain_path):
         raise ValueError('Path with pre-trained weights does not exist {}'.format(pretrain_path))
     return
 
+def _get_dataset(p, file, train, transform=None, sanomaly=None, mean_data=None, std_data=None):
+    if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
+        from data.MSL import MSL
+        dataset = MSL(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+                    mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
+        mean, std = dataset.get_info()
+
+    elif p['train_db_name'] == 'kpi':
+        from data.KPI import KPI
+        dataset = KPI(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+                    mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
+        mean, std = dataset.get_info()
+
+    elif p['train_db_name'] == 'smd':
+        from data.SMD import SMD
+        dataset = SMD(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+                    mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
+        mean, std = dataset.get_info()
+
+    elif p['train_db_name'] == 'swat':
+        from data.SWAT import SWAT
+        dataset = SWAT(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+                    mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
+        mean, std = dataset.get_info()
+
+    elif p['train_db_name'] == 'wadi':
+        from data.WADI import WADI
+        dataset = WADI(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+                    mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
+        mean, std = dataset.get_info()
+
+    else:
+        raise ValueError(f'Invalid {"train" if train else "validation"} dataset {p[f'{"train" if train else "val"}_db_name']} of file :{file}')
+    return dataset, mean, std
+
+
+
+def get_dataset(p, train, transform=None, sanomaly=None, to_augmented_dataset=False,
+                to_neighbors_dataset=False, mean_data=None, std_data=None):
+    if train:
+        topk = p['num_neighbors'] if 'num_neighbors' in p.keys() else None
+        assert(transform is not None)
+        assert(sanomaly is not None)
+        assert(mean_data is None)
+        assert(std_data is None)
+    else:
+        topk = 5
+        assert(to_augmented_dataset == False)
+
+    if p['fname'] == 'ALL':
+        databese_dir = MyPath.db_root_dir(p[f'{"train" if train else "val"}_db_name'].lower())
+        database_files_dir = os.path.join(databese_dir, 'train')
+        file_list = [file for file in database_files_dir if file.endswith('.txt')]
+        file_list = sorted(file_list)
+    else:
+        file_list = [p['fname']]
+
+    # Base dataset
+    for idx, file in enumerate(file_list):
+        if idx == 0:
+            dataset, mean, std = _get_dataset(p, file, train, transform, sanomaly, mean_data, std_data)
+            mean = [mean]
+            std = [std]
+        else:
+            new_dataset, new_mean, new_std = _get_dataset(p, file, train, transform, sanomaly, mean_data, std_data)
+            dataset.concat_ds(new_dataset)
+            mean.append(new_mean)
+            std.append(new_std)
+
+    # Wrap into other dataset (__getitem__ changes)
+    if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
+        from data.custom_dataset import AugmentedDataset
+        dataset = AugmentedDataset(dataset)
+
+    if to_neighbors_dataset:  # Dataset returns ts and its nearest and furthest neighbors.
+        from data.custom_dataset import NeighborsDataset
+        nindices = np.load(p[f'topk_neighbors_{"train" if train else "val"}_path'])
+        findices = np.load(p[f'bottomk_neighbors_{"train" if train else "val"}_path'])
+        neighbor_transform = None if train else transform
+        dataset = NeighborsDataset(dataset, neighbor_transform, nindices, findices, topk)
+
+    dataset.mean = sum(mean)/len(mean)
+    dataset.std = sum(std)/len(std)
+    return dataset
+
 def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
                       to_neighbors_dataset=False, split=None, data=None, label=None):
     # Base dataset
@@ -158,7 +243,7 @@ def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_train_path'])
         F_indices = np.load(p['bottomk_neighbors_train_path'])
-        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p)
+        dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p['num_neighbors'])
 
     return dataset
 
@@ -168,41 +253,41 @@ def get_val_dataset(p, train_transformations, val_transformations, sanomaly):
             with open(os.path.join(MyPath.db_root_dir('msl'), 'labeled_anomalies.csv'), 'r') as file:
                 csv_reader = pandas.read_csv(file, delimiter=',')
             data_info = csv_reader[csv_reader['spacecraft'] == p['train_db_name']]
-            ii = 0
-            for file_name in data_info['chan_id']:
+            for idx, file_name in enumerate(data_info['chan_id']):
                 p['fname'] = file_name
-                if ii == 0 :
-                    train_dataset = get_train_dataset(p, train_transformations, sanomaly,
-                                                    to_neighbors_dataset=True)
-                    val_dataset = _get_val_dataset(p, val_transformations, sanomaly, True, train_dataset.mean,
-                                                train_dataset.std)
+                if idx == 0 :
+                    train_dataset = get_dataset(p, train=True, transform=train_transformations, sanomaly=sanomaly,
+                                                to_neighbors_dataset=True)
+                    val_dataset = get_dataset(p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                              to_neighbors_dataset=True, mean_data=train_dataset.mean, std_data=train_dataset.std)
                 else:
-                    new_train_dataset = get_train_dataset(p, train_transformations, sanomaly,
+                    new_train_dataset = get_dataset(p, train=True, transform=train_transformations, sanomaly=sanomaly,
                                                     to_neighbors_dataset=True)
-                    new_val_dataset = _get_val_dataset(p, val_transformations, sanomaly, True, new_train_dataset.mean,
-                                                new_train_dataset.std)
+                    new_val_dataset = get_dataset(p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                                  to_neighbors_dataset=True, mean_data=new_train_dataset.mean, std_data=new_train_dataset.std)
                     val_dataset.concat_ds(new_val_dataset)
                     train_dataset.concat_ds(new_train_dataset)
-                ii+=1
         else:
             #base_dataset = get_aug_train_dataset(p, train_transformations, to_neighbors_dataset=True)
-            info_ds = get_train_dataset(p, train_transformations, sanomaly, to_neighbors_dataset=False)
-            val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, info_ds.mean, info_ds.std)
+            info_ds = get_dataset(p, train=True, transform=train_transformations, sanomaly=sanomaly, to_neighbors_dataset=False)
+            val_dataset = get_dataset(p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                      to_neighbors_dataset=False, mean_data=info_ds._mean, std_data=info_ds._std)
 
     elif p['train_db_name'] == 'smd' or p['train_db_name'] == 'kpi' or p['train_db_name'] == 'swat' \
         or p['train_db_name'] == 'swan' or p['train_db_name'] == 'wadi':
-        train_dataset = get_train_dataset(p, train_transformations, sanomaly, to_augmented_dataset=True)  # used only to mean and std
+        train_dataset = get_dataset(p, train=True, transform=train_transformations, sanomaly=sanomaly, to_augmented_dataset=True)  # used only to mean and std
         dataset_mean = train_dataset.mean
         dataset_std = train_dataset.std
 
-        val_dataset = _get_val_dataset(p, val_transformations, sanomaly, False, dataset_mean, dataset_std)
+        val_dataset = get_dataset(p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                  to_augmented_dataset=False, mean_data=dataset_mean, std_data=dataset_std)
     else:
-        raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
+        raise ValueError('Invalid validation dataset {}'.format(p['train_db_name']))
     return val_dataset, train_dataset
 
 
 def _get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False,
-                    mean_data=None, std_data=None, data=None, label=None):
+                    mean_data=None, std_data=None):
     # Base dataset
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
         from data.MSL import MSL

@@ -80,7 +80,7 @@ class AugmentedDataset(Dataset):
     Returns a ts with one of its neighbors.
 """
 class NeighborsDataset(Dataset):
-    def __init__(self, dataset, transform, N_indices, F_indices, p):
+    def __init__(self, dataset, transform, N_indices, F_indices, topk):
         super(NeighborsDataset, self).__init__()
         
         if isinstance(transform, dict):
@@ -96,9 +96,10 @@ class NeighborsDataset(Dataset):
 
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
         FN_indices = F_indices.copy()  # Nearest neighbor indices (np.array  [len(dataset) x k])
-        if p['num_neighbors'] is not None:
-            self.NN_indices = NN_indices[:, :p['num_neighbors']]
-            self.FN_indices = FN_indices[:, -p['num_neighbors']:]
+        if topk is not None:
+            print("!!!!!!!!!!!!!!!!!!!!")
+            self.NN_indices = NN_indices[:, :topk]
+            self.FN_indices = FN_indices[:, -topk:]
 
         self.dataset.data = dataset.data
         self.dataset.targets = dataset.targets
