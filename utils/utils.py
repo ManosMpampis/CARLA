@@ -232,11 +232,12 @@ class Logger:
     def dump_cfg(self, cfg_node):
         with open(os.path.join(self.log_dir, "train_cfg.yml"), "w") as f:
             cfg_node.dump(stream=f)
-
+    
     def log_hyperparams(self, params):
-        self.info(f"hyperparams: \n")
+        string = "\nhyperparams: \n"
         for key, value in params.items():
-            self.info(f"\t{key} : {value}")
+            string += f"\t{key} : {value}\n"
+        self.info(string)
 
     def _log_metrics(self, metrics, step):
         self.logger.info(f"Val_metrics: {metrics}")
