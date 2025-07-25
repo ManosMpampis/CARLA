@@ -10,10 +10,10 @@ if __name__ == "__main__":
     parser.add_argument('--device', help='Device used to load the model', type=str, choices=['cpu', 'cuda', 'auto'], default='auto')
     parser.add_argument('--verbose', help='Enable logging messages level. 0: No verbose, 1: Terminal infor, 2: Terminal and file', type=int, choices=[0, 1, 2], default=2)
     parser.add_argument('--tensorboard', help='Enable tensorboard logging', action=argparse.BooleanOptionalAction, type=bool, default=True)
+    parser.add_argument('--version', help='Add specific version name in the experiment', type=str)
     args = parser.parse_args()
 
-    version="2025-07-23-17-26-09"
-    carla = CARLA(args.config_env, args.config_exp, args.fname, args.device, args.verbose, args.tensorboard, version=version)
+    carla = CARLA(args.config_env, args.config_exp, args.fname, args.device, args.verbose, args.tensorboard, version=args.version)
     carla.train_pretext()
 
     
