@@ -79,7 +79,7 @@ class CARLA:
         val_dataset, train_dataset = get_val_dataset(self.p, train_transforms, val_transforms, sanomaly)
         train_dataloader = get_dataloader(self.p, train_dataset, drop_last=True, shuffle=True)
 
-        self.logger.log(f'Dataset contains {train_dataset}/{val_dataset} train/val samples')
+        self.logger.log(f'Dataset contains {len(train_dataset)}/{len(val_dataset)} train/val samples')
 
         # Optimizer
         if not hasattr(self, 'optimizer'):
