@@ -234,7 +234,9 @@ class Logger:
             cfg_node.dump(stream=f)
 
     def log_hyperparams(self, params):
-        self.logger.info(f"hyperparams: {params}")
+        self.info(f"hyperparams: \n")
+        for key, value in params.items():
+            self.info(f"\t{key} : {value}")
 
     def _log_metrics(self, metrics, step):
         self.logger.info(f"Val_metrics: {metrics}")
@@ -242,7 +244,8 @@ class Logger:
             self.experiment.add_scalars("Val_metrics/" + k, {"Val": v}, step)
 
     def _scalar_summary(self, phase, tag, value, step):
-        self.experiment.add_scalars(phase, {tag: value}, step)
+        # self.experiment.add_scalars(phase, {tag: value}, step)
+        self.experiment.add_scalar(f'{phase} \{tag}', value, step)
 
     def _add_figure(self, tag, figure, step):
         import matplotlib
