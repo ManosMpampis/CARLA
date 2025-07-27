@@ -56,10 +56,20 @@ def add_summary_statistics(res_df):
     sum_best_fp = res_df['best_fp'].sum()
     sum_best_fn = res_df['best_fn'].sum()
 
+    # Compute the sum of 'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train'
+    sum_best_tp_train = res_df['best_tp_train'].sum()
+    sum_best_tn_train = res_df['best_tn_train'].sum()
+    sum_best_fp_train = res_df['best_fp_train'].sum()
+    sum_best_fn_train = res_df['best_fn_train'].sum()
+
     # Calculate precision, recall and f1 score
     precision = sum_best_tp / (sum_best_tp + sum_best_fp) if (sum_best_tp + sum_best_fp) > 0 else 0
     recall = sum_best_tp / (sum_best_tp + sum_best_fn) if (sum_best_tp + sum_best_fn) > 0 else 0
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    precision_train = sum_best_tp_train / (sum_best_tp_train + sum_best_fp_train) if (sum_best_tp_train + sum_best_fp_train) > 0 else 0
+    recall_train = sum_best_tp_train / (sum_best_tp_train + sum_best_fn_train) if (sum_best_tp_train + sum_best_fn_train) > 0 else 0
+    f1_score_train = 2 * (precision_train * recall_train) / (precision_train + recall_train) if (precision_train + recall_train) > 0 else 0
 
     # Calculate the average and std of 'roc' and 'pr'
     roc_avg = res_df['roc'].mean()
@@ -69,18 +79,27 @@ def add_summary_statistics(res_df):
 
     # Append the results to the dataframe
     summary_row = pd.Series({
+        'name': 'Best Test Threshold/Train Threshold values',
         'best_tp': sum_best_tp,
         'best_tn': sum_best_tn,
         'best_fp': sum_best_fp,
         'best_fn': sum_best_fn,
+        'best_tp_train': sum_best_tp_train,
+        'best_tn_train': sum_best_tn_train,
+        'best_fp_train': sum_best_fp_train,
+        'best_fn_train': sum_best_fn_train,
         'best_pre': precision,
         'best_rec': recall,
         'b_f_1': f1_score,
+        'best_pre_train': precision_train,
+        'best_rec_train': recall_train,
+        'b_f_1_train': f1_score_train,
         'roc': roc_avg,
         'pr': pr_avg
     })
 
     std_row = pd.Series({
+        'name': 'Std of roc and pr',
         'roc': roc_std,
         'pr': pr_std
     })
@@ -123,10 +142,11 @@ def add_summary_statistics_pa(res_df):
 
 if __name__ == "__main__":
     res_df = pd.DataFrame(columns=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
-                               'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1']) 
+                               'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1',
+                               'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'b_f_1_train']) 
 
     pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
-
+    
 
     # with open('../../datasets/MSL_SMAP/labeled_anomalies.csv', 'r') as file:
     #     csv_reader = pd.read_csv(file, delimiter=',')
@@ -136,13 +156,12 @@ if __name__ == "__main__":
 
     # data_info = os.listdir('../datasets/KPI/train/')
 
-    data_info = os.listdir(os.path.join('../../datasets', 'UCR'))  
-    data_info = sorted(data_info)
-
-    # data_info = os.listdir('../../datasets/SMD/train/')
-    # files = [file for file in data_info if file.startswith('machine-')]
-    # files = sorted(files)
-    ds_name = 'ucr'
+    # data_info = os.listdir(os.path.join('../../datasets', 'UCR'))  
+    # data_info = sorted(data_info)
+    data_info = os.listdir(f'{os.path.dirname(__file__)}/datasets/SMD/train/')
+    files = [file for file in data_info if file.startswith('machine-')]
+    files = sorted(files)
+    ds_name = 'smd'
 
     version = 'test'
     verbose = 2
@@ -151,13 +170,13 @@ if __name__ == "__main__":
     logger = Logger(version=version, verbose=2, file_path=file_path, use_tensorboard=False, file_name='Evaluation_logs.txt')
 
 
-    for filename in data_info: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
+    for filename in files: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
         if filename!='.json': # and 'real_' in filename:
             logger.log(filename)
 
 
-            df_train = pd.read_csv(f"results/{ds_name}/" + filename + "/classification/classification_trainprobs.csv")
-            df_test = pd.read_csv(f"results/{ds_name}/" + filename + "/classification/classification_testprobs.csv")
+            df_train = pd.read_csv(f"results/{ds_name}/{version}/{filename}/classification/classification_trainprobs.csv")
+            df_test = pd.read_csv(f"results/{ds_name}/{filename}/{version}/{filename}/classification/classification_testprobs.csv")
             cl_num = df_train.shape[1] - 1
 
             df_train['Class'] = np.where((df_train['Class'] == 0), 0, 1)
@@ -165,6 +184,14 @@ if __name__ == "__main__":
 
             score_col = df_train['pred'].value_counts().idxmax()
             
+            train_scores = 1-df_train[score_col]
+            train_precision, train_recall, train_thresholds = precision_recall_curve(df_train['Class'], train_scores, pos_label=1)
+            train_f1_scores = 2 * train_precision * train_recall / (train_precision + train_recall)
+
+            best_train_idx = train_f1_scores.argmax()
+            best_train_threshold = train_thresholds[best_train_idx]
+
+
             df_test['Class'] = np.where((df_test['Class'] == 0), 0, 1)
             df_test['pred'] = df_test[df_test.columns[0:cl_num]].idxmax(axis=1)
             
@@ -201,7 +228,7 @@ if __name__ == "__main__":
                 res = pd.DataFrame()
                 res['pre'] = precision
                 res['rec'] = recall
-                res['f1'] = 2*res['pre']*res['rec'] / (res['pre']+res['rec'])
+                res['f1'] = 2*precision*recall / (precision+recall)
                 best_idx = res['f1'].argmax()
                 best_f1 = res['f1'][best_idx]
                 best_pre = res['pre'][best_idx]
