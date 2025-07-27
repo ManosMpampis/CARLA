@@ -26,9 +26,11 @@ if __name__ == "__main__":
     file_list = sorted(file_list)
     print(file_list)
     
-    for fname in file_list:
+    for idx, fname in enumerate(file_list):
         print(fname)
-
+        if idx <= 10:
+            continue
+        
         subprocess.run([
             'python', 'train_pretext.py',
             '--config_env', 'configs/env.yml',

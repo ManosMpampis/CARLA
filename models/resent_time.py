@@ -8,10 +8,15 @@ class Conv1dSamePadding(nn.Conv1d):
     See: https://github.com/pytorch/pytorch/issues/3867
     Note that the padding argument in the initializer doesn't do anything now
     """
-    def forward(self, input):
-        return conv1d_same_padding(input, self.weight, self.bias, self.stride,
-                                   self.dilation, self.groups)
-
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        kernel, dilation, stride = self.weight.size()[2], self.dilation[0], self.stride[0]
+        l_out = l_in = input.size()[2]
+        padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
+        input = F.pad(input, [0, padding % 2])
+        padding = (padding // 2,)
+        output = F.conv1d(input=input, weight=self.weight, bias=self.bias, stride=stride, padding=padding,
+                          dilation=dilation, groups=self.groups)
+        return output
 
 def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
     # stride and dilation are expected to be tuples.
@@ -21,7 +26,7 @@ def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
     input = F.pad(input, [0, padding % 2])
 
     return F.conv1d(input=input, weight=weight, bias=bias, stride=stride,
-                    padding=int(padding // 2),
+                    padding=(padding // 2, ),
                     dilation=dilation, groups=groups)
 
 class ConvBlock(nn.Module):
@@ -42,6 +47,15 @@ class ConvBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
 
         return self.layers(x)
+
+class Add(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:  # type: ignore
+
+        return x + y
 
 class ResNetBlock(nn.Module):
 
@@ -77,10 +91,13 @@ class ResNetBlock(nn.Module):
                 nn.BatchNorm1d(num_features=out_channels)
             ])
 
+        self.add = Add()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.match_channels:
-            return self.layers(x) + self.residual(x)
-        return self.layers(x)
+        # if self.match_channels:
+        #     return self.layers(x) + self.residual(x)
+        # return self.layers(x)
+        return self.add(self.layers(x), self.residual(x))
 
 class ResNetRepresentation(nn.Module):
     """A PyTorch implementation of the ResNet Baseline
@@ -113,7 +130,8 @@ class ResNetRepresentation(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
-        z = z.mean(dim=-1)
+        # z = self.avgpool(z).squeeze(-1)
+        z = z.mean(dim=1)  # Average over the batch dimension
         return z
 
 def resnet_ts(**kwargs):

@@ -246,7 +246,7 @@ class Logger:
 
     def _scalar_summary(self, phase, tag, value, step):
         # self.experiment.add_scalars(phase, {tag: value}, step)
-        self.experiment.add_scalar(f'{phase} \{tag}', value, step)
+        self.experiment.add_scalar(f'{phase}/{tag}', value, step)
 
     def _add_figure(self, tag, figure, step):
         import matplotlib
@@ -256,7 +256,7 @@ class Logger:
         self.experiment.add_pr_curve(tag, labels, propabilites, step)
 
     def _add_graph(self, model, input_to_model):
-        self.experiment.add_graph(model, input_to_model, False)
+        self.experiment.add_graph(model, input_to_model, False, False)
 
     def finalize(self):
         handlers = self.logger.handlers[:]
