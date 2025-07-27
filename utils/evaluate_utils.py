@@ -84,7 +84,6 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             nneighbors.append(batch['possible_nneighbors'])
             fneighbors.append(batch['possible_fneighbors'])
     
-    #TODO: check what happens in multiple heads
     predictions = torch.cat(predictions, dim=0)
     probs = torch.cat(probs, dim=0)
     targets = torch.cat(targets, dim=0)

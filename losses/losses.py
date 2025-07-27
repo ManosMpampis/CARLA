@@ -39,7 +39,7 @@ def entropy(x, input_as_probabilities):
     elif len(b.size()) == 1: # Distribution-wise entropy
         return - b.sum()
     else:
-        raise ValueError('Input tensor is %d-Dimensional' %(len(b.size())))
+        raise ValueError(f'Input tensor is {len(b.size())}-Dimensional')
 
 
 class ClassificationLoss(nn.Module):
@@ -73,15 +73,17 @@ class ClassificationLoss(nn.Module):
 
         # DiSimilarity in output space
         negsimilarity = torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze()
-        zeros = torch.ones_like(negsimilarity)
-        inconsistency_loss = self.bce(negsimilarity, zeros)
+        ones = torch.ones_like(negsimilarity)
+        inconsistency_loss = self.bce(negsimilarity, ones)
         
         # Entropy loss
         entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)
         #-torch.sum(anchors_prob * torch.log(anchors_prob + 1e-12), dim=-1).mean() #
 
-        # Total loss
-        total_loss = self.consistency_weight*consistency_loss - self.entropy_weight * entropy_loss - self.inconsistency_weight * inconsistency_loss
+        # Total loss      --- the entropy loss is negative, so we subtract it in order to promote diversity
+        # Explanation: If prob_over_class = 1/K for all K classes, then sum(1/K * log(1/K)) = K * (1/K * log(1/K)) = log(1/K) = -log(K)
+        # For K=10, -log(10) is approx -2.302.
+        total_loss = (self.consistency_weight*consistency_loss) - (self.inconsistency_weight * inconsistency_loss) - (self.entropy_weight * entropy_loss)
 
         return total_loss, consistency_loss, inconsistency_loss, entropy_loss
 
@@ -121,8 +123,9 @@ class PretextLoss(nn.Module):
 
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
         # Hear we find all the distances of negatives to anchors and corelate each anchor with the lowest distance negative example
-        negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
-        hard_negative_distance = torch.min(negative_distance, dim=1)[0]
+        negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature  # the substraction provides the distance of each anchor to all negative examples
+        # We find the closest negative example for each anchor to push it even further away
+        hard_negative_distance = torch.min(negative_distance, dim=1)[0]  # Find the closest negative example for each anchor to push it even further away
         loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
         loss = torch.mean(loss)
         positive_distance = torch.mean(positive_distance)
