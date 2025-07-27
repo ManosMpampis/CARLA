@@ -78,18 +78,19 @@ class ResNetBlock(nn.Module):
             ) for i in range(len(kernel_sizes))
         ])
 
-        self.match_channels = False
-        if in_channels != out_channels:
-            self.match_channels = True
-            self.residual = nn.Sequential(*[
-                Conv1dSamePadding(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    kernel_size=1,
-                    stride=1
-                ),
-                nn.BatchNorm1d(num_features=out_channels)
-            ])
+        # self.match_channels = False
+        # if in_channels != out_channels:
+        #     self.match_channels = True
+        self.residual = nn.Sequential(*[
+            Conv1dSamePadding(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1
+            ),
+            nn.BatchNorm1d(num_features=out_channels),
+            nn.ReLU()
+        ])
 
         self.add = Add()
 
@@ -131,7 +132,7 @@ class ResNetRepresentation(nn.Module):
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
         # z = self.avgpool(z).squeeze(-1)
-        z = z.mean(dim=1)  # Average over the batch dimension
+        z = z.mean(dim=-1)  # Average over the batch dimension
         return z
 
 def resnet_ts(**kwargs):
