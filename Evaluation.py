@@ -8,7 +8,7 @@ from sklearn import metrics
 from sklearn.metrics import roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from utils.utils import log
+from utils.utils import log, EmptyLogger, Logger
 
 def adjust_predicts(label, predict=None, calc_latency=False):
     
@@ -144,13 +144,18 @@ if __name__ == "__main__":
     # files = sorted(files)
     ds_name = 'ucr'
 
-    global verbose, file_path
+    version = 'test'
     verbose = 2
-    file_path = f"results/{ds_name}/Evaluation_notebook.txt"
+    file_path = f"results/{ds_name}/{version}/"
+
+    logger = Logger(version=version, verbose=2, file_path=file_path, use_tensorboard=False, file_name='Evaluation_logs.txt')
+
 
     for filename in data_info: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
         if filename!='.json': # and 'real_' in filename:
-            log(filename, verbose=verbose, file_path=file_path)
+            logger.log(filename)
+
+
             df_train = pd.read_csv(f"results/{ds_name}/" + filename + "/classification/classification_trainprobs.csv")
             df_test = pd.read_csv(f"results/{ds_name}/" + filename + "/classification/classification_testprobs.csv")
             cl_num = df_train.shape[1] - 1
@@ -183,11 +188,11 @@ if __name__ == "__main__":
                 scores = 1-df_test[score_col]
                 # Calculate AU-ROC
                 roc_auc = roc_auc_score(df_test['Class'], scores)
-                log(f'AU-ROC : {roc_auc}', verbose=verbose, file_path=file_path)
+                logger.log(f'AU-ROC : {roc_auc}')
 
                 # Calculate AU-PR
                 pr_auc = average_precision_score(df_test['Class'], scores)
-                log(f'AU-PR : {pr_auc}', verbose=verbose, file_path=file_path)
+                logger.log(f'AU-PR : {pr_auc}')
 
                 fpr, tpr, thresholds = roc_curve(df_test['Class'], scores, pos_label=1)
                 precision, recall, thresholds = precision_recall_curve(df_test['Class'], scores, pos_label=1)
@@ -202,15 +207,21 @@ if __name__ == "__main__":
                 best_pre = res['pre'][best_idx]
                 best_rec = res['rec'][best_idx]
                 best_thr = thresholds[best_idx]
-                log(f'Best f1 : {best_f1} | Best threshold : {best_thr}', verbose=verbose, file_path=file_path)
+                logger.log(f'Best f1 : {best_f1} | Best threshold : {best_thr}')
                 anomalies = [True if s >= best_thr else False for s in scores]
 
                 best_tn, best_fp, best_fn, best_tp = confusion_matrix(df_test['Class'], anomalies).ravel()
+
+                train_anom = [True if s >= best_train_threshold else False for s in scores]
+                best_tn_train, best_fp_train, best_fn_train, best_tp_train = confusion_matrix(df_test['Class'], train_anom).ravel()
+                best_pre_train = best_tn_train / (best_tp_train + best_fp_train) if (best_tp_train + best_fp_train) > 0 else 0
+                best_rec_train = best_tp_train / (best_tp_train + best_fn_train) if (best_tp_train + best_fn_train) > 0 else 0
+                best_f1_train = 2 * (best_pre_train * best_rec_train) / (best_pre_train + best_rec_train) if (best_pre_train + best_rec_train) > 0 else 0
             except ValueError:
                 pass
 
-            new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1],
-                                    index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1'])
+            new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1, best_tp_train, best_tn_train, best_fp_train, best_fn_train, best_pre_train, best_rec_train, best_f1_train],
+                                    index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1', 'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'best_f1_train'])
             res_df = res_df._append(new_row, ignore_index=True)
             
             
@@ -227,7 +238,7 @@ if __name__ == "__main__":
             
         
     res_df = add_summary_statistics(res_df)
-    res_df.to_csv(f'{ds_name}_results_woincon.csv')
+    res_df.to_csv(f'results/{ds_name}/{version}/{ds_name}_results_woincon.csv')
 
     # pa_df = add_summary_statistics_pa(pa_df)
     # pa_df.to_csv('smd_5_results_pa.csv')
