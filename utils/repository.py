@@ -1,10 +1,14 @@
+import os
 import numpy as np
 import torch
 from sklearn.neighbors import NearestNeighbors
 import faiss
 
+from data.ra_dataset import SaveAugmentedDataset
+from utils.utils import EmptyLogger
+
 class TSRepository(object):
-    def __init__(self, n, dim, num_classes, temperature):
+    def __init__(self, n, dim, num_classes, temperature, need_fneighbors=False):
         self.n = n
         self.dim = dim 
         self.features = torch.empty(self.n, self.dim, dtype=torch.float)
@@ -14,6 +18,11 @@ class TSRepository(object):
         self.K = 100
         self.temperature = temperature
         self.C = num_classes
+
+        if need_fneighbors:
+            self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
+            self.f_target = torch.empty(self.n, dtype=torch.long)
+            self.ptr_f = 0
 
     def weighted_knn(self, predictions):
         # perform weighted knn
@@ -70,7 +79,7 @@ class TSRepository(object):
         else:
             return k_furthest_neighbours, k_nearest_neighbours
 
-    def furthest_nearest_neighbors(self, topk, use_defualt=True, mine_with_labels=False, mine_with_no_labels=False, nneighbors=None, fneighbors=None):
+    def furthest_nearest_neighbors(self, topk, use_defualt=False, mine_with_labels=False, mine_with_no_labels=True):
         features = self.features
 
         # # Compute pairwise distances
@@ -106,25 +115,26 @@ class TSRepository(object):
         
         # Mine interpatation if we do not use data labeling
         elif mine_with_no_labels:
-            d = features.shape[1]
+            d = self.features.shape[1]
             index = faiss.IndexFlatL2(d)
-            index.add(features.cpu().numpy())
+            index.add(self.features.cpu().numpy())
 
-            _, k_nearest_neighbours = index.search(features.cpu().numpy(), len(features))
-            k_furthest_neighbours = ids[::-1]
+            _, k_nearest_neighbours = index.search(self.features.cpu().numpy(), len(self.features))
+            _, k_furthest_neighbours = index.search(self.ffeatures.cpu().numpy(), len(self.features))
+            k_furthest_neighbours = k_furthest_neighbours[::-1]
 
         # Mine interpatation if we use data labeling
         elif mine_with_labels:
-            d = features.shape[1]
+            d = self.features.shape[1]
             index = faiss.IndexFlatL2(d)
-            index.add(nneighbors.cpu().numpy())
+            index.add(self.nneighbors.cpu().numpy())
 
-            _, k_nearest_neighbours = index.search(features.cpu().numpy(), len(nneighbors))
+            _, k_nearest_neighbours = index.search(self.features.cpu().numpy(), len(self.nneighbors))
 
             index = faiss.IndexFlatL2(d)
-            index.add(fneighbors.cpu().numpy())
+            index.add(self.fneighbors.cpu().numpy())
 
-            _, k_furthest_neighbours = index.search(features.cpu().numpy(), len(features))[::-1]
+            _, k_furthest_neighbours = index.search(self.features.cpu().numpy(), len(self.features))[::-1]
         return k_furthest_neighbours, k_nearest_neighbours
 
 
@@ -146,6 +156,16 @@ class TSRepository(object):
         self.targets[self.ptr:self.ptr+b].copy_(targets.detach())
         self.ptr += b
 
+    def update_fneighbors(self, ffeatures, f_target):
+        b = ffeatures.size(0)
+
+        assert(b + self.ptr_f <= self.n)
+
+        self.ffeatures[self.ptr_f:self.ptr_f+b].copy_(ffeatures.detach())
+        if not torch.is_tensor(f_target): f_target = torch.from_numpy(f_target)
+        self.f_target[self.ptr_f:self.ptr_f+b].copy_(f_target.detach())
+        self.ptr_f += b
+
     def to(self, device, non_blocking=True):
         self.features = self.features.to(device, non_blocking=non_blocking)
         self.targets = self.targets.to(device, non_blocking=non_blocking)
@@ -156,3 +176,93 @@ class TSRepository(object):
 
     def cuda(self):
         self.to(torch.device('cuda'))
+
+@torch.no_grad()
+def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, logger=None):
+    """_summary_
+
+    Args:
+        p (dict): configuration dictionary
+        loader (torch.utils.data.DataLoader): Dataset loader to be used to generate near and far neighbors
+        model (torch.nn.Module): Trained model to use for filling time serires repository
+        ts_repository (TSRepository): Time series repository to be filled.
+        real_aug (bool, optional): Determines if the method save the new values to the Time Series Repositorys. Defaults to False.
+        ts_repository_aug (TSRepository, optional): Time series repository filled with original anchors and negative neighbors. Defaults to None.
+        device (torch.device, optional): Device to use for torch. Defaults to torch.device("cpu").
+        verbose_dict (dict): Verbose variables for logging.
+    """
+    logger = EmptyLogger() if logger is None else logger
+    
+    model.eval()
+    device = next(model.parameters()).device
+
+    ts_repository.reset()
+    if ts_repository_aug != None: ts_repository_aug.reset()
+    if real_aug: ts_repository.resize(3)
+
+    con_data = torch.tensor([], device="cpu")
+    con_target = torch.tensor([], device="cpu")
+    con_fneighbors = torch.tensor([], device="cpu")
+    con_f_target = torch.tensor([], device="cpu")
+    for i, batch in enumerate(loader): 
+        ts_org = batch['ts_org'].to(device, non_blocking=True)
+        targets = batch['target'].cpu()  # .to(device, non_blocking=True)
+        if ts_org.ndim == 3:
+            b, w, h = ts_org.shape
+        else:
+            b, w = ts_org.shape
+            h = 1
+
+        output = model(ts_org.reshape(b, h, w)).cpu()
+        ts_repository.update(output, targets)
+        if ts_repository_aug != None: ts_repository_aug.update(output, targets)
+        if i % 100 == 0:
+            logger.log(f'Fill TS Repository [{i}/{len(loader)}]')
+
+        if real_aug:
+            con_data = torch.cat((con_data, ts_org.cpu()), dim=0)
+            con_target = torch.cat((con_target, targets), dim=0)
+
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
+
+            output1 = model(ts_w_augment.reshape(b, h, w)).cpu()
+            ts_repository.update(output1, targets)
+            # ts_repository_aug.update(output, targets)
+
+
+            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+            targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device="cpu")
+            output2 = model(ts_ss_augment.reshape(b, h, w)).cpu()
+
+            con_fneighbors = torch.cat((con_fneighbors, ts_ss_augment.cpu()), dim=0)
+            con_f_target = torch.cat((con_f_target, targets), dim=0)
+
+            ts_repository.update(output2, targets)
+            ts_repository_aug.update_fneighbors(output, targets)
+            
+    #         if (i % 50 == 0 and i > 0) or (i == len(loader) - 1):
+    #             filename = f"{p['contrastive_dataset']}_{i}.pth"
+    #             con_dataset = SaveAugmentedDataset(con_data, con_target, filename=filename)
+    #             del con_dataset
+    #             con_data = torch.tensor([], device="cpu")
+    #             con_target = torch.tensor([], device="cpu")
+    # del loader.dataset
+    # del loader
+
+    if real_aug:
+        # con_dataset = SaveAugmentedDataset(data=torch.tensor([], device="cpu"), target=torch.tensor([], device="cpu"), filename=None)
+
+        # dataset_files = os.listdir(p['pretext_dir'] )
+        # dataset_files_list = [file for file in dataset_files if file.startswith('con_train_dataset')]
+        # for filename in dataset_files_list:
+        #     temp_dataset = SaveAugmentedDataset(data=torch.tensor([], device="cpu"), target=torch.tensor([], device="cpu"), filename=None)
+        #     temp_dataset.load_from_file(os.path.join(p['pretext_dir'], filename))
+        #     con_dataset.concat_ds(temp_dataset)
+        #     del temp_dataset
+
+        con_dataset = SaveAugmentedDataset(con_data, con_target, con_fneighbors, con_f_target)
+        con_loader = torch.utils.data.DataLoader(con_dataset, num_workers=p['num_workers'],
+                                                 batch_size=p['batch_size'], pin_memory=True,
+                                                 drop_last=False, shuffle=False)
+        torch.save(con_loader, p['contrastive_dataloader'])
