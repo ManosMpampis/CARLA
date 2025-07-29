@@ -21,6 +21,7 @@ res_kwargs:
 # Dataset
 train_db_name: smd
 val_db_name: smd
+preload_aug: False
 window_size: 200
 window_stride: 5
 num_classes: 10
@@ -37,8 +38,8 @@ optimizer_kwargs:
    lr: 0.01
    weight_decay: 0.001
 epochs: 50
-batch_size: 200
-num_workers: 16
+batch_size: 50  # 200
+num_workers: 0  # 16
 
 # Scheduler
 scheduler: constant
