@@ -39,7 +39,8 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
     cfg['topk_neighbors_val_path'] = os.path.join(pretext_dir, 'topk-test-neighbors.npy')
     cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
     cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
-    cfg['contrastive_dataset'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
+    cfg['contrastive_dataset'] = os.path.join(pretext_dir, 'con_train_dataset')
+    cfg['contrastive_dataloader'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
 
 
     if cfg['setup'] in ['classification']:

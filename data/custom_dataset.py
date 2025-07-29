@@ -13,14 +13,17 @@ from utils.utils import log
 
 
 class AugmentedDataset(Dataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, preload=True):
         super(AugmentedDataset, self).__init__()
+        self.preload = preload
         self.current_epoch = 0
         self.samples = [{} for _ in range(len(dataset))]  # Initialized with empty dictionaries
         transform = dataset.transform
         sanomaly = dataset.sanomaly
         dataset.transform = None
         self.dataset = dataset
+
+        self.mean, self.std = dataset.get_info()
 
         if isinstance(transform, dict):
             self.ts_transform = transform['standard']
@@ -29,13 +32,12 @@ class AugmentedDataset(Dataset):
             self.ts_transform = transform
             self.augmentation_transform = transform
             self.subseq_anomaly = sanomaly
-
-        self.create_pairs()
+        if preload:
+            self.create_pairs()
 
     def create_pairs(self):
-        mmean, sstd = self.dataset.get_info()
-        mmean = torch.tensor(mmean, dtype=torch.float32)
-        sstd = torch.tensor(sstd, dtype=torch.float32)
+        mean = torch.tensor(self.mean, dtype=torch.float32)
+        std = torch.tensor(self.std, dtype=torch.float32)
         for index in range(len(self.dataset)):
             item = self.dataset.__getitem__(index)
             ts_org = item['ts_org'].clone().detach()
@@ -50,15 +52,14 @@ class AugmentedDataset(Dataset):
                 ts_w_augment = self.augmentation_transform(ts_org)
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
-            # sstd = np.where((sstd == 0.0), 1.0, sstd)
-            if not sstd.all():
+            if not std.all():
                 log('AugmentedDataset: sstd contains zeros')
-            sstd = torch.where(sstd == 0.0, torch.tensor(1.0), sstd)
+            std = torch.where(std == 0.0, torch.tensor(1.0), std)
 
             self.samples[index] = {
-                'ts_org': (ts_org - mmean) / sstd,
-                'ts_w_augment': (ts_w_augment - mmean) / sstd,
-                'ts_ss_augment':  (ts_ss_augment - mmean) / sstd,
+                'ts_org': (ts_org - mean) / std,
+                'ts_w_augment': (ts_w_augment - mean) / std,
+                'ts_ss_augment':  (ts_ss_augment - mean) / std,
                 'target': ts_trg
             }
 
@@ -72,8 +73,133 @@ class AugmentedDataset(Dataset):
     def set_epoch(self, epoch):
         self.current_epoch = epoch
 
+    def get_info(self):
+        return self.mean, self.std
+    
     def __getitem__(self, index):
-        return self.samples[index]
+        if self.preload:
+            return self.samples[index]
+        for index in range(len(self.dataset)):
+            item = self.dataset.__getitem__(index)
+            ts_org = item['ts_org'].clone().detach()
+            ts_trg = item['target'].clone().detach()
+            
+            # Get random neighbor from windows before time step T
+            if index > 10:
+                rand_nei = np.random.randint(index - 10, index)
+                sample_nei = self.dataset.__getitem__(rand_nei)
+                ts_w_augment = sample_nei['ts_org'].clone().detach()
+            else:
+                ts_w_augment = self.augmentation_transform(ts_org)
+
+            ts_ss_augment = self.subseq_anomaly(ts_org)
+
+            samples = {
+                'ts_org': ts_org,
+                'ts_w_augment': ts_w_augment,
+                'ts_ss_augment':  ts_ss_augment,
+                'target': ts_trg
+            }
+            return samples
+        
+class AugmentedDataset_save(Dataset):
+    def __init__(self, dataset, preload=True):
+        super(AugmentedDataset, self).__init__()
+        self.preload = preload
+        self.current_epoch = 0
+        self.samples = [{} for _ in range(len(dataset))]  # Initialized with empty dictionaries
+        transform = dataset.transform
+        sanomaly = dataset.sanomaly
+        dataset.transform = None
+        self.dataset = dataset
+
+        self.mean, self.std = dataset.get_info()
+
+        if isinstance(transform, dict):
+            self.ts_transform = transform['standard']
+            self.augmentation_transform = transform['augment']
+        else:
+            self.ts_transform = transform
+            self.augmentation_transform = transform
+            self.subseq_anomaly = sanomaly
+        if preload:
+            self.create_pairs()
+
+    def create_pairs(self):
+        for index in range(len(self.dataset)):
+            item = self.dataset.__getitem__(index)
+            ts_org = item['ts_org'].detach()
+            ts_trg = item['target'].detach()
+            
+            # Get random neighbor from windows before time step T
+            if index > 10:
+                rand_nei = np.random.randint(index - 10, index)
+                sample_nei = self.dataset.__getitem__(rand_nei)
+                ts_w_augment = sample_nei['ts_org'].detach()
+            else:
+                ts_w_augment = self.augmentation_transform(ts_org)
+
+            ts_ss_augment = self.subseq_anomaly(ts_org)
+
+            self.samples.append({
+                'ts_org': ts_org,
+                'ts_w_augment': ts_w_augment,
+                'ts_ss_augment':  ts_ss_augment,
+                'target': ts_trg
+            })
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def concat_ds(self, new_ds):
+        self.dataset.data = np.concatenate((self.dataset.data, new_ds.dataset.data), axis=0)
+        self.dataset.targets = np.concatenate((self.dataset.targets, new_ds.dataset.targets), axis=0)
+        self.samples += new_ds.samples
+
+    def set_epoch(self, epoch):
+        self.current_epoch = epoch
+
+    def __getitem__(self, index):
+        if self.preload:
+            return self.samples[index]
+        for index in range(len(self.dataset)):
+            item = self.dataset.__getitem__(index)
+            ts_org = item['ts_org'].clone().detach()
+            ts_trg = item['target'].clone().detach()
+            
+            # Get random neighbor from windows before time step T
+            if index > 10:
+                rand_nei = np.random.randint(index - 10, index)
+                sample_nei = self.dataset.__getitem__(rand_nei)
+                ts_w_augment = sample_nei['ts_org'].clone().detach()
+            else:
+                ts_w_augment = self.augmentation_transform(ts_org)
+
+            ts_ss_augment = self.subseq_anomaly(ts_org)
+
+            samples = {
+                'ts_org': ts_org,
+                'ts_w_augment': ts_w_augment,
+                'ts_ss_augment':  ts_ss_augment,
+                'target': ts_trg
+            }
+            return samples
+    
+    def save_to_file(self, file_path):
+        """
+        Save the dataset to a CSV file.
+        """
+        import pandas as pd
+        data = []
+        for sample in self.samples:
+            data.append({
+                'ts_org': sample['ts_org'].numpy(),
+                'ts_w_augment': sample['ts_w_augment'].numpy(),
+                'ts_ss_augment': sample['ts_ss_augment'].numpy(),
+                'target': sample['target'].numpy()
+            })
+        df = pd.DataFrame(data)
+        df.to_csv(file_path, index=False)
 
 """ 
     NeighborsDataset
@@ -91,7 +217,6 @@ class NeighborsDataset(Dataset):
             self.neighbor_transform = transform
        
         dataset.transform = None
-        all_data = dataset.data
         self.dataset = dataset
 
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
@@ -101,13 +226,11 @@ class NeighborsDataset(Dataset):
             self.NN_indices = NN_indices[:, :topk]
             self.FN_indices = FN_indices[:, -topk:]
 
-        self.dataset.data = dataset.data
-        self.dataset.targets = dataset.targets
         num_samples = self.dataset.data.shape[0]
         NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
         FN_index = np.array([np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)])
-        self.NNeighbor = all_data[NN_index]
-        self.FNeighbor = all_data[FN_index]
+        self.NNeighbor = self.dataset.anchors[NN_index]
+        self.FNeighbor = self.dataset.fneighbors[FN_index]
 
     def __len__(self):
         return len(self.dataset)

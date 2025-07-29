@@ -102,39 +102,37 @@ def load_pretext_backbone_to_model(p, model, pretrain_path):
 def _get_dataset(p, file, train, transform=None, sanomaly=None, mean_data=None, std_data=None):
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         from data.MSL import MSL
-        dataset = MSL(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+        dataset = MSL(file, train=train, transform=transform, sanomaly=sanomaly,
                     mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
-        dataset = KPI(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+        dataset = KPI(file, train=train, transform=transform, sanomaly=sanomaly,
                     mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'smd':
         from data.SMD import SMD
-        dataset = SMD(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+        dataset = SMD(file, train=train, transform=transform, sanomaly=sanomaly,
                     mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
-        dataset = SWAT(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+        dataset = SWAT(file, train=train, transform=transform, sanomaly=sanomaly,
                     mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
-        dataset = WADI(p['fname'], train=train, transform=transform, sanomaly=sanomaly,
+        dataset = WADI(file, train=train, transform=transform, sanomaly=sanomaly,
                     mean_data=mean_data, std_data=std_data, wsz=p['window_size'], stride=p['window_stride'])
         mean, std = dataset.get_info()
 
     else:
         raise ValueError(f'Invalid {"train" if train else "validation"} dataset {p[f'{"train" if train else "val"}_db_name']} of file :{file}')
     return dataset, mean, std
-
-
 
 def get_dataset(p, train, transform=None, sanomaly=None, to_augmented_dataset=False,
                 to_neighbors_dataset=False, mean_data=None, std_data=None):
@@ -150,8 +148,8 @@ def get_dataset(p, train, transform=None, sanomaly=None, to_augmented_dataset=Fa
 
     if p['fname'] == 'ALL':
         databese_dir = MyPath.db_root_dir(p[f'{"train" if train else "val"}_db_name'].lower())
-        database_files_dir = os.path.join(databese_dir, 'train')
-        file_list = [file for file in database_files_dir if file.endswith('.txt')]
+        all_files = os.listdir(os.path.join(databese_dir, 'train'))
+        file_list = [file for file in all_files if file.endswith('.txt')]
         file_list = sorted(file_list)
     else:
         file_list = [p['fname']]
@@ -168,10 +166,14 @@ def get_dataset(p, train, transform=None, sanomaly=None, to_augmented_dataset=Fa
             mean.append(new_mean)
             std.append(new_std)
 
+    dataset.mean = sum(mean)/len(mean)
+    dataset.std = sum(std)/len(std)
+
     # Wrap into other dataset (__getitem__ changes)
     if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
         from data.custom_dataset import AugmentedDataset
-        dataset = AugmentedDataset(dataset)
+        preload = p['preload_aug'] if 'preload_aug' in p.keys() else True
+        dataset = AugmentedDataset(dataset, preload=preload)
 
     if to_neighbors_dataset:  # Dataset returns ts and its nearest and furthest neighbors.
         from data.custom_dataset import NeighborsDataset
@@ -180,8 +182,6 @@ def get_dataset(p, train, transform=None, sanomaly=None, to_augmented_dataset=Fa
         neighbor_transform = None if train else transform
         dataset = NeighborsDataset(dataset, neighbor_transform, nindices, findices, topk)
 
-    dataset.mean = sum(mean)/len(mean)
-    dataset.std = sum(std)/len(std)
     return dataset
 
 def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
@@ -238,7 +238,7 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
 
 
 def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
-    dataloader = torch.load(p['contrastive_dataset'], weights_only=False)
+    dataloader = torch.load(p['contrastive_dataloader'], weights_only=False)
     if to_neighbors_dataset:  # Dataset returns a ts and one of its nearest neighbors.
         from data.custom_dataset import NeighborsDataset
         N_indices = np.load(p['topk_neighbors_train_path'])

@@ -1,4 +1,3 @@
-import argparse
 import os
 import random
 
@@ -8,16 +7,15 @@ from torchmetrics.functional.classification import confusion_matrix
 from sklearn import metrics
 import numpy as np
 
-from utils.mypath import MyPath
 from utils.config import create_config
 from utils.common_config import get_transformations, get_aug_train_dataset,\
-                                get_val_dataset, get_dataloader,\
+                                get_val_dataset, get_dataset, get_dataloader,\
                                 get_optimizer, get_model, load_pretext_backbone_to_model,\
                                 get_criterion, adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
-from utils.repository import TSRepository
+from utils.repository import TSRepository, fill_ts_repository
 from utils.train_utils import self_sup_classification_train, pretext_train
-from utils.utils import fill_ts_repository, Logger
+from utils.utils import Logger
 
 
 
@@ -76,10 +74,12 @@ class CARLA:
         val_transforms = get_transformations(self.p)
         sanomaly = inject_sub_anomaly(self.p)
         
-        val_dataset, train_dataset = get_val_dataset(self.p, train_transforms, val_transforms, sanomaly)
+        train_dataset = get_dataset(self.p, train=True, transform=train_transforms, sanomaly=sanomaly, to_augmented_dataset=True)  # used only to mean and std
+        
+        # val_dataset, train_dataset = get_val_dataset(self.p, train_transforms, val_transforms, sanomaly)
         train_dataloader = get_dataloader(self.p, train_dataset, drop_last=True, shuffle=True)
 
-        self.logger.log(f'Dataset contains {len(train_dataset)}/{len(val_dataset)} train/val samples')
+        self.logger.log(f'Dataset contains {len(train_dataset)} train samples')
 
         # Optimizer
         if not hasattr(self, 'optimizer'):
@@ -98,7 +98,7 @@ class CARLA:
             self.logger.log(f'-- No checkpoint file at {self.p["pretext_checkpoint"]} -- new model initialised')
             self.start_epoch = 0
             self.epoch = 0
-            self.pretext_best_loss = torch.tensor(float("inf"), device=self.device)
+            self.pretext_best_loss = float("inf")
             self.pretext_previous_loss = torch.tensor(float(0), device=self.device)
 
         self.logger.log('\n- Training:')        
@@ -126,7 +126,7 @@ class CARLA:
         self.load(type="pretext", checkpoint=False)
         self.save(type="pretext", checkpoint=True)
         self.save(type="pretext", checkpoint=False)
-        self.makeTSRepository(train_dataset, val_dataset)
+        self.makeTSRepository(train_dataset, val_transforms, sanomaly)
         # Make new repository of time series for the second stage.
         
     def train_classification(self):
@@ -291,7 +291,7 @@ class CARLA:
             if type == "classification":
                 self.majority_label = checkpoint['normal_label']
             if type == "pretext":
-                self.pretext_best_loss = checkpoint['pretext_best_loss'].to(self.device, non_blocking=True)
+                self.pretext_best_loss = checkpoint['pretext_best_loss']
                 self.pretext_previous_loss = checkpoint['pretext_previous_loss'].to(self.device, non_blocking=True)
 
     def save(self, path=None, dictionary=None, type="classification", checkpoint=False):
@@ -321,19 +321,17 @@ class CARLA:
     def export(self):
         pass
 
-    def makeTSRepository(self, train_dataset, val_dataset,topk=10):
-        base_dataloader = get_dataloader(self.p, train_dataset)
-        val_dataloader = get_dataloader(self.p, val_dataset)
-
-        ts_repository_aug = TSRepository(len(train_dataset) * 2, self.p['model_kwargs']['features_dim'],
-                                         self.p['num_classes'], self.p['criterion_kwargs']['temperature'])  # need size of repository == 1+num_of_anomalies
-        ts_repository_base = TSRepository(len(train_dataset), self.p['model_kwargs']['features_dim'],
+    def makeTSRepository(self, dataset, val_transformations, sanomaly, topk=10):
+        base_dataloader = get_dataloader(self.p, dataset)
+        ts_repository_aug = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
+                                         self.p['num_classes'], self.p['criterion_kwargs']['temperature'], need_fneighbors=True)  # need size of repository == 1+num_of_anomalies
+        ts_repository_base = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
                                           self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
-        ts_repository_val = TSRepository(len(val_dataset), self.p['model_kwargs']['features_dim'],
-                                         self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
-        ts_repository_aug.to(self.device, non_blocking=True)
-        ts_repository_base.to(self.device, non_blocking=True)
-        ts_repository_val.to(self.device, non_blocking=True)
+        # ts_repository_val = TSRepository(len(val_dataset), self.p['model_kwargs']['features_dim'],
+        #                                  self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
+        # ts_repository_aug.to(self.device, non_blocking=True)
+        # ts_repository_base.to(self.device, non_blocking=True)
+        # ts_repository_val.to(self.device, non_blocking=True)
         
         # Mine the topk nearest neighbors at the very end (Train)
         # These will be served as input to the classification loss.
@@ -347,15 +345,26 @@ class CARLA:
         np.save(self.p['pretext_features_train_path'], out_pre)
         np.save(self.p['topk_neighbors_train_path'], knearest)
         np.save(self.p['bottomk_neighbors_train_path'], kfurtherst)
+        mean, std = dataset.get_info()
 
+        del dataset
+        del ts_repository_aug
+        del ts_repository_base
+
+        dataset = get_dataset(self.p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                  to_augmented_dataset=False, mean_data=mean, std_data=std)
+        base_dataloader = get_dataloader(self.p, dataset)
+        ts_repository_base = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
+                                          self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
         # Mine the topk nearest neighbors at the very end (Val)
         # These will be used for validation.
-        self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (val) ...')    
-        fill_ts_repository(self.p, val_dataloader, self.model, ts_repository_val, real_aug = False, ts_repository_aug = None, logger=self.logger)
-        out_pre = np.column_stack((ts_repository_val.features.cpu().numpy(), ts_repository_val.targets.cpu().numpy()))
+        self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (val) ...')
+
+        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository_base, real_aug = False, ts_repository_aug = None, logger=self.logger)
+        out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)  # hear we mine from val
+        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk)  # hear we mine from val
         
         np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)
