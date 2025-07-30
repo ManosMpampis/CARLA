@@ -79,28 +79,28 @@ class AugmentedDataset(Dataset):
     def __getitem__(self, index):
         if self.preload:
             return self.samples[index]
-        for index in range(len(self.dataset)):
-            item = self.dataset.__getitem__(index)
-            ts_org = item['ts_org'].clone().detach()
-            ts_trg = item['target'].clone().detach()
-            
-            # Get random neighbor from windows before time step T
-            if index > 10:
-                rand_nei = np.random.randint(index - 10, index)
-                sample_nei = self.dataset.__getitem__(rand_nei)
-                ts_w_augment = sample_nei['ts_org'].clone().detach()
-            else:
-                ts_w_augment = self.augmentation_transform(ts_org)
+        item = self.dataset.__getitem__(index)
+        ts_org = item['ts_org'].clone().detach()
+        ts_trg = item['target'].clone().detach()
+        
+        # Get random neighbor from windows before time step T
+        if index > 10:
+            rand_nei = np.random.randint(index - 10, index)
+            sample_nei = self.dataset.__getitem__(rand_nei)
+            ts_w_augment = sample_nei['ts_org'].clone().detach()
+        else:
+            ts_w_augment = self.augmentation_transform(ts_org)
 
-            ts_ss_augment = self.subseq_anomaly(ts_org)
+        ts_ss_augment = self.subseq_anomaly(ts_org)
 
-            samples = {
-                'ts_org': ts_org,
-                'ts_w_augment': ts_w_augment,
-                'ts_ss_augment':  ts_ss_augment,
-                'target': ts_trg
-            }
-            return samples
+        samples = {
+            'ts_org': ts_org,
+            'ts_w_augment': ts_w_augment,
+            'ts_ss_augment':  ts_ss_augment,
+            'target': ts_trg,
+            'index': index
+        }
+        return samples
         
 class AugmentedDataset_save(Dataset):
     def __init__(self, dataset, preload=True):

@@ -92,7 +92,7 @@ class PretextLoss(nn.Module):
     # Based on the implementation of SupContrast
     def __init__(self, bs, temperature, initial_margin=1.0, adjust_factor=0.1, paper_loss=False):
         super(PretextLoss, self).__init__()
-        self.temperature = temperature  # mse loss is the same as torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
+        self.temperature = temperature 
         self.bs = bs
         self.margin = initial_margin
         self.adjust_factor = adjust_factor
@@ -115,11 +115,6 @@ class PretextLoss(nn.Module):
         negative = F.normalize(features_subseq, dim=-1)
 
         self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
-
-        if self.paper_loss:
-            # actual loss of paper = distance from positives - distance from negatives + margin
-            # TODO: add weights
-            return torch.clamp(F.mse_loss(anchor, positive) - F.mse_loss(anchor, negative) + self.margin, min=0.0)
 
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
         # Hear we find all the distances of negatives to anchors and corelate each anchor with the lowest distance negative example

@@ -121,7 +121,7 @@ class TSRepository(object):
 
             _, k_nearest_neighbours = index.search(self.features.cpu().numpy(), len(self.features))
             _, k_furthest_neighbours = index.search(self.ffeatures.cpu().numpy(), len(self.features))
-            k_furthest_neighbours = k_furthest_neighbours[::-1]
+            k_furthest_neighbours = k_furthest_neighbours[:, ::-1]
 
         # Mine interpatation if we use data labeling
         elif mine_with_labels:
