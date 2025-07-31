@@ -18,6 +18,7 @@ class TSRepository(object):
         self.K = 100
         self.temperature = temperature
         self.C = num_classes
+        self.use_fneighbors = need_fneighbors
 
         if need_fneighbors:
             self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
@@ -79,9 +80,7 @@ class TSRepository(object):
         else:
             return k_furthest_neighbours, k_nearest_neighbours
 
-    def furthest_nearest_neighbors(self, topk, use_algorithm=0):
-        features = self.features
-
+    def furthest_nearest_neighbors(self, topk, use_original_algorithm=True, memory_efficient=False):
         # # Compute pairwise distances
         # distances = torch.cdist(features, features)
         #
@@ -101,40 +100,69 @@ class TSRepository(object):
         # k_furthest_neighbours = ids[:, -1:]
         # k_nearest_neighbours = ids[:, 1:]
 
-        if use_algorithm == 0:
-            d = features.shape[1]
+        if use_original_algorithm:
+            # faiss way, respecting clustering output 
+            # !!! features contain negative windows !!!
+            d = self.features.shape[1]
             index = faiss.IndexFlatL2(d)
             # index.add(features)
-            index.add(features.cpu().numpy())  # CUDA
+            index.add(self.features.cpu())  # CUDA
 
-            xq = np.random.random(d)
-            _, ids = index.search(xq.reshape(1, -1).astype(np.float32), len(features))
-            sz = ids.shape[1]
-            k_furthest_neighbours = ids.reshape(sz, 1)[::-1]
-            k_nearest_neighbours = ids[:, :].reshape(sz, 1)
+            # xq = np.random.random(d)
+            # _, ids = index.search(xq.reshape(1, -1).astype(np.float32), len(features))
+            # sz = ids.shape[1]
+            # k_furthest_neighbours = ids.reshape(sz, 1)[::-1]
+            # k_nearest_neighbours = ids[:, :].reshape(sz, 1)
+            _, k_nearest_neighbours = index.search(self.features.cpu(), len(self.features))
+            k_furthest_neighbours = k_nearest_neighbours[:, -1:]
         
-        # Mine interpatation if we do not use data labeling
-        elif use_algorithm == 1:
-            d = self.features.shape[1]
-            index = faiss.IndexFlatL2(d)
-            index.add(self.features.cpu().numpy())
+        else:
+            if not self.use_fneighbors:
+                # Pytorch way, respecting clustering output 
+                # !!! features contain negative windows !!!
+                topk = topk if topk is not None else self.features.shape[0]
+                if memory_efficient:
+                # Slow but checkes only one feature at the time
+                    k_nearest_neighbours = []
+                    k_furthest_neighbours = []
+                    for feature in self.features:
+                        dist = torch.cdist(feature.unsqueeze(0), self.features).squeeze(0)
+                        topk_d = torch.topk(dist, topk+1, largest=False).indices[1:]
+                        k_nearest_neighbours.append(topk_d.cpu().numpy())
+                        # hear we find the bottomk but use the same variable for memory efficiency
+                        topk_d = torch.topk(dist, topk).indices
+                        k_furthest_neighbours.append(topk_d.cpu().numpy())
+                    k_nearest_neighbours = np.array(k_nearest_neighbours)
+                    k_furthest_neighbours = np.array(k_furthest_neighbours)
+                else:
+                # Faster but very heavy on memory
+                    dist = torch.cdist(self.features, self.features)
+                    k_nearest_neighbours = torch.topk(k_nearest_neighbours, topk+1, largest=False).indices.cpu().numpy()[:, 1:]
+                    k_furthest_neighbours = torch.topk(k_furthest_neighbours, topk).indices.cpu().numpy()
 
-            _, k_nearest_neighbours = index.search(self.features.cpu().numpy(), len(self.features))
-            _, k_furthest_neighbours = index.search(self.ffeatures.cpu().numpy(), len(self.features))
-            k_furthest_neighbours = k_furthest_neighbours[:, ::-1]
+            else:
+                # Pytorch way, using knowing labbeling
+                topk = topk if topk is not None else self.features.shape[0]
+                if memory_efficient:
+                    k_nearest_neighbours = []
+                    k_furthest_neighbours = []
+                    for feature in self.features:
+                        dist = torch.cdist(feature.unsqueeze(0), self.features).squeeze(0)
+                        topk_d = torch.topk(dist, topk+1, largest=False).indices[1:]
+                        k_nearest_neighbours.append(topk_d.cpu().numpy())
 
-        # Mine interpatation if we use data labeling
-        elif use_algorithm == 2:
-            d = self.features.shape[1]
-            index = faiss.IndexFlatL2(d)
-            index.add(self.nneighbors.cpu().numpy())
-
-            _, k_nearest_neighbours = index.search(self.features.cpu().numpy(), len(self.nneighbors))
-
-            index = faiss.IndexFlatL2(d)
-            index.add(self.fneighbors.cpu().numpy())
-
-            _, k_furthest_neighbours = index.search(self.features.cpu().numpy(), len(self.features))[::-1]
+                        # hear we find the bottomk but use the same variable for memory efficiency
+                        dist = torch.cdist(feature.unsqueeze(0), self.ffeatures).squeeze(0)
+                        topk_d = torch.topk(dist, topk).indices
+                        k_furthest_neighbours.append(topk_d.cpu().numpy())
+                    k_nearest_neighbours = np.array(k_nearest_neighbours)
+                    k_furthest_neighbours = np.array(k_furthest_neighbours)
+                else:
+                # Faster but very heavy on memory
+                    k_nearest_neighbours = torch.cdist(self.features, self.features)
+                    k_nearest_neighbours = torch.topk(k_nearest_neighbours, topk+1, largest=False).indices.cpu().numpy()[:, 1:]
+                    k_furthest_neighbours = torch.cdist(self.features, self.ffeatures)
+                    k_furthest_neighbours = torch.topk(k_furthest_neighbours, topk).indices.cpu().numpy()
         return k_furthest_neighbours, k_nearest_neighbours
 
 
@@ -209,7 +237,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
     ts_repository.reset()
     if ts_repository_aug != None: ts_repository_aug.reset()
-    if real_aug: ts_repository.add_ffneighbors()  # ts_repository.resize(3)
+    if real_aug: ts_repository.resize(3)
 
     con_data = torch.tensor([], device="cpu")
     con_target = torch.tensor([], device="cpu")
@@ -234,12 +262,11 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             con_data = torch.cat((con_data, ts_org.cpu()), dim=0)
             con_target = torch.cat((con_target, targets), dim=0)
 
-            # TODO: ts_w_augment do not needed because it effectively the same as ts_org
-            # ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-            # targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
 
-            # output = model(ts_w_augment.reshape(b, h, w)).cpu()
-            # ts_repository.update(output, targets)
+            output = model(ts_w_augment.reshape(b, h, w)).cpu()
+            ts_repository.update(output, targets)
             # ts_repository_aug.update(output, targets)
 
 
@@ -250,7 +277,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             con_fneighbors = torch.cat((con_fneighbors, ts_ss_augment.cpu()), dim=0)
             con_f_target = torch.cat((con_f_target, targets), dim=0)
 
-            ts_repository.update_fneighbors(output, targets)
+            ts_repository.update(output, targets)
             ts_repository_aug.update_fneighbors(output, targets)
             
     #         if (i % 50 == 0 and i > 0) or (i == len(loader) - 1):
