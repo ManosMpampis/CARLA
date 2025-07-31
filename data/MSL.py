@@ -6,15 +6,17 @@ import ast
 import torch
 
 from utils.mypath import MyPath
-from utils.utils import log
+from utils.utils import EmptyLogger
 
 
 class MSL(Dataset):
-    base_folder = ''
-
-    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, wsz=200, stride=1):
+    def __init__(self, fname, root=MyPath.db_root_dir('msl'), train=True,
+                 transform=None, sanomaly= None, mean_data=None, std_data=None,
+                 wsz=200, stride=1, logger=None):
 
         super(MSL, self).__init__()
+        self.logger = EmptyLogger() if logger is None else logger
+        self.base_folder = ''
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -47,7 +49,7 @@ class MSL(Dataset):
         file_path = os.path.join(self.root, self.base_folder, fname+'.npy')
         temp = np.load(file_path)
         if np.any(sum(np.isnan(temp))!=0):
-            log('Data contains NaN which replaced with zero')
+            self.logger.log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
         if self.train:

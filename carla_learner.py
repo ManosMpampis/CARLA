@@ -9,14 +9,13 @@ import numpy as np
 
 from utils.config import create_config
 from utils.common_config import get_transformations, get_aug_train_dataset,\
-                                get_val_dataset, get_dataset, get_dataloader,\
-                                get_optimizer, get_model, load_pretext_backbone_to_model,\
+                                get_dataset, get_dataloader,\
+                                get_optimizer, get_model, load_backbone,\
                                 get_criterion, adjust_learning_rate, inject_sub_anomaly
-from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
+from utils.evaluate_utils import get_predictions, classification_evaluate
 from utils.repository import TSRepository, fill_ts_repository
 from utils.train_utils import self_sup_classification_train, pretext_train
 from utils.utils import Logger
-
 
 
 def set_seed(seed):
@@ -44,9 +43,9 @@ class CARLA:
         """
 
         if device == 'auto':
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
         else:
-            self.device = torch.device(device)
+            self.device = torch.device(device, index=0)
 
         self.p = create_config(config_env, config_exp, fname, version)
         self.version = self.p['version']
@@ -72,12 +71,14 @@ class CARLA:
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
         train_transforms = get_transformations(self.p)
         val_transforms = get_transformations(self.p)
-        sanomaly = inject_sub_anomaly(self.p)
+        sanomaly = inject_sub_anomaly(self.p, self.logger)
         
-        train_dataset = get_dataset(self.p, train=True, transform=train_transforms, sanomaly=sanomaly, to_augmented_dataset=True)  # used only to mean and std
+        train_dataset = get_dataset(self.p, train=True, transform=train_transforms,
+                                    sanomaly=sanomaly, to_augmented_dataset=True,
+                                    logger=self.logger)  # used only to mean and std
         
         # val_dataset, train_dataset = get_val_dataset(self.p, train_transforms, val_transforms, sanomaly)
-        train_dataloader = get_dataloader(self.p, train_dataset, drop_last=True, shuffle=True)
+        train_dataloader = get_dataloader(self.p, train_dataset, train=True)
 
         self.logger.log(f'Dataset contains {len(train_dataset)} train samples')
 
@@ -137,17 +138,19 @@ class CARLA:
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
         train_transformations = get_transformations(self.p)
         val_transformations = get_transformations(self.p)
-        sanomaly = inject_sub_anomaly(self.p)
+        sanomaly = inject_sub_anomaly(self.p, self.logger)
         
         # In the self-supervised state we use as data the triplets with saves anchors of the first stage
         train_dataset = get_aug_train_dataset(self.p, train_transformations, to_neighbors_dataset = True)
-        train_dataloader = get_dataloader(self.p, train_dataset, drop_last=True, shuffle=True)
+        train_dataloader = get_dataloader(self.p, train_dataset, train=True)
         # In order to correctly measure the similarity matrics, all values need to be checkes,
         # during train we have drop_last so we add second dataloader
         tst_dataloader = get_dataloader(self.p, train_dataset)
+        
+        dataset_mean, dataset_std = train_dataset.get_info()
 
-        val_dataset, artifact = get_val_dataset(self.p, train_transformations, val_transformations, sanomaly)
-        del artifact
+        val_dataset = get_dataset(self.p, train=False, transform=val_transformations, sanomaly=sanomaly,
+                                  to_augmented_dataset=False, mean_data=dataset_mean, std_data=dataset_std, logger=self.logger)
 
         val_dataloader = get_dataloader(self.p, val_dataset)
 
@@ -172,7 +175,8 @@ class CARLA:
             self.load(checkpoint=True)
         else:
             self.logger.log(f'-- No checkpoint file at {self.p["classification_checkpoint"]} -- new model initialised')
-            load_pretext_backbone_to_model(self.p, self.model, self.p['pretext_model'])
+            load_backbone(self.p, self.model, self.p['pretext_model'])
+            assert(next(self.model.backbone.parameters()).device.type == self.device.type)
             self.start_epoch = 0
             self.majority_label = torch.tensor(0, dtype=torch.long, device=self.device)
 
@@ -211,7 +215,7 @@ class CARLA:
             
             if rep_f1 > best_f1:
                 best_f1 = rep_f1
-                # log('New Checkpoint ...', verbose=verbose, file_path=file_path)
+                # self.logger.log('New Checkpoint ...', verbose=verbose, file_path=file_path)
                 self.save(type="classification", checkpoint=True)
                 self.save(type="classification", checkpoint=False)
 
@@ -280,7 +284,8 @@ class CARLA:
         
         self.logger.log(f'-- Model initialised from {"last checkpoint" if checkpoint else "model path"}: {path}')
         checkpoint = torch.load(path, map_location='cpu')
-        self.model.load_state_dict(checkpoint['model'])
+        self.model.backbone.load_state_dict(checkpoint['backbone'])
+        self.model.head.load_state_dict(checkpoint['head'])
 
         if "optimizer" in checkpoint.keys(): 
             if not hasattr(self, 'optimizer'):
@@ -303,9 +308,9 @@ class CARLA:
         
         if dictionary is None:
             if type == "classification":
-                dictionary = {'model': self.model.state_dict(), 'majority_label': self.majority_label}
+                dictionary = {'backbone': self.model.backbone.state_dict(), 'head': self.model.head.state_dict(), 'majority_label': self.majority_label}
             else:
-                dictionary = {'model': self.model.state_dict()}
+                dictionary = {'backbone': self.model.backbone.state_dict(), 'head': self.model.head.state_dict()}
             
             if checkpoint:
                 dictionary['optimizer'] = self.optimizer.state_dict()
@@ -322,6 +327,7 @@ class CARLA:
         pass
 
     def makeTSRepository(self, dataset, val_transformations, sanomaly, topk=10):
+        memmory_efficient = self.p['fname'].upper() == 'ALL'
         base_dataloader = get_dataloader(self.p, dataset)
         ts_repository_aug = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
                                          self.p['num_classes'], self.p['criterion_kwargs']['temperature'], need_fneighbors=True)  # need size of repository == 1+num_of_anomalies
@@ -340,7 +346,7 @@ class CARLA:
         out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, use_algorithm=1)  # hear we mine from aug and not base
+        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, use_original_algorithm=False, memory_efficient=memmory_efficient)  # hear we mine from aug and not base
 
         np.save(self.p['pretext_features_train_path'], out_pre)
         np.save(self.p['topk_neighbors_train_path'], knearest)
@@ -352,7 +358,8 @@ class CARLA:
         del ts_repository_base
 
         dataset = get_dataset(self.p, train=False, transform=val_transformations, sanomaly=sanomaly,
-                                  to_augmented_dataset=False, mean_data=mean, std_data=std)
+                                  to_augmented_dataset=False, mean_data=mean, std_data=std, logger=self.logger)
+        # Use the same variable to save some memory
         base_dataloader = get_dataloader(self.p, dataset)
         ts_repository_base = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
                                           self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
@@ -364,7 +371,7 @@ class CARLA:
         out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk, use_algorithm=0)  # hear we mine from val
+        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk, memory_efficient=memmory_efficient)  # hear we mine from val
         
         np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)

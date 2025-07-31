@@ -9,18 +9,18 @@ from utils.utils import EmptyLogger, Logger, mkdir
 
 
 class SMD(Dataset):
-    def __init__(self, fname, root=MyPath.db_root_dir('smd'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, device=torch.device("cpu"), wsz=200, stride=5):
-
+    def __init__(self, fname, root=MyPath.db_root_dir('smd'), train=True,
+                 transform=None, sanomaly= None, mean_data=None, std_data=None,
+                 wsz=200, stride=5, logger=None):
         super(SMD, self).__init__()
+        self.logger = EmptyLogger() if logger is None else logger
         self.base_folder = ''
-        self.device = device
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
         self.train = train  # training set or test set
         self.classes = ['Normal', 'Anomaly']
 
-        self.logger = EmptyLogger() if sanomaly is None else sanomaly
         self.data = []
         self.targets = []
         labels = []
@@ -40,6 +40,10 @@ class SMD(Dataset):
             self.logger.log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
+        if isinstance(mean_data, torch.Tensor):
+            mean_data = mean_data.cpu().numpy()
+            std_data = std_data.cpu().numpy()
+        
         self.mean, self.std = mean_data, std_data
         if self.train:
             self.mean = np.mean(temp, axis=0)
@@ -50,7 +54,7 @@ class SMD(Dataset):
             temp = (temp - self.mean) / self.std
         else:
             if not self.std.all():
-                self.logger.log('AugmentedDataset: sstd contains zeros')
+                self.logger.log('SMD: sstd contains zeros')
             self.std[self.std == 0.0] = 1.0
             temp = (temp - self.mean) / self.std
 
@@ -79,11 +83,11 @@ class SMD(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32, device=self.device)
+        ts_org = torch.as_tensor(self.data[index], dtype=torch.float32)
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long, device=self.device)
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
             class_name = self.classes[target]
         else:
             target = 0

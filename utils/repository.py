@@ -227,8 +227,8 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
         output = model(ts_org.reshape(b, h, w)).cpu()
         ts_repository.update(output, targets)
         if ts_repository_aug != None: ts_repository_aug.update(output, targets)
-        if i % 100 == 0:
-            logger.log(f'Fill TS Repository [{i}/{len(loader)}]')
+        if i % 100 == 0 or i == len(loader) - 1:
+            logger.log(f'Fill TS Repository [{i+1}/{len(loader)}]')
 
         if real_aug:
             con_data = torch.cat((con_data, ts_org.cpu()), dim=0)

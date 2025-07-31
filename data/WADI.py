@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 import torch
 
 from utils.mypath import MyPath
-from utils.utils import log
+from utils.utils import EmptyLogger
 
 
 class WADI(Dataset):
@@ -18,11 +18,13 @@ class WADI(Dataset):
         transform (callable, optional): A function/transform that takes in a ts
             and returns a transformed version.
     """
-    base_folder = ''
 
-    def __init__(self, fname, root=MyPath.db_root_dir('wadi'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, wsz=400, stride=10):
-
+    def __init__(self, fname, root=MyPath.db_root_dir('wadi'), train=True,
+                 transform=None, sanomaly= None, mean_data=None, std_data=None,
+                 wsz=400, stride=10, logger=None):
         super(WADI, self).__init__()
+        self.logger = EmptyLogger() if logger is None else logger
+        self.base_folder = ''
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -44,7 +46,7 @@ class WADI(Dataset):
         temp = np.asarray(fr.iloc[:, 3:123])
 
         if np.any(sum(np.isnan(temp))!=0):
-            log('Data contains NaN which replaced with zero')
+            self.logger.log('Data contains NaN which replaced with zero')
             temp = np.nan_to_num(temp)
 
         self.mean, self.std = mean_data, std_data

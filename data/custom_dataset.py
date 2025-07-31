@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 from scipy.spatial.distance import euclidean
 
-from utils.utils import log
+from utils.utils import EmptyLogger
 
 
 """ 
@@ -13,8 +13,9 @@ from utils.utils import log
 
 
 class AugmentedDataset(Dataset):
-    def __init__(self, dataset, preload=True):
+    def __init__(self, dataset, preload=True, logger=None):
         super(AugmentedDataset, self).__init__()
+        self.logger = EmptyLogger() if logger is None else logger
         self.preload = preload
         self.current_epoch = 0
         self.samples = [{} for _ in range(len(dataset))]  # Initialized with empty dictionaries
@@ -53,7 +54,7 @@ class AugmentedDataset(Dataset):
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
             if not std.all():
-                log('AugmentedDataset: sstd contains zeros')
+                self.logger.log('AugmentedDataset: sstd contains zeros')
             std = torch.where(std == 0.0, torch.tensor(1.0), std)
 
             self.samples[index] = {
@@ -218,13 +219,14 @@ class NeighborsDataset(Dataset):
        
         dataset.transform = None
         self.dataset = dataset
+        self.mean = [self.dataset.get_info()[0]]
+        self.std = [self.dataset.get_info()[0]]
 
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
         FN_indices = F_indices.copy()  # Nearest neighbor indices (np.array  [len(dataset) x k])
         if topk is not None:
-            print("!!!!!!!!!!!!!!!!!!!!")  # Maybe need to remove the first from nn indices
             self.NN_indices = NN_indices[:, :topk]
-            self.FN_indices = FN_indices[:, :topk]  # Was change in making
+            self.FN_indices = FN_indices[:, :topk]
 
         num_samples = self.dataset.anchors.shape[0]
         self.NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
@@ -241,13 +243,12 @@ class NeighborsDataset(Dataset):
         output = {}
         anchor = self.dataset.__getitem__(index)
         
-
         # NNeighbor = self.NNeighbor.__getitem__(index)
         # FNeighbor = self.FNeighbor.__getitem__(index)
         
         # This can be used to use all top-k neighbors but with one random neighbor every time
-        NN_index = np.array([np.random.choice(self.NN_indices[index], 1)[0]])
-        FN_index = np.array([np.random.choice(self.FN_indices[index], 1)[0]])
+        NN_index = np.random.choice(self.NN_indices[index], 1)[0]
+        FN_index = np.random.choice(self.FN_indices[index], 1)[0]
         NNeighbor = self.dataset.__getitem__(self.NN_index[NN_index])['ts_org']
         if hasattr(self.dataset, 'fneighbors'):
             FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[FN_index])
@@ -255,8 +256,14 @@ class NeighborsDataset(Dataset):
             FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']  # Just to be backward compatible
 
         # This can be used to use all top-k neighbors
-        # NNeighbor = self.dataset.__getitem__(self.NN_index[index])['ts_org']
-        # FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[index])
+        # NNeighbor = []
+        # FNeighbor = []
+        # for id in index:
+        #   NNeighbor.append(self.dataset.__getitem__(self.NN_index[id])['ts_org'])
+        #   if hasattr(self.dataset, 'fneighbors'):
+        #       FNeighbor.append(self.dataset.fneighbors.__getitem__(self.FN_index[id]))
+        #   else:
+        #       FNeighbor.append(self.dataset.__getitem__(self.FN_index[id])['ts_org'])
 
         output['anchor'] = anchor['ts_org']
         output['NNeighbor'] = NNeighbor
@@ -268,5 +275,12 @@ class NeighborsDataset(Dataset):
         return output
 
     def concat_ds(self, new_ds):
-        self.dataset.data = np.concatenate((self.dataset.data, new_ds.dataset.data), axis=0)
+        self.dataset.anchors = np.concatenate((self.dataset.anchors, new_ds.dataset.data), axis=0)
         self.dataset.targets = np.concatenate((self.dataset.targets, new_ds.dataset.targets), axis=0)
+        self.dataset.fneighbors = np.concatenate((self.dataset.fneighbors, new_ds.dataset.fneighbors), axis=0)
+        self.dataset.f_targets = np.concatenate((self.dataset.f_targets, new_ds.dataset.f_targets), axis=0)
+        self.mean += [new_ds.mean]
+        self.std += [new_ds.std]
+
+    def get_info(self):
+        return sum(self.mean)/len(self.mean), sum(self.std)/len(self.std)

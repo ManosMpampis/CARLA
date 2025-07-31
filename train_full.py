@@ -19,7 +19,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # version=args.version
-    version='first_all'
+    # version='first_all'
+    version='temp'
     # project_dir = os.path.dirname(__file__)
     # all_files = os.listdir(os.path.join(project_dir, 'datasets', 'SMD/train'))
     # file_list = [file for file in all_files if file.startswith('machine-')]
@@ -30,17 +31,18 @@ if __name__ == "__main__":
     #     print(fname)
     #     if idx <= 10:
     #         continue
-    fname = "ALL"
-    subprocess.run([
-        'python', 'train_pretext.py',
-        '--config_env', 'configs/env.yml',
-        '--config_exp', 'configs/pretext/carla_pretext_smd.yml',
-        '--fname', fname,
-        '--device', args.device,
-        '--verbose', str(args.verbose),
-        f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
-        '--version', version
-    ], check=True)
+    # fname = "ALL"
+    fname = "machine-1-1.txt"
+    # subprocess.run([
+    #     'python', 'train_pretext.py',
+    #     '--config_env', 'configs/env.yml',
+    #     '--config_exp', 'configs/pretext/carla_pretext_smd.yml',
+    #     '--fname', fname,
+    #     '--device', args.device,
+    #     '--verbose', str(args.verbose),
+    #     f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
+    #     '--version', version
+    # ], check=True)
     
     # Run the classification script
     subprocess.run([

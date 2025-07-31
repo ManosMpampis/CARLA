@@ -152,6 +152,11 @@ class Logger:
             self.pr_curv = self._do_nothing
             self.add_graph = self._do_nothing
 
+    def warn(self, string):
+        self.logger.warning(string)
+
+    def error(self, string):
+        self.logger.error(string)
 
     def info(self, string):
         self.logger.info(string)
@@ -253,6 +258,12 @@ class EmptyLogger:
         self.pr_curv = self._do_nothing
         self.add_graph = self._do_nothing
 
+    def warn(self, string):
+        self.logger.warning(string)
+
+    def error(self, string):
+        self.logger.error(string)
+        
     def info(self, string):
         self.logger.info(string)
 

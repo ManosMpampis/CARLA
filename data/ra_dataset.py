@@ -68,7 +68,12 @@ class SaveAugmentedDataset(Dataset):
         print(f"Data loaded from {filename}")
 
     def get_info(self):
-        return self.anchors.mean(), self.anchors.std()
+        """Per feature mean and std.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: mean, std
+        """
+        return self.anchors.mean((0, 1)), self.anchors.std((0, 1))
     
     def concat_ds(self, new_ds):
         self.anchors = torch.cat((self.anchors, new_ds.anchors), dim=0)

@@ -3,6 +3,8 @@ from torch.utils.data import Dataset
 from utils.mypath import MyPath
 import torch
 
+from utils.utils import EmptyLogger
+
 
 class Yahoo(Dataset):
     """`Yahoo <https://www>`_ Dataset.
@@ -14,11 +16,13 @@ class Yahoo(Dataset):
         transform (callable, optional): A function/transform that takes in a ts
             and returns a transformed version.
     """
-    base_folder = ''
-
-    def __init__(self, fname, root=MyPath.db_root_dir('yahoo'), train=True, transform=None, sanomaly= None, mean_data=None, std_data=None, data=None, label=None):
+    def __init__(self, fname, root=MyPath.db_root_dir('yahoo'), train=True,
+                 transform=None, sanomaly= None, mean_data=None, std_data=None,
+                 data=None, label=None, logger=None):
 
         super(Yahoo, self).__init__()
+        self.logger = EmptyLogger() if logger is None else logger
+        self.base_folder = ''
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly

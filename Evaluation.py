@@ -8,7 +8,7 @@ from sklearn import metrics
 from sklearn.metrics import roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-from utils.utils import log, EmptyLogger, Logger
+from utils.utils import Logger
 
 def adjust_predicts(label, predict=None, calc_latency=False):
     
@@ -146,28 +146,16 @@ if __name__ == "__main__":
                                'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'b_f_1_train']) 
 
     pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
-    
+    database = 'SMD'
+    database = database.lower()
+    version = 'temp'
 
-    # with open('../../datasets/MSL_SMAP/labeled_anomalies.csv', 'r') as file:
-    #     csv_reader = pd.read_csv(file, delimiter=',')
-
-    # data_info = csv_reader[csv_reader['spacecraft'] == 'MSL']
-
-
-    # data_info = os.listdir('../datasets/KPI/train/')
-
-    # data_info = os.listdir(os.path.join('../../datasets', 'UCR'))  
-    # data_info = sorted(data_info)
-    data_info = os.listdir(f'{os.path.dirname(__file__)}/datasets/SMD/train/')
-    files = [file for file in data_info if file.startswith('machine-')]
+    result_file_path = os.path.join(os.path.dirname(__file__), 'results', database, version)
+    data_info = os.listdir(result_file_path)
+    files = [ dir_name for dir_name in data_info if os.path.isdir(os.path.join(result_file_path, dir_name))]
     files = sorted(files)
-    ds_name = 'smd'
 
-    version = 'test'
-    verbose = 2
-    file_path = f"results/{ds_name}/{version}/"
-
-    logger = Logger(version=version, verbose=2, file_path=file_path, use_tensorboard=False, file_name='Evaluation_logs.txt')
+    logger = Logger(version=version, verbose=2, file_path=result_file_path, use_tensorboard=False, file_name='Evaluation_logs.txt')
 
 
     for filename in files: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
@@ -175,8 +163,8 @@ if __name__ == "__main__":
             logger.log(filename)
 
 
-            df_train = pd.read_csv(f"results/{ds_name}/{version}/{filename}/classification/classification_trainprobs.csv")
-            df_test = pd.read_csv(f"results/{ds_name}/{filename}/{version}/{filename}/classification/classification_testprobs.csv")
+            df_train = pd.read_csv(f"results/{database}/{version}/{filename}/classification/classification_trainprobs.csv")
+            df_test = pd.read_csv(f"results/{database}/{version}/{filename}/classification/classification_testprobs.csv")
             cl_num = df_train.shape[1] - 1
 
             df_train['Class'] = np.where((df_train['Class'] == 0), 0, 1)
@@ -265,7 +253,7 @@ if __name__ == "__main__":
             
         
     res_df = add_summary_statistics(res_df)
-    res_df.to_csv(f'results/{ds_name}/{version}/{ds_name}_results_woincon.csv')
+    res_df.to_csv(f'results/{database}/{version}/{database}_results_woincon.csv')
 
     # pa_df = add_summary_statistics_pa(pa_df)
     # pa_df.to_csv('smd_5_results_pa.csv')

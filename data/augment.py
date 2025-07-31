@@ -2,7 +2,7 @@ import random
 import numpy as np
 import torch
 
-from utils.utils import log
+from utils.utils import EmptyLogger
 
 class NoiseTransformation(object):
     def __init__(self, sigma):
@@ -16,7 +16,8 @@ class NoiseTransformation(object):
         return X + noise
 
 class SubAnomaly(object):
-    def __init__(self, portion_len):
+    def __init__(self, portion_len, logger=None):
+        self.logger = EmptyLogger() if logger is None else logger
         self.portion_len = portion_len
         self.anomalies = ["ANOMALY_SEASONAL", "ANOMALY_TREND", "ANOMALY_GLOBAL", "ANOMALY_CONTEXTUAL", "ANOMALY_SHAPELET"]
 
@@ -145,7 +146,7 @@ class SubAnomaly(object):
                                                           subsequence_length=subsequence_length,
                                                           start_index = start_index)
                     case _:
-                        log('Anomaly selection error')
+                        self.logger.error('Anomaly selection error')
 
         else:
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
@@ -186,7 +187,7 @@ class SubAnomaly(object):
                                                       subsequence_length=subsequence_length,
                                                       start_index = start_index)
                 case _:
-                        log('Anomaly selection error')
+                        self.logger.error('Anomaly selection error')
 
         return anomalous_window
 
