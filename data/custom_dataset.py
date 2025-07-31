@@ -222,15 +222,17 @@ class NeighborsDataset(Dataset):
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
         FN_indices = F_indices.copy()  # Nearest neighbor indices (np.array  [len(dataset) x k])
         if topk is not None:
-            print("!!!!!!!!!!!!!!!!!!!!")
+            print("!!!!!!!!!!!!!!!!!!!!")  # Maybe need to remove the first from nn indices
             self.NN_indices = NN_indices[:, :topk]
-            self.FN_indices = FN_indices[:, -topk:]
+            self.FN_indices = FN_indices[:, :topk]  # Was change in making
 
-        num_samples = self.dataset.data.shape[0]
-        NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
-        FN_index = np.array([np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)])
-        self.NNeighbor = self.dataset.anchors[NN_index]
-        self.FNeighbor = self.dataset.fneighbors[FN_index]
+        num_samples = self.dataset.anchors.shape[0]
+        self.NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
+        self.FN_index = np.array([np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)])
+        # NN_index = np.array([np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)])
+        # FN_index = np.array([np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)])
+        # self.NNeighbor = self.dataset.anchors[NN_index]
+        # self.FNeighbor = self.dataset.fneighbors[FN_index]
 
     def __len__(self):
         return len(self.dataset)
@@ -239,8 +241,22 @@ class NeighborsDataset(Dataset):
         output = {}
         anchor = self.dataset.__getitem__(index)
         
-        NNeighbor = self.NNeighbor.__getitem__(index)
-        FNeighbor = self.FNeighbor.__getitem__(index)
+
+        # NNeighbor = self.NNeighbor.__getitem__(index)
+        # FNeighbor = self.FNeighbor.__getitem__(index)
+        
+        # This can be used to use all top-k neighbors but with one random neighbor every time
+        NN_index = np.array([np.random.choice(self.NN_indices[index], 1)[0]])
+        FN_index = np.array([np.random.choice(self.FN_indices[index], 1)[0]])
+        NNeighbor = self.dataset.__getitem__(self.NN_index[NN_index])['ts_org']
+        if hasattr(self.dataset, 'fneighbors'):
+            FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[FN_index])
+        else:
+            FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']  # Just to be backward compatible
+
+        # This can be used to use all top-k neighbors
+        # NNeighbor = self.dataset.__getitem__(self.NN_index[index])['ts_org']
+        # FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[index])
 
         output['anchor'] = anchor['ts_org']
         output['NNeighbor'] = NNeighbor

@@ -79,7 +79,7 @@ class TSRepository(object):
         else:
             return k_furthest_neighbours, k_nearest_neighbours
 
-    def furthest_nearest_neighbors(self, topk, use_defualt=False, mine_with_labels=False, mine_with_no_labels=True):
+    def furthest_nearest_neighbors(self, topk, use_algorithm=0):
         features = self.features
 
         # # Compute pairwise distances
@@ -101,7 +101,7 @@ class TSRepository(object):
         # k_furthest_neighbours = ids[:, -1:]
         # k_nearest_neighbours = ids[:, 1:]
 
-        if use_defualt:
+        if use_algorithm == 0:
             d = features.shape[1]
             index = faiss.IndexFlatL2(d)
             # index.add(features)
@@ -114,7 +114,7 @@ class TSRepository(object):
             k_nearest_neighbours = ids[:, :].reshape(sz, 1)
         
         # Mine interpatation if we do not use data labeling
-        elif mine_with_no_labels:
+        elif use_algorithm == 1:
             d = self.features.shape[1]
             index = faiss.IndexFlatL2(d)
             index.add(self.features.cpu().numpy())
@@ -124,7 +124,7 @@ class TSRepository(object):
             k_furthest_neighbours = k_furthest_neighbours[:, ::-1]
 
         # Mine interpatation if we use data labeling
-        elif mine_with_labels:
+        elif use_algorithm == 2:
             d = self.features.shape[1]
             index = faiss.IndexFlatL2(d)
             index.add(self.nneighbors.cpu().numpy())
@@ -140,11 +140,22 @@ class TSRepository(object):
 
     def reset(self):
         self.ptr = 0
+        if hasattr(self, 'ptr_f'):
+            self.ptr_f = 0
+
+    def add_ffneighbors(self):
+        if not hasattr(self, 'ffeatures'):
+            self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
+            self.f_target = torch.empty(self.n, dtype=torch.long)
+            self.ptr_f = 0
 
     def resize(self, sz):
         self.n = sz * self.n
         self.features = torch.empty(self.n, self.dim, dtype=torch.float)
         self.targets = torch.empty(self.n, dtype=torch.long)
+        if hasattr(self, 'ffeatures'):
+            self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
+            self.f_target = torch.empty(self.n, dtype=torch.long)
         
     def update(self, features, targets):
         b = features.size(0)
@@ -198,7 +209,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
     ts_repository.reset()
     if ts_repository_aug != None: ts_repository_aug.reset()
-    if real_aug: ts_repository.resize(3)
+    if real_aug: ts_repository.add_ffneighbors()  # ts_repository.resize(3)
 
     con_data = torch.tensor([], device="cpu")
     con_target = torch.tensor([], device="cpu")
@@ -223,22 +234,23 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             con_data = torch.cat((con_data, ts_org.cpu()), dim=0)
             con_target = torch.cat((con_target, targets), dim=0)
 
-            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-            targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
+            # TODO: ts_w_augment do not needed because it effectively the same as ts_org
+            # ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            # targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
 
-            output1 = model(ts_w_augment.reshape(b, h, w)).cpu()
-            ts_repository.update(output1, targets)
+            # output = model(ts_w_augment.reshape(b, h, w)).cpu()
+            # ts_repository.update(output, targets)
             # ts_repository_aug.update(output, targets)
 
 
             ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
             targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device="cpu")
-            output2 = model(ts_ss_augment.reshape(b, h, w)).cpu()
+            output = model(ts_ss_augment.reshape(b, h, w)).cpu()
 
             con_fneighbors = torch.cat((con_fneighbors, ts_ss_augment.cpu()), dim=0)
             con_f_target = torch.cat((con_f_target, targets), dim=0)
 
-            ts_repository.update(output2, targets)
+            ts_repository.update_fneighbors(output, targets)
             ts_repository_aug.update_fneighbors(output, targets)
             
     #         if (i % 50 == 0 and i > 0) or (i == len(loader) - 1):

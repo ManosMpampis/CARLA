@@ -340,8 +340,8 @@ class CARLA:
         out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)  # hear we mine from aug and not base
-        
+        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, use_algorithm=1)  # hear we mine from aug and not base
+
         np.save(self.p['pretext_features_train_path'], out_pre)
         np.save(self.p['topk_neighbors_train_path'], knearest)
         np.save(self.p['bottomk_neighbors_train_path'], kfurtherst)
@@ -364,7 +364,7 @@ class CARLA:
         out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk)  # hear we mine from val
+        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk, use_algorithm=0)  # hear we mine from val
         
         np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)
