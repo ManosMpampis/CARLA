@@ -4,9 +4,9 @@ setup: classification
 # Loss
 criterion: classification
 criterion_kwargs:
-   entropy_weight: 2
+   entropy_weight: 5
    consistency_weight: 1
-   inconsistency_weight: 0
+   inconsistency_weight: 1
 
 # Weight update
 update_cluster_head_only: False # Update full network in classification
