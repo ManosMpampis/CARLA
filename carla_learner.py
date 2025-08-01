@@ -12,7 +12,7 @@ from utils.common_config import get_transformations, get_aug_train_dataset,\
                                 get_dataset, get_dataloader,\
                                 get_optimizer, get_model, load_backbone,\
                                 get_criterion, adjust_learning_rate, inject_sub_anomaly
-from utils.evaluate_utils import get_predictions, classification_evaluate
+from utils.evaluate_utils import get_predictions, classification_evaluate, contrastive_evaluate
 from utils.repository import TSRepository, fill_ts_repository
 from utils.train_utils import self_sup_classification_train, pretext_train
 from utils.utils import Logger
@@ -118,6 +118,7 @@ class CARLA:
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Pretex", loss, value, self.epoch)
 
+            contrastive_evaluate(train_dataloader, self.model, self.epoch, self.logger)
             # Checkpoint
             if tmp_loss_dict['Total Loss'] <= self.pretext_best_loss:
                 self.pretext_best_loss = tmp_loss_dict['Total Loss']

@@ -3,6 +3,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import torch
 
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score, average_precision_score, confusion_matrix, roc_curve, precision_recall_curve
@@ -141,11 +142,13 @@ def add_summary_statistics_pa(res_df):
     return res_df
 
 if __name__ == "__main__":
-    res_df = pd.DataFrame(columns=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
-                               'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1',
-                               'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'b_f_1_train']) 
+    columns_names = ['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
+                     'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1',
+                     'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'b_f_1_train']
+    data_list = []
+    # res_df = pd.DataFrame(columns=columns_names) 
 
-    pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
+    # pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
     database = 'SMD'
     database = database.lower()
     version = 'temp'
@@ -162,16 +165,19 @@ if __name__ == "__main__":
         if filename!='.json': # and 'real_' in filename:
             logger.log(filename)
 
+            experiment_folder = f"results/{database}/{version}/{filename}/classification"
 
-            df_train = pd.read_csv(f"results/{database}/{version}/{filename}/classification/classification_trainprobs.csv")
-            df_test = pd.read_csv(f"results/{database}/{version}/{filename}/classification/classification_testprobs.csv")
+            df_train = pd.read_csv(os.path.join(experiment_folder, 'classification_trainprobs.csv'))
+            df_test = pd.read_csv(os.path.join(experiment_folder, 'classification_testprobs.csv'))
+            majority_class = torch.load(os.path.join(experiment_folder, 'model.pth.tar'))['majority_label'].item()
+
             cl_num = df_train.shape[1] - 1
 
             df_train['Class'] = np.where((df_train['Class'] == 0), 0, 1)
             df_train['pred']=df_train[df_train.columns[0:cl_num]].idxmax(axis=1)
 
             score_col = df_train['pred'].value_counts().idxmax()
-            
+            score_col = str(majority_class)
             train_scores = 1-df_train[score_col]
             train_precision, train_recall, train_thresholds = precision_recall_curve(df_train['Class'], train_scores, pos_label=1)
             train_f1_scores = 2 * train_precision * train_recall / (train_precision + train_recall)
@@ -234,10 +240,18 @@ if __name__ == "__main__":
                 best_f1_train = 2 * (best_pre_train * best_rec_train) / (best_pre_train + best_rec_train) if (best_pre_train + best_rec_train) > 0 else 0
             except ValueError:
                 pass
-
-            new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1, best_tp_train, best_tn_train, best_fp_train, best_fn_train, best_pre_train, best_rec_train, best_f1_train],
-                                    index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1', 'best_tp_train', 'best_tn_train', 'best_fp_train', 'best_fn_train', 'best_pre_train', 'best_rec_train', 'best_f1_train'])
-            res_df = res_df._append(new_row, ignore_index=True)
+            pd_data = {
+                'name': filename,
+                'tp': tp, 'tn': tn, 'fp': fp, 'fn': fn,
+                'roc': roc_auc, 'pr': pr_auc,
+                'best_tp': best_tp, 'best_tn': best_tn, 'best_fp': best_fp, 'best_fn': best_fn,
+                'best_pre': best_pre, 'best_rec': best_rec, 'b_f_1': best_f1,
+                'best_tp_train': best_tp_train, 'best_tn_train': best_tn_train, 'best_fp_train': best_fp_train, 'best_fn_train': best_fn_train,
+                'best_pre_train': best_pre_train, 'best_rec_train': best_rec_train, 'b_f_1_train': best_f1_train
+            }
+            data_list.append(pd_data)
+            # new_row = pd.DataFrame(pd_data, columns=columns_names, index=[0])
+            # res_df = res_df._append(new_row, ignore_index=True)
             
             
             # pa_f1 = -1
@@ -251,7 +265,7 @@ if __name__ == "__main__":
             #                         index=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])   
             # pa_df = pa_df._append(new_row1, ignore_index=True)
             
-        
+    res_df = pd.DataFrame(data_list, columns=columns_names, index=[0])
     res_df = add_summary_statistics(res_df)
     res_df.to_csv(f'results/{database}/{version}/{database}_results_woincon.csv')
 

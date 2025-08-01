@@ -13,24 +13,48 @@ from losses.losses import entropy
 
 
 @torch.no_grad()
-def contrastive_evaluate(val_loader, model, ts_repository):
-    top1 = AverageMeter('Acc@1', ':6.2f')
+def contrastive_evaluate(dataloader, model, epoch, logger=None):
+    # top1 = AverageMeter('Acc@1', ':6.2f')
+    logger = EmptyLogger() if logger is None else logger
+
     model.eval()
     device = next(model.parameters()).device
-
-    for batch in val_loader:
+    all_feats = []
+    all_meta = []
+    for batch in dataloader:
         ts_org = batch['ts_org'].to(device, non_blocking=True)
-        target = batch['target'].to(device, non_blocking=True)
-        
         b, w, h = ts_org.shape
-        output = model(ts_org.view(b, h, w))
+        target = batch['target'].to(device, non_blocking=True)
+        target_o = [str(l) for l in target.tolist()]
+        # color = torch.zeros(b, 3, dtype=torch.float, device='cpu')
+        # color[:, 0] = target[:]
+        # color = color.unsqueeze(0)
+        vertices_org = model(ts_org.view(b, h, w)).cpu()
 
-        output = ts_repository.weighted_knn(output)
+        ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+        target_w = [str(l*2) for l in torch.ones_like(target).tolist()]
+        # color_w = torch.zeros(b, 3, dtype=torch.float, device='cpu')
+        # color_w[:, 1] = 1
+        # color_w = color_w.unsqueeze(0)
+        vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
 
-        acc1 = 100*torch.mean(torch.eq(output, target).float())
-        top1.update(acc1.item(), ts_org.size(0))
+        ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+        target_ss = [str(l) for l in torch.ones_like(target).tolist()]
+        # color_ss = torch.ones(b, 3, dtype=torch.float, device='cpu')
+        # color_ss[:, 2] = 1
+        # color_ss = color_ss.unsqueeze(0)
+        vertices_ss = model(ts_ss_augment.view(b, h, w)).cpu()
 
-    return top1.avg
+        all_feats.extend([vertices_org, vertices_w, vertices_ss])
+        all_meta.extend([target_o, target_w, target_ss])
+
+        # output = 3 (eno kanonika 4) na ta peraso se 3D kai na ta valo sto summary me targets=0,1,2 kai diaforetika xromata
+        # acc1 = 100*torch.mean(torch.eq(output, target).float())
+        # top1.update(acc1.item(), ts_org.size(0))
+    feats = torch.cat(all_feats, dim=0)
+    metadata = [m for group in all_meta for m in group]
+    logger.add_embedding("Cluster", feats, metadata, epoch)
+    return   # top1.avg
 
 
 @torch.no_grad()

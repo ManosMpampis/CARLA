@@ -144,6 +144,7 @@ class Logger:
 
             self.pr_curv = self._pr_curv
             self.add_graph = self._add_graph
+            self.add_embedding = self._add_embedding
         else:
             self.log_metrics = self._do_nothing
             self.scalar_summary = self._do_nothing
@@ -151,6 +152,7 @@ class Logger:
 
             self.pr_curv = self._do_nothing
             self.add_graph = self._do_nothing
+            self.add_embedding = self._do_nothing
 
     def warn(self, string):
         self.logger.warning(string)
@@ -186,6 +188,9 @@ class Logger:
     def _add_figure(self, tag, figure, step):
         import matplotlib
         self.experiment.add_figure(tag, figure, step)
+
+    def _add_embedding(self, tag, vertices, labels, step):
+        self.experiment.add_embedding(mat=vertices, metadata=labels, tag=tag, global_step=step)
 
     def _pr_curv(self, tag, labels, propabilites, step):
         self.experiment.add_pr_curve(tag, labels, propabilites, step)
@@ -257,6 +262,7 @@ class EmptyLogger:
 
         self.pr_curv = self._do_nothing
         self.add_graph = self._do_nothing
+        self.add_embedding = self._do_nothing
 
     def warn(self, string):
         self.logger.warning(string)

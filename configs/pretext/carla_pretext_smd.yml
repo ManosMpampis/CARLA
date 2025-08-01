@@ -5,7 +5,7 @@ setup: pretext
 backbone: resnet_ts
 model_kwargs:
   head: mlp
-  features_dim: 4
+  features_dim: 3
 res_kwargs:
   in_channels: 38
   mid_channels: 4
