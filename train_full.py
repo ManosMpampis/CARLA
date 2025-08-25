@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     data_base = 'SMD'
     # version=args.version
-    version='first'
+    version='debug_optim_zero_decay_correct_model'
     # version='temp'
     project_dir = os.path.dirname(__file__)
     all_files = os.listdir(os.path.join(project_dir, 'datasets', data_base.upper(), 'train'))
@@ -28,34 +28,34 @@ if __name__ == "__main__":
     file_list = sorted(file_list)
     # print(file_list)
     
-    for idx, fname in enumerate(file_list):
-        print(fname)
+    # for idx, fname in enumerate(file_list):
+        # print(fname)
     #     if idx <= 10:
     #         continue
     # fname = "ALL"
-    # fname = "machine-1-1.txt"
-        subprocess.run([
-            'python', 'train_pretext.py',
-            '--config_env', 'configs/env.yml',
-            '--config_exp', 'configs/pretext/carla_pretext_smd.yml',
-            '--fname', fname,
-            '--device', args.device,
-            '--verbose', str(args.verbose),
-            f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
-            '--version', version
-        ], check=True)
+    fname = "machine-1-2.txt"
+    subprocess.run([
+        'python', 'train_pretext.py',
+        '--config_env', 'configs/env.yml',
+        '--config_exp', 'configs/pretext/carla_pretext_smd.yml',
+        '--fname', fname,
+        '--device', args.device,
+        '--verbose', str(args.verbose),
+        f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
+        '--version', version
+    ], check=True)
         
         # Run the classification script
-        subprocess.run([
-            'python', 'train_classification.py',
-            '--config_env', 'configs/env.yml',
-            '--config_exp', 'configs/classification/carla_classification_smd.yml',
-            '--fname', fname,
-            '--device', args.device,
-            '--verbose', str(args.verbose),
-            f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
-            '--version', version
-        ], check=True)
+        # subprocess.run([
+        #     'python', 'train_classification.py',
+        #     '--config_env', 'configs/env.yml',
+        #     '--config_exp', 'configs/classification/carla_classification_smd.yml',
+        #     '--fname', fname,
+        #     '--device', args.device,
+        #     '--verbose', str(args.verbose),
+        #     f'{"--tensorboard" if args.tensorboard else "--no-tensorboard"}',
+        #     '--version', version
+        # ], check=True)
     
     # fname = "machine-1-1.txt"  # Example file name, replace with your logic to select files
     # fname = "ALL"

@@ -1,5 +1,4 @@
 import random
-import numpy as np
 import torch
 
 from utils.utils import EmptyLogger
@@ -12,7 +11,7 @@ class NoiseTransformation(object):
         """
         Adding random Gaussian noise with mean 0
         """
-        noise = torch.normal(mean=torch.zeros_like(X, device=X.device), std=torch.ones_like(X, device=X.device) * self.sigma)
+        noise = torch.empty_like(X).normal_(0.0, float(self.sigma))
         return X + noise
 
 class SubAnomaly(object):
@@ -48,6 +47,9 @@ class SubAnomaly(object):
         :return: The modified window with the anomaly injected.
         """
 
+        # Clone the input tensor to avoid modifying the original data
+        # window = window.clone() #.copy()
+
         # Set the subsequence_length if not provided
         if subsequence_length is None:
             min_len = int(window.shape[0] * 0.1)
@@ -60,7 +62,7 @@ class SubAnomaly(object):
 
         # Set the scale_factor if not provided
         if scale_factor is None:
-            scale_factor = np.random.uniform(0.1, 2.0, window.shape[1])
+            scale_factor = torch.empty(window.size(1), device=window.device, dtype=window.dtype).uniform_(0.1, 2.0)
 
         # Randomly select the start index for the subsequence
         if start_index is None:
@@ -73,7 +75,7 @@ class SubAnomaly(object):
         anomalous_subsequence = window[start_index:end_index]
 
         # Concatenate the subsequence by the compression factor, and then subsample to compress it
-        anomalous_subsequence = anomalous_subsequence.repeat(compression_factor, 1)  # cuda! PyTorch equivalent of np.tile()
+        anomalous_subsequence = anomalous_subsequence.repeat(compression_factor, 1)
         anomalous_subsequence = anomalous_subsequence[::compression_factor]
 
         # Scale the subsequence and replace the original subsequence with the anomalous subsequence
@@ -81,8 +83,8 @@ class SubAnomaly(object):
 
         # Trend
         if trend_factor is None:
-            trend_factor = np.random.normal(1, 0.5)
-        coef = -1 if (np.random.uniform() < 0.5) else 1
+            trend_factor = torch.normal(mean=1.0, std=0.5, size=())
+        coef = -1 if (torch.empty(1, device=window.device, dtype=window.dtype).uniform_() < 0.5) else 1
         
         anomalous_subsequence = anomalous_subsequence + coef * trend_factor
 
@@ -103,13 +105,15 @@ class SubAnomaly(object):
         max_len = int(anomalous_window.shape[0] * 0.9)
         subsequence_length = torch.randint(min_len, max_len, (1,))
         start_index = torch.randint(0, len(anomalous_window) - subsequence_length, (1,))
+        anomaly_type = random.choice(self.anomalies)
+
         if (anomalous_window.ndim > 1):
             num_features = anomalous_window.shape[1]
             random_augmented_features = torch.randint(int(num_features/10), int(num_features/2), (1,)) #(int(num_features/5), int(num_features/2))
             list_non_overlaped_features = random.sample([k for k in range(num_features)], random_augmented_features)
             for augmented_feature in list_non_overlaped_features:
                 temp_win = anomalous_window[:, augmented_feature].reshape((anomalous_window.shape[0], 1))
-                match random.choice(self.anomalies):
+                match anomaly_type:
                     case "ANOMALY_SEASONAL":
                         anomalous_window[:, augmented_feature] = self.inject_frequency_anomaly(temp_win,
                                                               scale_factor=1,
@@ -150,7 +154,7 @@ class SubAnomaly(object):
 
         else:
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
-            match random.choice(self.anomalies):
+            match anomaly_type:
                 case "ANOMALY_SEASONAL":
                     anomalous_window = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,

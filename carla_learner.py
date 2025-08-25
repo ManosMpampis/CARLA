@@ -84,7 +84,7 @@ class CARLA:
 
         # Optimizer
         if not hasattr(self, 'optimizer'):
-                self.optimizer = get_optimizer(self.p, self.model, False)
+            self.optimizer = get_optimizer(self.p, self.model, False)
 
         # Loss function
         criterion = get_criterion(self.p)

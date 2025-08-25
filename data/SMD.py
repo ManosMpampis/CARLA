@@ -50,8 +50,8 @@ class SMD(Dataset):
             self.std = np.std(temp , axis=0)
             labels = np.zeros_like(temp)
             
-            self.std[self.std == 0.0] = 1.0
-            temp = (temp - self.mean) / self.std
+            # self.std[self.std == 0.0] = 1.0
+            # temp = (temp - self.mean) / self.std
         else:
             if not self.std.all():
                 self.logger.log('SMD: sstd contains zeros')
