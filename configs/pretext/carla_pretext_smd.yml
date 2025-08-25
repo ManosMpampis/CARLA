@@ -30,7 +30,7 @@ optimizer_kwargs:
   #nesterov: False
   #momentum: 0.9
   lr: 0.001
-  weight_decay: 0.01
+  weight_decay: 0
 scheduler: cosine
 scheduler_kwargs:
   lr_decay_rate: 0.01
