@@ -13,10 +13,8 @@ from losses.losses import entropy
 
 
 @torch.no_grad()
-def contrastive_evaluate(dataloader, model, epoch, logger=None):
+def contrastive_evaluate(dataloader, model):
     # top1 = AverageMeter('Acc@1', ':6.2f')
-    logger = EmptyLogger() if logger is None else logger
-
     model.eval()
     device = next(model.parameters()).device
     all_feats = []
@@ -53,8 +51,7 @@ def contrastive_evaluate(dataloader, model, epoch, logger=None):
         # top1.update(acc1.item(), ts_org.size(0))
     feats = torch.cat(all_feats, dim=0)
     metadata = [m for group in all_meta for m in group]
-    logger.add_embedding("Cluster", feats, metadata, epoch)
-    return   # top1.avg
+    return   feats, metadata
 
 
 @torch.no_grad()

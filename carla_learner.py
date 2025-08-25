@@ -118,7 +118,8 @@ class CARLA:
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Pretex", loss, value, self.epoch)
 
-            contrastive_evaluate(train_dataloader, self.model, self.epoch, self.logger)
+            feats, metadata = contrastive_evaluate(train_dataloader, self.model)
+            self.logger.add_embedding("Cluster", feats, metadata, self.epoch)
             # Checkpoint
             if tmp_loss_dict['Total Loss'] <= self.pretext_best_loss:
                 self.pretext_best_loss = tmp_loss_dict['Total Loss']
