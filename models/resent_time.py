@@ -18,17 +18,6 @@ class Conv1dSamePadding(nn.Conv1d):
                           dilation=dilation, groups=self.groups)
         return output
 
-def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
-    # stride and dilation are expected to be tuples.
-    kernel, dilation, stride = weight.size(2), dilation[0], stride[0]
-    l_out = l_in = input.size(2)
-    padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-    input = F.pad(input, [0, padding % 2])
-
-    return F.conv1d(input=input, weight=weight, bias=bias, stride=stride,
-                    padding=(padding // 2, ),
-                    dilation=dilation, groups=groups)
-
 class ConvBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
@@ -113,7 +102,7 @@ class ResNetRepresentation(nn.Module):
         The number of output classes
     """
 
-    def __init__(self, in_channels: int, mid_channels: int = 4) -> None:
+    def __init__(self, in_channels: int, mid_channels: list[int] = [4, 8]) -> None:
         super().__init__()
 
         # for easier saving and loading
@@ -121,11 +110,18 @@ class ResNetRepresentation(nn.Module):
             'in_channels': in_channels,
         }
 
-        self.layers = nn.Sequential(*[
-            ResNetBlock(in_channels=in_channels, out_channels=mid_channels),
-            ResNetBlock(in_channels=mid_channels, out_channels=mid_channels * 2),
-            ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
-        ])
+        mid_channels.insert(0, in_channels)
+
+        self.layers = nn.Sequential()
+        self.layers.add_module(f"layer_0", ResNetBlock(in_channels=in_channels, out_channels=mid_channels[0]))
+        for idx in range(len(mid_channels)-1):
+            self.layers.add_module(f"layer_{idx + 1}", ResNetBlock(in_channels=mid_channels[idx], out_channels=mid_channels[idx+1]))
+
+        # self.layers2 = nn.Sequential(*[
+        #     ResNetBlock(in_channels=in_channels, out_channels=mid_channels),
+        #     ResNetBlock(in_channels=mid_channels, out_channels=mid_channels * 2),
+        #     ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
+        # ])
 
         # self.avgpool = nn.AdaptiveAvgPool1d(1)
 
@@ -136,4 +132,4 @@ class ResNetRepresentation(nn.Module):
         return z
 
 def resnet_ts(**kwargs):
-    return {'backbone': ResNetRepresentation(**kwargs), 'dim': kwargs['mid_channels']*2}
+    return {'backbone': ResNetRepresentation(**kwargs), 'dim': kwargs['mid_channels'][-1]}
