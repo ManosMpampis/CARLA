@@ -112,6 +112,7 @@ class SubAnomaly(object):
             random_augmented_features = torch.randint(int(num_features/10), int(num_features/2), (1,)) #(int(num_features/5), int(num_features/2))
             list_non_overlaped_features = random.sample([k for k in range(num_features)], random_augmented_features)
             for augmented_feature in list_non_overlaped_features:
+                # anomaly_type = random.choice(self.anomalies)
                 temp_win = anomalous_window[:, augmented_feature].reshape((anomalous_window.shape[0], 1))
                 match anomaly_type:
                     case "ANOMALY_SEASONAL":
@@ -153,6 +154,7 @@ class SubAnomaly(object):
                         self.logger.error('Anomaly selection error')
 
         else:
+            anomaly_type = random.choice(self.anomalies)
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
             match anomaly_type:
                 case "ANOMALY_SEASONAL":
