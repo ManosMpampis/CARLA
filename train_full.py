@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     data_base = 'SMD'
     # version=args.version
-    version='debug_optim_zero_decay_correct_model'
+    version='loss_research/zero_margin_neg_boosting7_big_train_adam'
     # version='temp'
     project_dir = os.path.dirname(__file__)
     all_files = os.listdir(os.path.join(project_dir, 'datasets', data_base.upper(), 'train'))

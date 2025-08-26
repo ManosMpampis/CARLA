@@ -90,7 +90,7 @@ class ClassificationLoss(nn.Module):
 
 class PretextLoss(nn.Module):
     # Based on the implementation of SupContrast
-    def __init__(self, bs, temperature, initial_margin=1.0, adjust_factor=0.1, paper_loss=False):
+    def __init__(self, bs, temperature, initial_margin=0.0, adjust_factor=0.1, paper_loss=False):
         super(PretextLoss, self).__init__()
         self.temperature = temperature 
         self.bs = bs
@@ -114,14 +114,19 @@ class PretextLoss(nn.Module):
         positive = F.normalize(features_pos, dim=-1)
         negative = F.normalize(features_subseq, dim=-1)
 
-        self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
-
-        positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
+        # self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
+        # self.margin = self.margin - self.adjust_factor * current_loss
+        positive_distance = (torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature)
         # Hear we find all the distances of negatives to anchors and corelate each anchor with the lowest distance negative example
         negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature  # the substraction provides the distance of each anchor to all negative examples
+        # eye = torch.eye(self.bs, device=negative_distance.device, dtype=torch.bool)
+        # negative_distance = negative_distance.masked_fill(eye, float("inf"))
         # We find the closest negative example for each anchor to push it even further away
-        hard_negative_distance = torch.min(negative_distance, dim=1)[0]  # Find the closest negative example for each anchor to push it even further away
-        loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
+        hard_negative_distance, hard_neg_idx = torch.min(negative_distance, dim=1)
+        hard_negative_distance = hard_negative_distance * 7 # Find the closest negative example for each anchor to push it even further away
+        # loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
+        loss = self.margin + positive_distance - hard_negative_distance
+        # loss = self.margin + 0 - hard_negative_distance
         loss = torch.mean(loss)
         positive_distance = torch.mean(positive_distance)
         hard_negative_distance = torch.mean(hard_negative_distance)
