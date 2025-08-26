@@ -39,6 +39,10 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         output = model(input_)
         
         loss, positive_distance, hard_negative_distance = criterion(output, prev_loss)
+
+        loss.backward()
+        optimizer.step()
+
         margin = criterion.margin
 
         total_l.update(loss.item())
@@ -46,10 +50,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         negative_l.update(hard_negative_distance.item())
         margin_l.update(margin)
         prev_loss = loss.item()
-
-        loss.backward()
-        optimizer.step()
-
+        
         if i % 10 == 0:
             progress.display(i)
 
