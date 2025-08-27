@@ -22,17 +22,16 @@ num_classes: 10
 criterion: pretext
 criterion_kwargs:
   temperature: 0.4
-  margin: 0.15
   pos_weight: 1
   neg_weight: 1.5
 
 # Hyperparameters
 epochs: 10000
-optimizer: adam
+optimizer: sgd
 optimizer_kwargs:
   #nesterov: False
   #momentum: 0.9
-  lr: 0.0005
+  lr: 0.01
   weight_decay: 0
 scheduler: cosine_restart
 scheduler_kwargs:
