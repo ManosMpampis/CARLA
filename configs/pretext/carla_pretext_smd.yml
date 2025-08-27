@@ -22,6 +22,8 @@ num_classes: 10
 criterion: pretext
 criterion_kwargs:
   temperature: 0.4
+  pos_weight: 1
+  neg_weight: 1.5
 
 # Hyperparameters
 epochs: 1000
