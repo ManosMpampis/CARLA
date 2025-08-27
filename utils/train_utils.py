@@ -21,6 +21,29 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
 
     model.train()
     device = next(model.parameters()).device
+
+    # with torch.no_grad():
+    #     for i, batch in enumerate(train_loader):
+    #         ts_org = batch['ts_org'].float().to(device, non_blocking=True)
+    #         ts_w_augmented = batch['ts_w_augment'].float().to(device, non_blocking=True)
+    #         ts_ss_augmented = batch['ts_ss_augment'].float().to(device, non_blocking=True)
+
+    #         if ts_org.ndim == 3:
+    #             b, w, h = ts_org.shape
+    #         else:
+    #             b, w = ts_org.shape
+    #             h =1
+
+    #         input_: Tensor = torch.cat([ts_org, ts_w_augmented, ts_ss_augmented], dim=0).view(b * 3, h, w)
+
+    #         output = model(input_)
+            
+    #         _, positive_distance, _ = criterion(output, prev_loss)
+
+    #         positive_l.update(positive_distance.item())
+
+    # criterion.margin = positive_l.avg
+    # positive_l.reset()
     for i, batch in enumerate(train_loader):
         ts_org = batch['ts_org'].float().to(device, non_blocking=True)
         ts_w_augmented = batch['ts_w_augment'].float().to(device, non_blocking=True)
