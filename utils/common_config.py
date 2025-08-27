@@ -252,68 +252,47 @@ def get_optimizer(p, model, cluster_head_only=False):
 
     return optimizer
 
-class WarmupScheduler(torch.optim.lr_scheduler.LRScheduler):
-    def __init__(self, optimizer, warmup_epochs, total_epochs, scheduler, last_epoch=-1):
-        self.warmup_epochs = warmup_epochs
-        self.total_epochs = total_epochs
-        self.scheduler = scheduler
-        super().__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        if self.last_epoch < self.warmup_epochs:
-            return [group["lr"] * (self.last_epoch / self.warmup_epochs) for group in self.optimizer.param_groups]
-        else:
-            return self.scheduler.get_lr()
-
-    def step(self):
-        self.last_epoch += 1
-        self.optimizer.step()
-        self.scheduler.step()
-
-def get_lr_scheduler(p, optimizer):
-    if p['scheduler'] == 'cosine':
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, **p['scheduler_kwargs'])
-    elif p['scheduler'] == 'step':
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **p['scheduler_kwargs'])
-    elif p['scheduler'] == 'constant':
-        lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, **p['scheduler_kwargs'])
-    elif p['scheduler'] == 'linear':
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, **p['scheduler_kwargs'])
-    elif p['scheduler'] == 'cosine_restart':
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, **p['scheduler_kwargs'])
-    else:
-        raise ValueError('Invalid scheduler {}'.format(p['scheduler']))
-
-    return lr_scheduler 
-
 def adjust_learning_rate(p, optimizer, epoch):
     lr = p['optimizer_kwargs']['lr']
-
-    if p['scheduler'] == 'cosine':
-        eta_min = lr * (p['scheduler_kwargs']['lr_decay_rate'] ** 3)
-        lr = eta_min + (lr - eta_min) * (1 + math.cos(math.pi * epoch / p['epochs'])) / 2
-
-    elif p['scheduler'] == 'step':
-        steps = np.sum(epoch > np.array(p['scheduler_kwargs']['lr_decay_epochs']))
-        if steps > 0:
-            lr = lr * (p['scheduler_kwargs']['lr_decay_rate'] ** steps)
-
-    elif p['scheduler'] == 'constant':
-        lr = lr
-    elif p['scheduler'] == 'linear':
-        lr = lr * (1 - epoch / p['epochs'])
-    elif p['scheduler'] == 'warmup_cosine':
-        warmup_epochs = p['scheduler_kwargs'].get('warmup_epochs', 0)
-        if epoch < warmup_epochs:
-            lr = lr * (epoch / warmup_epochs)
-        else:
-            eta_min = lr * (p['scheduler_kwargs']['lr_decay_rate'] ** 3)
-            lr = eta_min + (lr - eta_min) * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (p['epochs'] - warmup_epochs))) / 2
-    elif p['scheduler'] == 'cosine_restart':
-        lr = lr * (1 + math.cos(math.pi * epoch / p['epochs'])) / 2
-        
+    warmup_epochs = p['scheduler_kwargs'].get('lr_warmup_epochs', 0)
+    if epoch < warmup_epochs:
+        lr = lr * (epoch / warmup_epochs)
     else:
-        raise ValueError('Invalid learning rate schedule {}'.format(p['scheduler']))
+        epoch -= warmup_epochs
+        if p['scheduler'] == 'cosine':
+            eta_min = p['scheduler_kwargs']['lr_eta_min']
+            lr = eta_min + (lr - eta_min) * (1 + math.cos(math.pi * epoch / p['epochs'])) / 2
+        elif p['scheduler'] == 'cosine_restart':
+            eta_min = p['scheduler_kwargs']['lr_eta_min']
+            cycle_period = p['scheduler_kwargs']['T_period']
+            cycle_period_mul = p['scheduler_kwargs'].get('T_mul', 1)
+
+            cycle = 0
+            if epoch < cycle_period:
+                cycle = 0
+            else:
+                epoch -= cycle_period
+                cycle = 1
+                cycle_period *= cycle_period_mul
+                while True:
+                    if epoch > cycle_period:
+                        epoch -= cycle_period
+                        cycle += 1
+                        cycle_period *= cycle_period_mul
+                    else:
+                        break
+
+            lr = eta_min + (lr - eta_min) * (1 + math.cos(math.pi * epoch / cycle_period)) / 2
+        elif p['scheduler'] == 'step':
+            steps = np.sum(epoch > np.array(p['scheduler_kwargs']['lr_decay_epochs']))
+            if steps > 0:
+                lr = lr * (p['scheduler_kwargs']['lr_decay_rate'] ** steps)
+        elif p['scheduler'] == 'constant':
+            lr = lr
+        elif p['scheduler'] == 'linear':
+            lr = lr * (1 - epoch / p['epochs'])
+        else:
+            raise ValueError('Invalid learning rate schedule {}'.format(p['scheduler']))
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr

@@ -31,9 +31,14 @@ optimizer_kwargs:
   #momentum: 0.9
   lr: 0.001
   weight_decay: 0
-scheduler: cosine
+scheduler: cosine_restart
 scheduler_kwargs:
+  lr_warmup_epochs: 0
+  lr_eta_min: 0.000000001
+  lr_decay_epochs: [10, 20]
   lr_decay_rate: 0.01
+  T_period: 50
+  T_mul: 2
 batch_size: 50
 num_workers: 0
 
