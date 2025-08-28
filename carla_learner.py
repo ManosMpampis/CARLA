@@ -107,6 +107,9 @@ class CARLA:
             self.pretext_best_loss = float("inf")
             self.pretext_previous_loss = torch.tensor(float(0), device=self.device)
 
+            feats, metadata = contrastive_evaluate(train_dataloader, self.model)
+            self.logger.add_embedding("Cluster", feats, metadata, "Pretext Initial")
+
         self.logger.log('\n- Training:')        
         end_epoch = self.p['epochs']
         for epoch in range(self.start_epoch, end_epoch):
