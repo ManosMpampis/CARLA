@@ -310,7 +310,7 @@ class CARLA:
             self.start_epoch = checkpoint['epoch']
             self.epoch = checkpoint['epoch']
             if type == "classification":
-                self.majority_label = checkpoint['normal_label']
+                self.majority_label = checkpoint['majority_label']
             if type == "pretext":
                 self.pretext_best_loss = checkpoint['pretext_best_loss']
                 self.pretext_previous_loss = checkpoint['pretext_previous_loss'].to(self.device, non_blocking=True)

@@ -16,13 +16,13 @@ num_heads: 1 # Only use one head
 backbone: resnet_ts
 res_kwargs:
   in_channels: 38
-  mid_channels: [4, 8]
+  mid_channels: [38, 38]
 amp: False # Not working for now
 
 # Dataset
 train_db_name: smd
 val_db_name: smd
-preload_aug: False
+preload_aug: True
 window_size: 200
 window_stride: 5
 num_classes: 10
@@ -34,16 +34,25 @@ transformation_kwargs:
    noise_sigma: 0.01
 
 # Hyperparameters
+epochs: 2000
 optimizer: adam
 optimizer_kwargs:
-   lr: 0.01
-   weight_decay: 0.001
-epochs: 50
-batch_size: 516
-num_workers: 16
+  #nesterov: False
+  #momentum: 0.9
+  lr: 0.0005
+  weight_decay: 0.001
 
 # Scheduler
-scheduler: constant
+scheduler: cosine_restart
+scheduler_kwargs:
+  lr_warmup_epochs: 20
+  lr_eta_min: 0.000000001
+  T_period: 50
+  T_mul: 2
+  lr_decay_epochs: [10, 20]
+  lr_decay_rate: 0.01
+batch_size: 50
+num_workers: 0
 
 anomaly_kwargs:
    portion: 0.99

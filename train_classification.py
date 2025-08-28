@@ -13,7 +13,6 @@ if __name__ == "__main__":
     parser.add_argument('--version', help='Add specific version name in the experiment', type=str)
     args = parser.parse_args()
 
-    print(args.tensorboard)
     carla = CARLA(args.config_env, args.config_exp, args.fname, args.device, args.verbose, args.tensorboard, version=args.version)
     carla.train_classification()
 

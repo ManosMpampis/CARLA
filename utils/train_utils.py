@@ -134,10 +134,8 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, sca
                 nneighbors_output = model(nneighbors)
                 fneighbors_output = model(fneighbors)
 
-        # Loss for every head
-        total_loss, consistency_loss, inconsistency_loss, entropy_loss = [], [], [], []
-        
-        total_loss, consistency_loss, inconsistency_loss, entropy_loss = criterion(anchors_output, nneighbors_output, fneighbors_output)
+            # Loss for every head
+            total_loss, consistency_loss, inconsistency_loss, entropy_loss = criterion(anchors_output, nneighbors_output, fneighbors_output)
 
             # Aggregate losses and check for NaN
             assert(not torch.isnan(total_loss))
@@ -157,5 +155,6 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, sca
 
         if i % 100 == 0:
             progress.display(i)
+        
     progress.display(i+1)
     return {"Total Loss": total_losses.avg, "Consistency Loss":consistency_losses.avg, "Incosistency Loss": inconsistency_losses.avg, "Entropy Loss": entropy_losses.avg}
