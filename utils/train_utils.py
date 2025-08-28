@@ -5,7 +5,7 @@ from torch import Tensor
 from utils.utils import AverageMeter, ProgressMeter
 
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, logger=None):
+def pretext_train(train_loader, model, criterion, optimizer, scaler, epoch, prev_loss, logger=None):
     """ 
     Train epoch w/ pretext-Loss
     """
@@ -59,12 +59,13 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
 
         optimizer.zero_grad()
 
-        output = model(input_)
-        
-        loss, positive_distance, hard_negative_distance = criterion(output, prev_loss)
+        with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=scaler.is_enabled()):
+            output = model(input_)
+            loss, positive_distance, hard_negative_distance = criterion(output, prev_loss)
 
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         margin = criterion.margin
 
@@ -80,7 +81,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
     return {'Total Loss': total_l.avg, 'Positive Distance': positive_l.avg, 'Hard Negative Distance': negative_l.avg, 'margin': margin_l.avg}
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False, logger=None):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, scaler, epoch, update_cluster_head_only=False, logger=None):
     """ 
     Train epoch w/ classification-Loss
     """
@@ -117,41 +118,42 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
 
         optimizer.zero_grad()
 
-        if update_cluster_head_only: # Only calculate gradient for backprop of linear layer
-            with torch.no_grad():
-                anchors_features = model(anchors, forward_pass='backbone')
-                nneighbors_features = model(nneighbors, forward_pass='backbone')
-                fneighbors_features = model(fneighbors, forward_pass='backbone')
+        with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=scaler.is_enabled()):
+            if update_cluster_head_only: # Only calculate gradient for backprop of linear layer
+                with torch.no_grad():
+                    anchors_features = model(anchors, forward_pass='backbone')
+                    nneighbors_features = model(nneighbors, forward_pass='backbone')
+                    fneighbors_features = model(fneighbors, forward_pass='backbone')
 
-            anchors_output = model(anchors_features, forward_pass='head')
-            nneighbors_output = model(nneighbors_features, forward_pass='head')
-            fneighbors_output = model(fneighbors_features, forward_pass='head')
+                anchors_output = model(anchors_features, forward_pass='head')
+                nneighbors_output = model(nneighbors_features, forward_pass='head')
+                fneighbors_output = model(fneighbors_features, forward_pass='head')
 
-        else: # Calculate gradient for backprop of complete network
-            anchors_output = model(anchors)
-            nneighbors_output = model(nneighbors)
-            fneighbors_output = model(fneighbors)
+            else: # Calculate gradient for backprop of complete network
+                anchors_output = model(anchors)
+                nneighbors_output = model(nneighbors)
+                fneighbors_output = model(fneighbors)
 
         # Loss for every head
         total_loss, consistency_loss, inconsistency_loss, entropy_loss = [], [], [], []
         
         total_loss, consistency_loss, inconsistency_loss, entropy_loss = criterion(anchors_output, nneighbors_output, fneighbors_output)
 
-        # Aggregate losses and check for NaN
-        assert(not torch.isnan(total_loss))
-        assert(not torch.isnan(consistency_loss))
-        assert(not torch.isnan(inconsistency_loss))
-        assert(not torch.isnan(entropy_loss))
+            # Aggregate losses and check for NaN
+            assert(not torch.isnan(total_loss))
+            assert(not torch.isnan(consistency_loss))
+            assert(not torch.isnan(inconsistency_loss))
+            assert(not torch.isnan(entropy_loss))
+            assert total_loss.requires_grad, "Total loss does not require grad!"
+
+        scaler.scale(total_loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         total_losses.update(total_loss.item())
         consistency_losses.update(consistency_loss.item())
         inconsistency_losses.update(inconsistency_loss.item())
         entropy_losses.update(entropy_loss.item())
-
-        assert total_loss.requires_grad, "Total loss does not require grad!"
-
-        total_loss.backward()
-        optimizer.step()
 
         if i % 100 == 0:
             progress.display(i)

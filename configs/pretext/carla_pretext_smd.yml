@@ -9,6 +9,7 @@ model_kwargs:
 res_kwargs:
   in_channels: 38
   mid_channels: [38, 38]
+amp: False # Not working for now
 
 # Dataset
 train_db_name: smd

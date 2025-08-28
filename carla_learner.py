@@ -67,6 +67,8 @@ class CARLA:
         self.logger.log('CARLA Pretext stage --> ')
         self.logger.log_hyperparams(self.p)
 
+        self.autocast_available = torch.amp.autocast_mode.is_autocast_available(self.device.type)
+
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
         train_transforms = get_transformations(self.p)
@@ -86,6 +88,9 @@ class CARLA:
         if not hasattr(self, 'optimizer'):
             self.optimizer = get_optimizer(self.p, self.model, False)
 
+        # Automatic Mixed Precision
+        self.scaler = torch.amp.GradScaler(self.device.type, enabled=(self.p.get('amp', False) and self.autocast_available))
+        
         # Loss function
         criterion = get_criterion(self.p)
         criterion = criterion.to(self.device)
@@ -113,8 +118,9 @@ class CARLA:
             self.logger.log(f'Adjusted learning rate to {lr:.5f}')
             self.logger.scalar_summary('Train Pretex', 'learning_rate', lr, self.epoch)
 
-
-            tmp_loss_dict = pretext_train(train_dataloader, self.model, criterion, self.optimizer, self.epoch, self.pretext_previous_loss, self.logger)
+            tmp_loss_dict = pretext_train(train_dataloader, self.model, 
+                                          criterion, self.optimizer, self.scaler,
+                                          self.epoch, self.pretext_previous_loss, self.logger)
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Pretex", loss, value, self.epoch)
 
@@ -135,6 +141,8 @@ class CARLA:
     def train_classification(self):
         self.logger.log('CARLA Self-supervised Classification stage --> ')
         self.logger.log_hyperparams(self.p)
+
+        self.autocast_available = torch.amp.autocast_mode.is_autocast_available(self.device.type)
 
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
@@ -170,6 +178,11 @@ class CARLA:
         criterion = get_criterion(self.p)
         criterion = criterion.to(self.device)
 
+        # Automatic Mixed Precision
+
+        # Automatic Mixed Precision
+        self.scaler = torch.amp.GradScaler(self.device.type, enabled=(self.p.get('amp', False) and self.autocast_available))
+        
         self.logger.log('\n- Model initialisation')
         # Checkpoint
         if os.path.exists(self.p['classification_checkpoint']):
@@ -194,8 +207,9 @@ class CARLA:
             lr = adjust_learning_rate(self.p, self.optimizer, self.epoch)
             self.logger.scalar_summary('Train Classification', 'learning_rate', lr, self.epoch)
 
-            tmp_loss_dict = self_sup_classification_train(train_dataloader, self.model, criterion, self.optimizer, self.epoch,
-                                          self.p['update_cluster_head_only'], self.logger)
+            tmp_loss_dict = self_sup_classification_train(train_dataloader, self.model,
+                                                          criterion, self.optimizer, self.scaler,
+                                                          self.epoch, self.p['update_cluster_head_only'], self.logger)
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Classification", loss, value, self.epoch)
 
