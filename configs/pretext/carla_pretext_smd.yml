@@ -22,12 +22,12 @@ num_classes: 10
 criterion: pretext
 criterion_kwargs:
   temperature: 0.4
-  margin: 0.15
+  initial_margin: 0.5
   pos_weight: 1
-  neg_weight: 1.5
+  neg_weight: 1
 
 # Hyperparameters
-epochs: 10000
+epochs: 2000
 optimizer: adam
 optimizer_kwargs:
   #nesterov: False
