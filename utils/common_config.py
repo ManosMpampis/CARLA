@@ -25,14 +25,6 @@ def get_criterion(p):
 
 
 def get_feature_dimensions_backbone(p):
-    # if p['backbone'] == 'resnet18':
-    #     return 8
-
-    # elif p['backbone'] == 'resnet_ts':
-    #     return 8
-
-    # else:
-    #     raise NotImplementedError
     return p['res_kwargs']['mid_channels'][-1]
 
 

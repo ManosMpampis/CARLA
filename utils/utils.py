@@ -121,7 +121,7 @@ class Logger:
             self.log(
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
-            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, f"{self.file_name}{self.tag}", "tensorboard"))
+            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, self.file_name, f"tensorboard{self.tag}"))
         self.init_tensorboard_functions()
             
     def init_tensorboard_functions(self):

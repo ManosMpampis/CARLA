@@ -3,7 +3,7 @@ setup: classification
 
 # Tag
 tag_pretext:
-tag_class: better_weights
+tag_class:
 
 # Loss
 criterion: classification
