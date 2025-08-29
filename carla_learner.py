@@ -2,8 +2,7 @@ import os
 import random
 
 import torch
-from torchmetrics.functional import precision_recall_curve, confusion_matrix
-from sklearn import metrics
+from torchmetrics.functional import precision_recall_curve, confusion_matrix, Kmeans
 import numpy as np
 
 from utils.config import create_config
@@ -126,8 +125,12 @@ class CARLA:
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Pretex", loss, value, self.epoch)
 
-            feats, metadata = contrastive_evaluate(train_dataloader, self.model)
+            feats, metadata, evaluation_metrics = contrastive_evaluate(train_dataloader, self.model)
             self.logger.add_embedding("Cluster", feats, metadata, self.epoch)
+
+            for metric, value in evaluation_metrics.items():
+                self.logger.scalar_summary("Train Pretext Evaluation", metric, value, self.epoch)
+
             # Checkpoint
             if tmp_loss_dict['Total Loss'] <= self.pretext_best_loss:
                 self.pretext_best_loss = tmp_loss_dict['Total Loss']
@@ -215,18 +218,10 @@ class CARLA:
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Classification", loss, value, self.epoch)
 
-            if (epoch == self.p['epochs']-1):
-                predictions, _ = get_predictions(self.p, tst_dataloader, self.model, True, True)
-            else:
-                predictions = get_predictions(self.p, tst_dataloader, self.model, False, False)
-
-            label_counts = torch.bincount(predictions['predictions'])
-            self.majority_label = label_counts.argmax()
+            predictions, metrics = self.eval_classification(tst_dataloader)  # Kanonika ginete sto tst kai oxi sto val
+            rep_f1 = metrics["rep_f1"]
 
             classification_losses = classification_evaluate(predictions, **self.p['criterion_kwargs'])
-
-            metrics = self.eval_classification(val_dataloader)
-            rep_f1 = metrics["rep_f1"]
 
             for metric, value in metrics.items():
                 self.logger.scalar_summary("Train Val Dataset Evaluation", metric, value, self.epoch)
@@ -242,15 +237,19 @@ class CARLA:
         self.load(type="classification", checkpoint=True)
         self.logger.log(f'Best Model saved from epoch: {self.epoch}')
         # find final prediction in train set.
-        predictions, _ = get_predictions(self.p, tst_dataloader, self.model, True, True)
+        _, report = self.eval_classification(tst_dataloader, True, True)
         # and in val set
-        predictions, _ = get_predictions(self.p, val_dataloader, self.model, True, False)
+        _, report = self.eval_classification(val_dataloader, False, True)
     
     @torch.no_grad()
-    def eval_classification(self, dataloader, train=False, class_names=None):
+    def eval_classification(self, dataloader, train=False, save_outputs=False):
         experiment = "Train" if train else "Val"
 
-        predictions = get_predictions(self.p, dataloader, self.model)
+        predictions = get_predictions(self.p, dataloader, self.model, save_outputs, is_training=train)
+
+        label_counts = torch.bincount(predictions['predictions'])
+        if train:
+            self.majority_label = label_counts.argmax()
 
         targets = predictions['targets']
         probs = predictions['probabilities']
@@ -301,14 +300,12 @@ class CARLA:
         eval_report['best_fn'] = best_fn
         eval_report['best_fp'] = best_fp
 
-        self.logger.log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}")
-        self.logger.log(f"Mazority label: {self.majority_label}")
-        self.logger.log(metrics.classification_report(targets, anomalies))
-        return eval_report
+        self.logger.log(f"{experiment} Set Metrics\nAnomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}\nMajority label: {self.majority_label}")
+        return predictions, eval_report
     
     @torch.no_grad()
     def inference(self, ts):
-        output = self.model(ts, forward_pass='return_all')
+        output = self.model(ts)
         prediction = torch.argmax(output, dim=1)
         
         probs = torch.nn.functional.softmax(output, dim=1)
