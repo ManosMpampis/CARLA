@@ -8,9 +8,9 @@ tag_class: better_weights
 # Loss
 criterion: classification
 criterion_kwargs:
-   entropy_weight: 5
+   entropy_weight: 4
    consistency_weight: 1
-   inconsistency_weight: 1
+   inconsistency_weight: 0.5
 
 # Weight update
 update_cluster_head_only: False # Update full network in classification
