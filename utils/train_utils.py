@@ -81,7 +81,7 @@ def pretext_train(train_loader, model, criterion, optimizer, scaler, epoch, prev
     return {'Total Loss': total_l.avg, 'Positive Distance': positive_l.avg, 'Hard Negative Distance': negative_l.avg, 'margin': margin_l.avg}
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, scaler, epoch, update_cluster_head_only=False, logger=None):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, scaler, epoch, logger=None):
     """ 
     Train epoch w/ classification-Loss
     """

@@ -209,10 +209,11 @@ class NeighborsDataset(Dataset):
         NN_index = np.random.choice(self.NN_indices[index], 1)[0]
         FN_index = np.random.choice(self.FN_indices[index], 1)[0]
         NNeighbor = self.dataset.__getitem__(self.NN_index[NN_index])['ts_org']
-        if hasattr(self.dataset, 'fneighbors'):
-            FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[FN_index])
+        if hasattr(self.dataset, 'fneighbors'): # Backward compatible
+            if self.dataset.fneighbors is not None:
+                FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[FN_index])
         else:
-            FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']  # Just to be backward compatible
+            FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']
 
         # This can be used to use all top-k neighbors
         # NNeighbor = []

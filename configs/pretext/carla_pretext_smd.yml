@@ -55,3 +55,6 @@ transformation_kwargs:
 
 anomaly_kwargs:
   portion: 0.99
+
+# Repository
+use_fneighbors_in_repository: False

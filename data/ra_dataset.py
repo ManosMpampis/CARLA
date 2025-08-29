@@ -7,13 +7,15 @@ from utils.utils import mkdir
 
 class SaveAugmentedDataset(Dataset):
 
-    def __init__(self, data, target, fneighbors, f_target, filename=None):
+    def __init__(self, data, target, fneighbors=None, f_target=None, filename=None):
         super(SaveAugmentedDataset, self).__init__()
         self.classes = ['Normal', 'Anomaly', 'Noise', 'Point', 'Subseq', 'Subseq2']
         self.targets = target
         self.anchors = data
+
         self.fneighbors = fneighbors
         self.f_target = f_target
+        
         self.filename = filename
         if filename is not None:
             self.save_to_file(filename)

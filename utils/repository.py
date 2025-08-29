@@ -1,104 +1,26 @@
 import os
 import numpy as np
 import torch
-from sklearn.neighbors import NearestNeighbors
 import faiss
 
 from data.ra_dataset import SaveAugmentedDataset
 from utils.utils import EmptyLogger
 
 class TSRepository(object):
-    def __init__(self, n, dim, num_classes, temperature, need_fneighbors=False):
+    def __init__(self, n, dim, use_fneighbors=False):
         self.n = n
         self.dim = dim 
         self.features = torch.empty(self.n, self.dim, dtype=torch.float)
         self.targets = torch.empty(self.n, dtype=torch.long)
         self.ptr = 0
         self.device = 'cpu'
-        self.K = 100
-        self.temperature = temperature
-        self.C = num_classes
-        self.use_fneighbors = need_fneighbors
+        self.use_fneighbors = use_fneighbors
 
-        if need_fneighbors:
-            self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
-            self.f_target = torch.empty(self.n, dtype=torch.long)
-            self.ptr_f = 0
-
-    def weighted_knn(self, predictions):
-        # perform weighted knn
-        retrieval_one_hot = torch.zeros(self.K, self.C, device=self.device)
-        batchSize = predictions.shape[0]
-        correlation = torch.matmul(predictions, self.features.t())
-        yd, yi = correlation.topk(self.K, dim=1, largest=True, sorted=True)
-        candidates = self.targets.view(1,-1).expand(batchSize, -1)
-        retrieval = torch.gather(candidates, 1, yi)
-        retrieval_one_hot.resize_(batchSize * self.K, self.C).zero_()
-        retrieval_one_hot.scatter_(1, retrieval.view(-1, 1), 1)
-        yd_transform = yd.clone().div_(self.temperature).exp_()
-        probs = torch.sum(torch.mul(retrieval_one_hot.view(batchSize, -1 , self.C), 
-                          yd_transform.view(batchSize, -1, 1)), 1)
-        _, class_preds = probs.sort(1, True)
-        class_pred = class_preds[:, 0]
-
-        return class_pred
-
-    def knn(self, predictions):
-        # perform knn
-        correlation = torch.matmul(predictions, self.features.t())
-        sample_pred = torch.argmax(correlation, dim=1)
-        class_pred = torch.index_select(self.targets, 0, sample_pred)
-        return class_pred
-
-    def mine_nearest_neighbors(self, topk, calculate_accuracy=True):
-        # mine the topk nearest neighbors for every sample
-        features = self.features.cpu().numpy()
-        knn_model = NearestNeighbors(n_neighbors=features.shape[0],
-                                 algorithm='brute',
-                                 n_jobs=-1)
-        knn_model.fit(features)
-
-        distances, indices = knn_model.kneighbors(features, return_distance=True)
-        k_furthest_neighbours = []
-        k_nearest_neighbours = []
-        for i in range(features.shape[0]):
-            # sort the neighbours based on their distance to the point
-            sorted_indices = np.argsort(distances[i])
-            # get the k furthest neighbours for each point
-            k_furthest_neighbours.append(indices[i][sorted_indices[-topk:]])
-            k_nearest_neighbours.append(indices[i][sorted_indices[1:topk+1]])
-
-        # evaluate 
-        if calculate_accuracy:
-            targets = self.targets.cpu().numpy()
-            neighbor_targets = np.take(targets, indices[:,1:], axis=0) # Exclude sample itself for eval
-            anchor_targets = np.repeat(targets.reshape(-1,1), topk, axis=1)
-            accuracy = np.mean(neighbor_targets == anchor_targets)
-
-            return k_furthest_neighbours, k_nearest_neighbours, accuracy
-        
-        else:
-            return k_furthest_neighbours, k_nearest_neighbours
+        if use_fneighbors:
+            self.add_fneighbors()
 
     def furthest_nearest_neighbors(self, topk, use_original_algorithm=True, memory_efficient=False):
-        # # Compute pairwise distances
-        # distances = torch.cdist(features, features)
-        #
-        # # Find indices of k nearest neighbors for each feature
-        # _, nearest_indices = distances.topk(topk + 1, largest=False, dim=1)
-        # k_nearest_neighbours = nearest_indices[:, 1:]  # exclude self as nearest neighbor
-        #
-        # # Find indices of k furthest neighbors for each feature
-        # _, furthest_indices = distances.topk(topk, largest=True, dim=1)
-        # k_furthest_neighbours = furthest_indices[:, :]
-
-        # index = nmslib.init(method='hnsw', space='12')
-        # index.addDataPointBatch(features)
-        # index.createIndex({'post':2}, prin_progress = True)
-        # ids , distances = index.knnQueryBatch(features, k=len(features), num_threads=4)
-        #
-        # k_furthest_neighbours = ids[:, -1:]
-        # k_nearest_neighbours = ids[:, 1:]
+        """Find the furthest nearest neighbors of each feature."""
 
         if use_original_algorithm:
             # faiss way, respecting clustering output 
@@ -117,10 +39,10 @@ class TSRepository(object):
             k_furthest_neighbours = k_nearest_neighbours[:, -1:]
         
         else:
+            topk = topk if topk is not None else self.features.shape[0]
             if not self.use_fneighbors:
-                # Pytorch way, respecting clustering output 
+                # Pytorch way, respecting model output to make far neighbors be the furthest 
                 # !!! features contain negative windows !!!
-                topk = topk if topk is not None else self.features.shape[0]
                 if memory_efficient:
                 # Slow but checkes only one feature at the time
                     k_nearest_neighbours = []
@@ -142,7 +64,6 @@ class TSRepository(object):
 
             else:
                 # Pytorch way, using knowing labbeling
-                topk = topk if topk is not None else self.features.shape[0]
                 if memory_efficient:
                     k_nearest_neighbours = []
                     k_furthest_neighbours = []
@@ -168,10 +89,10 @@ class TSRepository(object):
 
     def reset(self):
         self.ptr = 0
-        if hasattr(self, 'ptr_f'):
+        if self.use_fneighbors:
             self.ptr_f = 0
 
-    def add_ffneighbors(self):
+    def add_fneighbors(self):
         if not hasattr(self, 'ffeatures'):
             self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
             self.f_target = torch.empty(self.n, dtype=torch.long)
@@ -181,11 +102,14 @@ class TSRepository(object):
         self.n = sz * self.n
         self.features = torch.empty(self.n, self.dim, dtype=torch.float)
         self.targets = torch.empty(self.n, dtype=torch.long)
-        if hasattr(self, 'ffeatures'):
+        if self.use_fneighbors:
             self.ffeatures = torch.empty(self.n, self.dim, dtype=torch.float)
             self.f_target = torch.empty(self.n, dtype=torch.long)
         
-    def update(self, features, targets):
+    def update(self, features, targets, is_fneighbors=False):
+        if is_fneighbors and self.use_fneighbors:
+            self.update_fneighbors()
+        
         b = features.size(0)
         
         assert(b + self.ptr <= self.n)
@@ -208,6 +132,9 @@ class TSRepository(object):
     def to(self, device, non_blocking=True):
         self.features = self.features.to(device, non_blocking=non_blocking)
         self.targets = self.targets.to(device, non_blocking=non_blocking)
+        if self.use_fneighbors:
+            self.ffeatures = self.ffeatures.to(device, non_blocking=non_blocking)
+            self.f_target = self.f_target.to(device, non_blocking=non_blocking)
         self.device = device
 
     def cpu(self):
@@ -217,7 +144,7 @@ class TSRepository(object):
         self.to(torch.device('cuda'))
 
 @torch.no_grad()
-def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, logger=None):
+def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None, use_fneighbors=False, logger=None):
     """_summary_
 
     Args:
@@ -241,8 +168,11 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
 
     con_data = torch.tensor([], device="cpu")
     con_target = torch.tensor([], device="cpu")
-    con_fneighbors = torch.tensor([], device="cpu")
-    con_f_target = torch.tensor([], device="cpu")
+
+    # Only if we use different lists for far neighbors
+    con_fneighbors = torch.tensor([], device="cpu") if use_fneighbors else None
+    con_f_target = torch.tensor([], device="cpu") if use_fneighbors else None
+    
     for i, batch in enumerate(loader): 
         ts_org = batch['ts_org'].to(device, non_blocking=True)
         targets = batch['target'].cpu()  # .to(device, non_blocking=True)
@@ -263,7 +193,7 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             con_target = torch.cat((con_target, targets), dim=0)
 
             ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-            targets = torch.tensor([1]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
+            targets = torch.tensor([2]*ts_w_augment.shape[0], dtype=torch.long, device="cpu")
 
             output = model(ts_w_augment.reshape(b, h, w)).cpu()
             ts_repository.update(output, targets)
@@ -274,11 +204,15 @@ def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repos
             targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device="cpu")
             output = model(ts_ss_augment.reshape(b, h, w)).cpu()
 
-            con_fneighbors = torch.cat((con_fneighbors, ts_ss_augment.cpu()), dim=0)
-            con_f_target = torch.cat((con_f_target, targets), dim=0)
+            if use_fneighbors:
+                con_fneighbors = torch.cat((con_fneighbors, ts_ss_augment.cpu()), dim=0)
+                con_f_target = torch.cat((con_f_target, targets), dim=0)
+            else:
+                con_data = torch.cat((con_data, ts_ss_augment.cpu()), dim=0)
+                con_target = torch.cat((con_target, targets), dim=0)
 
             ts_repository.update(output, targets)
-            ts_repository_aug.update_fneighbors(output, targets)
+            ts_repository_aug.update(output, targets, is_fneighbors=True)
             
     #         if (i % 50 == 0 and i > 0) or (i == len(loader) - 1):
     #             filename = f"{p['contrastive_dataset']}_{i}.pth"

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -73,8 +72,11 @@ class ClassificationLoss(nn.Module):
 
         # DiSimilarity in output space
         negsimilarity = torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze()
-        ones = torch.ones_like(negsimilarity)
-        inconsistency_loss = self.bce(negsimilarity, ones)
+        # ones = torch.ones_like(negsimilarity)
+        # inconsistency_loss = self.bce(negsimilarity, ones)
+
+        zeros = torch.zeros_like(negsimilarity)
+        inconsistency_loss = self.bce(negsimilarity, zeros)
         
         # Entropy loss
         entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)
@@ -83,7 +85,7 @@ class ClassificationLoss(nn.Module):
         # Total loss      --- the entropy loss is negative, so we subtract it in order to promote diversity
         # Explanation: If prob_over_class = 1/K for all K classes, then sum(1/K * log(1/K)) = K * (1/K * log(1/K)) = log(1/K) = -log(K)
         # For K=10, -log(10) is approx -2.302.
-        total_loss = (self.consistency_weight*consistency_loss) - (self.inconsistency_weight * inconsistency_loss) - (self.entropy_weight * entropy_loss)
+        total_loss = (self.consistency_weight*consistency_loss) + (self.inconsistency_weight * inconsistency_loss) - (self.entropy_weight * entropy_loss)
 
         return total_loss, consistency_loss, inconsistency_loss, entropy_loss
 

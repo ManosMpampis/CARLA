@@ -212,7 +212,7 @@ class CARLA:
 
             tmp_loss_dict = self_sup_classification_train(train_dataloader, self.model,
                                                           criterion, self.optimizer, self.scaler,
-                                                          self.epoch, self.p['update_cluster_head_only'], self.logger)
+                                                          self.epoch, self.logger)
             for loss, value in tmp_loss_dict.items():
                 self.logger.scalar_summary("Train Classification", loss, value, self.epoch)
 
@@ -347,22 +347,22 @@ class CARLA:
 
     def makeTSRepository(self, dataset, val_transformations, sanomaly, topk=10):
         memmory_efficient = self.p['fname'].upper() == 'ALL'
+        use_fneighbors = self.p.get('use_fneighbors_in_repository', False)
         base_dataloader = get_dataloader(self.p, dataset)
-        ts_repository_aug = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
-                                         self.p['num_classes'], self.p['criterion_kwargs']['temperature'], need_fneighbors=True)  # need size of repository == 1+num_of_anomalies
-        ts_repository_base = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
-                                          self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
-        # ts_repository_val = TSRepository(len(val_dataset), self.p['model_kwargs']['features_dim'],
-        #                                  self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
-        # ts_repository_aug.to(self.device, non_blocking=True)
-        # ts_repository_base.to(self.device, non_blocking=True)
-        # ts_repository_val.to(self.device, non_blocking=True)
-        
+
+        aug_length = len(dataset) if self.p.get('use_fneighbors_in_repository', False) else len(dataset) * 2
+        ts_repository_aug = TSRepository(aug_length, self.p['model_kwargs']['features_dim'], use_fneighbors=use_fneighbors)  # need size of repository == 1+num_of_anomalies
+        ts_repository = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'])
+
         # Mine the topk nearest neighbors at the very end (Train)
         # These will be served as input to the classification loss.
         self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...')    
-        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug, logger=self.logger)
-        out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
+        
+        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository, 
+                           real_aug = True, ts_repository_aug = ts_repository_aug, 
+                           use_fneighbors=use_fneighbors, logger=self.logger)
+        
+        out_pre = np.column_stack((ts_repository.features.cpu().numpy(), ts_repository.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
         kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, use_original_algorithm=False, memory_efficient=memmory_efficient)  # hear we mine from aug and not base
@@ -374,23 +374,26 @@ class CARLA:
 
         del dataset
         del ts_repository_aug
-        del ts_repository_base
+        del ts_repository
 
         dataset = get_dataset(self.p, train=False, transform=val_transformations, sanomaly=sanomaly,
                                   to_augmented_dataset=False, mean_data=mean, std_data=std, logger=self.logger)
         # Use the same variable to save some memory
         base_dataloader = get_dataloader(self.p, dataset)
-        ts_repository_base = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
+        ts_repository = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
                                           self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
         # Mine the topk nearest neighbors at the very end (Val)
         # These will be used for validation.
         self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (val) ...')
 
-        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository_base, real_aug = False, ts_repository_aug = None, logger=self.logger)
-        out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
+        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository,
+                           real_aug = False, ts_repository_aug = None,
+                           use_fneighbors=use_fneighbors,logger=self.logger)
+        
+        out_pre = np.column_stack((ts_repository.features.cpu().numpy(), ts_repository.targets.cpu().numpy()))
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_base.furthest_nearest_neighbors(topk, memory_efficient=memmory_efficient)  # hear we mine from val
+        kfurtherst, knearest = ts_repository.furthest_nearest_neighbors(topk, use_original_algorithm=False, memory_efficient=memmory_efficient)  # hear we mine from val
         
         np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)
