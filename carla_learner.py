@@ -2,8 +2,7 @@ import os
 import random
 
 import torch
-from torchmetrics.functional import precision_recall_curve
-from torchmetrics.functional.classification import confusion_matrix
+from torchmetrics.functional import precision_recall_curve, confusion_matrix
 from sklearn import metrics
 import numpy as np
 
@@ -256,6 +255,23 @@ class CARLA:
         targets = predictions['targets']
         probs = predictions['probabilities']
 
+        # find anomalites as classification task
+        anomalies = [1 if p == self.majority_label else 0 for p in predictions['predictions']]
+        classification_confusion_matrix = confusion_matrix(targets, anomalies)
+        tp = classification_confusion_matrix[1, 1]
+        tn = classification_confusion_matrix[0, 0]
+        fp = classification_confusion_matrix[0, 1]
+        fn = classification_confusion_matrix[1, 0]
+        eval_report = {"cls_tp": tp, "cls_tn": tn, "cls_fp": fp, "cls_fn": fn}
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+        eval_report['cls_precision'] = precision
+        eval_report['cls_recall'] = recall
+        eval_report['cls_f1'] = f1
+
+        # find anomalities with anomaly score
         scores = 1-probs[:, self.majority_label]
 
         precision, recall, thresholds = precision_recall_curve(scores, targets, task='binary')
@@ -272,17 +288,23 @@ class CARLA:
         best_f1_index = torch.argmax(f1_score)
 
         rep_f1 = f1_score[best_f1_index]
+        best_threshold = thresholds[best_f1_index]
 
-        if class_names=='Anom':
-            best_threshold = thresholds[best_f1_index]
-            anomalies = [1 if s >= best_threshold else 0 for s in scores]
-            best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
-            self.logger.log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}")
-            self.logger.log(f"Mazority label: {self.majority_label}")
-            self.logger.log(metrics.classification_report(targets, anomalies))
-            return {"rep_f1": rep_f1, "best_tp": best_tp, "best_tn": best_tn, "best_fn": best_fn, "best_fp": best_fp}
+        eval_report['best_f1'] = rep_f1
+        eval_report['best_threshold'] = best_threshold
 
-        return {"rep_f1": rep_f1}
+        anomalies = [1 if s >= best_threshold else 0 for s in scores]
+        best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
+        
+        eval_report['best_tp'] = best_tp
+        eval_report['best_tn'] = best_tn
+        eval_report['best_fn'] = best_fn
+        eval_report['best_fp'] = best_fp
+
+        self.logger.log(f"Anomalies --> TP: {best_tp}, TN: {best_tn}, FN: {best_fn}, FP: {best_fp}")
+        self.logger.log(f"Mazority label: {self.majority_label}")
+        self.logger.log(metrics.classification_report(targets, anomalies))
+        return eval_report
     
     @torch.no_grad()
     def inference(self, ts):
