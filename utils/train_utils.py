@@ -94,10 +94,6 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, sca
         prefix="Epoch: [{}]".format(epoch+1),
         logger=logger)
 
-    if update_cluster_head_only:
-        model.eval() # No need to update BN
-    else:
-        model.train() # Update BN
     device = next(model.parameters()).device
 
     for i, batch in enumerate(train_loader):
@@ -119,20 +115,9 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, sca
         optimizer.zero_grad()
 
         with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=scaler.is_enabled()):
-            if update_cluster_head_only: # Only calculate gradient for backprop of linear layer
-                with torch.no_grad():
-                    anchors_features = model(anchors, forward_pass='backbone')
-                    nneighbors_features = model(nneighbors, forward_pass='backbone')
-                    fneighbors_features = model(fneighbors, forward_pass='backbone')
-
-                anchors_output = model(anchors_features, forward_pass='head')
-                nneighbors_output = model(nneighbors_features, forward_pass='head')
-                fneighbors_output = model(fneighbors_features, forward_pass='head')
-
-            else: # Calculate gradient for backprop of complete network
-                anchors_output = model(anchors)
-                nneighbors_output = model(nneighbors)
-                fneighbors_output = model(fneighbors)
+            anchors_output = model(anchors)
+            nneighbors_output = model(nneighbors)
+            fneighbors_output = model(fneighbors)
 
             # Loss for every head
             total_loss, consistency_loss, inconsistency_loss, entropy_loss = criterion(anchors_output, nneighbors_output, fneighbors_output)
@@ -146,12 +131,15 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, sca
 
         scaler.scale(total_loss).backward()
         scaler.step(optimizer)
+
+        total_losses.update(scaler.scale(total_loss.item()))
+        consistency_losses.update(scaler.scale(consistency_loss.item()))
+        inconsistency_losses.update(scaler.scale(inconsistency_loss.item()))
+        entropy_losses.update(scaler.scale(entropy_loss.item()))
+
         scaler.update()
 
-        total_losses.update(total_loss.item())
-        consistency_losses.update(consistency_loss.item())
-        inconsistency_losses.update(inconsistency_loss.item())
-        entropy_losses.update(entropy_loss.item())
+        
 
         if i % 100 == 0:
             progress.display(i)

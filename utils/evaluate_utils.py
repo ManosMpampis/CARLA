@@ -7,7 +7,7 @@ from torchmetrics.functional.classification import confusion_matrix
 from torchmetrics.functional import precision_recall_curve
 
 from utils.common_config import get_feature_dimensions_backbone
-from utils.utils import AverageMeter, EmptyLogger
+from utils.utils import EmptyLogger
 from data.custom_dataset import NeighborsDataset
 from losses.losses import entropy
 

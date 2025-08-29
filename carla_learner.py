@@ -47,6 +47,8 @@ class CARLA:
         else:
             self.device = torch.device(device, index=0)
 
+        self.autocast_available = torch.amp.autocast_mode.is_autocast_available(self.device.type)
+
         self.p = create_config(config_env, config_exp, fname, version)
         self.version = self.p['version']
 
@@ -66,8 +68,6 @@ class CARLA:
     def train_pretext(self):
         self.logger.log('CARLA Pretext stage --> ')
         self.logger.log_hyperparams(self.p)
-
-        self.autocast_available = torch.amp.autocast_mode.is_autocast_available(self.device.type)
 
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
@@ -135,17 +135,19 @@ class CARLA:
                 self.save(type="pretext", checkpoint=True)
                 self.save(type="pretext", checkpoint=False)
 
-        self.load(type="pretext", checkpoint=False)
-        self.save(type="pretext", checkpoint=True)
-        self.save(type="pretext", checkpoint=False)
+        #Save last checkpoint in order to restart training
+        self.save(type="pretext", checkpoint=True, tag='last')
+
+        #Load best checkpoint
+        self.load(type="pretext", checkpoint=True)
+        self.logger.log(f'Best Model saved from epoch: {self.epoch}')
+
         self.makeTSRepository(train_dataset, val_transforms, sanomaly)
         # Make new repository of time series for the second stage.
         
     def train_classification(self):
         self.logger.log('CARLA Self-supervised Classification stage --> ')
         self.logger.log_hyperparams(self.p)
-
-        self.autocast_available = torch.amp.autocast_mode.is_autocast_available(self.device.type)
 
         # Data
         self.logger.log(f"\n- Get dataset and dataloaders for {self.p['train_db_name']} dataset - timeseries {self.p['fname']}")
@@ -180,8 +182,6 @@ class CARLA:
         # Loss function
         criterion = get_criterion(self.p)
         criterion = criterion.to(self.device)
-
-        # Automatic Mixed Precision
 
         # Automatic Mixed Precision
         self.scaler = torch.amp.GradScaler(self.device.type, enabled=(self.p.get('amp', False) and self.autocast_available))
@@ -238,10 +238,10 @@ class CARLA:
                 self.save(type="classification", checkpoint=True)
                 self.save(type="classification", checkpoint=False)
 
-        self.load(type="classification", checkpoint=False)
-        self.save(type="classification", checkpoint=True)
-        self.save(type="classification", checkpoint=False)
+        self.save(type="classification", checkpoint=True, tag='_last')
 
+        self.load(type="classification", checkpoint=True)
+        self.logger.log(f'Best Model saved from epoch: {self.epoch}')
         # find final prediction in train set.
         predictions, _ = get_predictions(self.p, tst_dataloader, self.model, True, True)
         # and in val set
@@ -295,30 +295,30 @@ class CARLA:
                         With anomalus score: {anomalus_score.item()}")
         return prediction
 
-    def load(self, path=None, type="classification", checkpoint=False):
+    def load(self, path=None, type="classification", checkpoint=False, tag=''):
         if path is None:
             assert type in ["classification", "pretext"]
             key = f"{type}_{"checkpoint" if checkpoint else "model"}"
             path = self.p[key]
         
         self.logger.log(f'-- Model initialised from {"last checkpoint" if checkpoint else "model path"}: {path}')
-        checkpoint = torch.load(path, map_location='cpu')
-        self.model.backbone.load_state_dict(checkpoint['backbone'])
-        self.model.head.load_state_dict(checkpoint['head'])
+        dictionary = torch.load(f"{path}{tag}.pth.tar", map_location='cpu')
+        self.model.backbone.load_state_dict(dictionary['backbone'])
+        self.model.head.load_state_dict(dictionary['head'])
 
-        if "optimizer" in checkpoint.keys(): 
+        if checkpoint: 
             if not hasattr(self, 'optimizer'):
                 self.optimizer = get_optimizer(self.p, self.model, self.p['update_cluster_head_only'])
-            self.optimizer.load_state_dict(checkpoint['optimizer'])
-            self.start_epoch = checkpoint['epoch']
-            self.epoch = checkpoint['epoch']
+            self.optimizer.load_state_dict(dictionary['optimizer'])
+            self.start_epoch = dictionary['epoch']
+            self.epoch = dictionary['epoch']
             if type == "classification":
-                self.majority_label = checkpoint['majority_label']
+                self.majority_label = dictionary['majority_label']
             if type == "pretext":
-                self.pretext_best_loss = checkpoint['pretext_best_loss']
-                self.pretext_previous_loss = checkpoint['pretext_previous_loss'].to(self.device, non_blocking=True)
+                self.pretext_best_loss = dictionary['pretext_best_loss']
+                self.pretext_previous_loss = dictionary['pretext_previous_loss'].to(self.device, non_blocking=True)
 
-    def save(self, path=None, dictionary=None, type="classification", checkpoint=False):
+    def save(self, path=None, dictionary=None, type="classification", checkpoint=False, tag=''):
         assert type in ["classification", "pretext"]
         if path is None:
             key = f"{type}_{"checkpoint" if checkpoint else "model"}"
@@ -326,11 +326,10 @@ class CARLA:
         
         
         if dictionary is None:
+            dictionary = {'backbone': self.model.backbone.state_dict(), 'head': self.model.head.state_dict()}
             if type == "classification":
-                dictionary = {'backbone': self.model.backbone.state_dict(), 'head': self.model.head.state_dict(), 'majority_label': self.majority_label}
-            else:
-                dictionary = {'backbone': self.model.backbone.state_dict(), 'head': self.model.head.state_dict()}
-            
+                dictionary['majority_label'] = self.majority_label
+
             if checkpoint:
                 dictionary['optimizer'] = self.optimizer.state_dict()
                 dictionary['epoch'] = self.epoch + 1
@@ -339,7 +338,7 @@ class CARLA:
                     dictionary['pretext_best_loss'] = self.pretext_best_loss
                     dictionary['pretext_previous_loss'] = self.pretext_previous_loss
                 
-        torch.save(dictionary, path)
+        torch.save(dictionary, f"{path}{tag}.pth.tar")
         return
 
     def export(self):

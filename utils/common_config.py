@@ -231,14 +231,9 @@ def get_transformations(p):
 
 def get_optimizer(p, model, cluster_head_only=False):
     if cluster_head_only:  # Only weights in the cluster head will be updated
-        for name, param in model.named_parameters():
-            if 'cluster_head' in name:
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
-        params = list(filter(lambda p: p.requires_grad, model.parameters()))
-        assert (len(params) == 2 * p['num_heads'])
-
+        for param in model.backbone.parameters():
+            param.requires_grad = False
+        params = model.head.parameters()
     else:
         params = model.parameters()
 

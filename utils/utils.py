@@ -4,7 +4,6 @@ import time
 import errno
 
 import torch
-from termcolor import colored
 
 
 def mkdir(directory):
@@ -55,23 +54,12 @@ class ProgressMeter(object):
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
-
-def log(string, verbose=1, file_path=None, color=None):
-    if verbose >= 1:
-        if file_path is not None and verbose >= 2:
-            with open(file_path, 'a') as f:
-                f.write(string + '\n')
-                f.flush()
-        if color is not None:
-            string = colored(string, color)
-        print(string)
-    return
-
 class Logger:
-    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log'):
-        
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', tag=None):
+
         self.verbose = verbose
         self.use_tensorboard = use_tensorboard
+        self.tag = tag
 
         self._name = "Self-Awareness"
         self._version = version
@@ -133,7 +121,7 @@ class Logger:
             self.log(
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
-            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, self.file_name, "tensorboard"))
+            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, f"{self.file_name}{self.tag}", "tensorboard"))
         self.init_tensorboard_functions()
             
     def init_tensorboard_functions(self):

@@ -22,15 +22,17 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
     version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) if version is None else version
     base_dir = os.path.join(root_dir, f'{cfg['train_db_name']}/{version}/{fname}')
     
-    pretext_dir = os.path.join(base_dir, 'pretext')
+    pretext_tag = cfg.get('tag_pretext', None)
+    cfg['pretext_tag'] = ("_"+pretext_tag) if pretext_tag else ""
+    pretext_dir = os.path.join(base_dir, f'pretext{cfg['pretext_tag']}')
     mkdir(base_dir)
     mkdir(pretext_dir)
     cfg['version'] = version
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
-    cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint.pth.tar')
-    cfg['pretext_model'] = os.path.join(pretext_dir, 'model.pth.tar')
+    cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint')
+    cfg['pretext_model'] = os.path.join(pretext_dir, 'model')
     cfg['topk_neighbors_train_path'] = os.path.join(pretext_dir, 'topk-train-neighbors.npy')
     cfg['bottomk_neighbors_train_path'] = os.path.join(pretext_dir, 'bottomk-train-neighbors.npy')
     cfg['aug_train_dataset'] = os.path.join(pretext_dir, 'aug_train_dataset.pth')
@@ -44,12 +46,14 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
 
 
     if cfg['setup'] in ['classification']:
-        classification_dir = os.path.join(base_dir, 'classification')
+        classification_tag = cfg.get('tag_class', None)
+        cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
+        classification_dir = os.path.join(base_dir, f'classification{cfg['classification_tag']}')
         mkdir(base_dir)
         mkdir(classification_dir)
         cfg['classification_dir'] = classification_dir
-        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
-        cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')
+        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint')
+        cfg['classification_model'] = os.path.join(classification_dir, 'model')
         cfg['classification_trainfeatures'] = os.path.join(classification_dir, 'classification_traintfeatures.csv')
         cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')
         cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')

@@ -1,6 +1,10 @@
 # setup
 setup: classification
 
+# Tag
+tag_pretext:
+tag_class: better_weights
+
 # Loss
 criterion: classification
 criterion_kwargs:
@@ -51,6 +55,8 @@ scheduler_kwargs:
   T_mul: 2
   lr_decay_epochs: [10, 20]
   lr_decay_rate: 0.01
+
+# DataLoader
 batch_size: 50
 num_workers: 0
 
