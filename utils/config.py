@@ -31,8 +31,9 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
-    cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint')
-    cfg['pretext_model'] = os.path.join(pretext_dir, 'model')
+    cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint.pth.tar')
+    cfg['pretext_checkpoint_last'] = os.path.join(pretext_dir, 'checkpoint_last.pth.tar')
+    cfg['pretext_model'] = os.path.join(pretext_dir, 'model.pth.tar')
     cfg['topk_neighbors_train_path'] = os.path.join(pretext_dir, 'topk-train-neighbors.npy')
     cfg['bottomk_neighbors_train_path'] = os.path.join(pretext_dir, 'bottomk-train-neighbors.npy')
     cfg['aug_train_dataset'] = os.path.join(pretext_dir, 'aug_train_dataset.pth')
@@ -52,8 +53,9 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
         mkdir(base_dir)
         mkdir(classification_dir)
         cfg['classification_dir'] = classification_dir
-        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint')
-        cfg['classification_model'] = os.path.join(classification_dir, 'model')
+        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
+        cfg['classification_checkpoint_last'] = os.path.join(classification_dir, 'checkpoint_last.pth.tar')
+        cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')
         cfg['classification_trainfeatures'] = os.path.join(classification_dir, 'classification_traintfeatures.csv')
         cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')
         cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')

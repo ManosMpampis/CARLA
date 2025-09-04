@@ -28,7 +28,7 @@ def get_feature_dimensions_backbone(p):
     return p['res_kwargs']['mid_channels'][-1]
 
 
-def get_model(p, pretrain_path=None):
+def get_model(p):
     # Get backbone
     if p['backbone'] == 'resnet_ts':
         from models.resent_time import resnet_ts
@@ -48,28 +48,6 @@ def get_model(p, pretrain_path=None):
 
     else:
         raise ValueError('Invalid setup {}'.format(p['setup']))
-
-    # Load pretrained weights
-    if pretrain_path is not None and os.path.exists(pretrain_path):
-        state = torch.load(pretrain_path, map_location='cpu')
-
-        if p['setup'] == 'classification':  # Weights are supposed to be transfered from contrastive training
-            model.backbone.load_state_dict(state['backbone'])
-            # missing = model.load_state_dict(state['model'], strict=False)
-            # assert (set(missing[1]) == {
-            #     'contrastive_head.0.weight', 'contrastive_head.0.bias',
-            #     'contrastive_head.2.weight', 'contrastive_head.2.bias'}
-            #         or set(missing[1]) == {
-            #             'contrastive_head.weight', 'contrastive_head.bias'})
-        else:
-            raise NotImplementedError
-
-    elif pretrain_path is not None and not os.path.exists(pretrain_path):
-        raise ValueError('Path with pre-trained weights does not exist {}'.format(pretrain_path))
-
-    else:
-        pass
-
     return model
 
 def load_backbone(p, model, pretrain_path):
@@ -78,13 +56,6 @@ def load_backbone(p, model, pretrain_path):
 
         if p['setup'] == 'classification':  # Weights are supposed to be transfered from contrastive training
             model.backbone.load_state_dict(state['backbone'])
-            # missing = model.load_state_dict(state['model'], strict=False)
-            # assert (set(missing[1]) == {
-            #     'contrastive_head.0.weight', 'contrastive_head.0.bias',
-            #     'contrastive_head.2.weight', 'contrastive_head.2.bias'}
-            #         or set(missing[1]) == {
-            #             'contrastive_head.weight', 'contrastive_head.bias'})
-
         else:
             raise NotImplementedError
 

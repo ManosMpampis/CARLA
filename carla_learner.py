@@ -95,7 +95,10 @@ class CARLA:
 
         self.logger.log('\n- Model initialisation')
         # Checkpoint
-        if os.path.exists(self.p['pretext_checkpoint']):
+        if os.path.exists(f"{self.p['pretext_checkpoint_last']}"):
+            self.logger.log(f"Restart from checkpoint {self.p['pretext_checkpoint']}")
+            self.load(type="pretext", checkpoint=True, tag='last')
+        elif os.path.exists(f"{self.p['pretext_checkpoint']}"):
             self.logger.log(f"Restart from checkpoint {self.p['pretext_checkpoint']}")
             self.load(type="pretext", checkpoint=True)
         else:
@@ -190,7 +193,10 @@ class CARLA:
         
         self.logger.log('\n- Model initialisation')
         # Checkpoint
-        if os.path.exists(self.p['classification_checkpoint']):
+        if os.path.exists(f"{self.p['classification_checkpoint_last']}"):
+            self.logger.log(f'-- Model initialised from last checkpoint: {self.p['classification_checkpoint_last']}')
+            self.load(checkpoint=True, tag='last')
+        if os.path.exists(f"{self.p['classification_checkpoint']}"):
             self.logger.log(f'-- Model initialised from last checkpoint: {self.p['classification_checkpoint']}')
             self.load(checkpoint=True)
         else:
@@ -314,14 +320,17 @@ class CARLA:
                         With anomalus score: {anomalus_score.item()}")
         return prediction
 
-    def load(self, path=None, type="classification", checkpoint=False, tag=''):
+    def load(self, path=None, type="classification", checkpoint=False, tag=None):
         if path is None:
             assert type in ["classification", "pretext"]
             key = f"{type}_{"checkpoint" if checkpoint else "model"}"
             path = self.p[key]
+
+            tag = f"_{tag}" if tag else ""
+            path = f"{path[:-8]}{tag}{path[-8:]}"
         
         self.logger.log(f'-- Model initialised from {"last checkpoint" if checkpoint else "model path"}: {path}')
-        dictionary = torch.load(f"{path}{tag}.pth.tar", map_location='cpu')
+        dictionary = torch.load(path, map_location='cpu')
         self.model.backbone.load_state_dict(dictionary['backbone'])
         self.model.head.load_state_dict(dictionary['head'])
 
@@ -337,11 +346,14 @@ class CARLA:
                 self.pretext_best_loss = dictionary['pretext_best_loss']
                 self.pretext_previous_loss = dictionary['pretext_previous_loss'].to(self.device, non_blocking=True)
 
-    def save(self, path=None, dictionary=None, type="classification", checkpoint=False, tag=''):
+    def save(self, path=None, dictionary=None, type="classification", checkpoint=False, tag=None):
         assert type in ["classification", "pretext"]
         if path is None:
             key = f"{type}_{"checkpoint" if checkpoint else "model"}"
             path = self.p[key]
+
+            tag = f"_{tag}" if tag else ""
+            path = f"{path[:-8]}{tag}{path[-8:]}"
         
         
         if dictionary is None:
@@ -357,7 +369,7 @@ class CARLA:
                     dictionary['pretext_best_loss'] = self.pretext_best_loss
                     dictionary['pretext_previous_loss'] = self.pretext_previous_loss
                 
-        torch.save(dictionary, f"{path}{tag}.pth.tar")
+        torch.save(dictionary, path)
         return
 
     def export(self):
