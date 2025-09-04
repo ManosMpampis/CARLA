@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn import metrics
 from torchmetrics.functional.classification import confusion_matrix
 from torchmetrics.functional import precision_recall_curve
@@ -14,12 +14,9 @@ from losses.losses import entropy
 
 
 @torch.no_grad()
-def contrastive_evaluate(dataloader, model):
+def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model):
     model.eval()
     device = next(model.parameters()).device
-    
-    # K-means clustering
-    kmeans = KMeans(n_clusters=3, random_state=4, n_init="auto")
 
     all_feats = []
     all_meta = []
@@ -32,7 +29,7 @@ def contrastive_evaluate(dataloader, model):
         vertices_org = model(ts_org.view(b, h, w)).cpu()
 
         ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-        target_w = target.copy()
+        target_w = target.detach().clone()
         target_w_str = [str(l*2) for l in torch.ones_like(target).tolist()]
         vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
 
@@ -47,15 +44,24 @@ def contrastive_evaluate(dataloader, model):
     feats = torch.cat(all_feats, dim=0)
     metadata = [m for group in all_meta for m in group]
     
-    cluster_labels = kmeans.fit_predict(feats.numpy())
+    # K-means clustering
+    evaluation_metrics = {}
+    if metrics:
+        kmeans = MiniBatchKMeans(n_clusters=3, random_state=4, n_init="auto", batch_size=dataloader.batch_size)
+        cluster_labels = kmeans.fit_predict(feats.numpy())
+        cluster_centers = torch.from_numpy(kmeans.cluster_centers_)
+        
+        # Calculate Silhouette Score
+        s_score = metrics.silhouette_score(feats.numpy(), cluster_labels, metric='euclidean')
+        # Calculate Calinski-Harabasz Index
+        ch_score = metrics.calinski_harabasz_score(feats.numpy(), cluster_labels)
+        # Calculate Davies-Bouldin Index
+        db_score = metrics.davies_bouldin_score(feats.numpy(), cluster_labels)
 
-    # Calculate Silhouette Score
-    s_score = metrics.silhouette_score(feats.numpy(), cluster_labels, metric='euclidean')
-    # Calculate Calinski-Harabasz Index
-    ch_score = metrics.calinski_harabasz_score(feats.numpy(), cluster_labels)
-    # Calculate Davies-Bouldin Index
-    db_score = metrics.davies_bouldin_score(feats.numpy(), cluster_labels)
-    evaluation_metrics = {"Silhouette Score": s_score, "Calinski-Harabasz Score": ch_score, "Davies-Bouldin Score": db_score}
+        # Add centroids to the graph
+        feats = torch.cat([feats, cluster_centers], dim=0)
+        metadata = metadata + ["centroid 1", "centroid 2", "centroid 3"]
+        evaluation_metrics = {"Silhouette Score": s_score, "Calinski-Harabasz Score": ch_score, "Davies-Bouldin Score": db_score}
     return feats, metadata, evaluation_metrics
 
 

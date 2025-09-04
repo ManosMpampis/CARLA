@@ -28,8 +28,8 @@ class SaveAugmentedDataset(Dataset):
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
         ts = self.anchors[index]
-        fneighbor = self.fneighbors[index]
-        f_target = self.f_target[index]
+        fneighbor = self.fneighbors[index] if self.fneighbors else None
+        f_target = self.f_target[index] if self.f_target else None
 
         if len(self.targets) > 0:
             target = int(self.targets[index])

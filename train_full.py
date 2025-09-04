@@ -20,7 +20,7 @@ if __name__ == "__main__":
 
     data_base = 'SMD'
     # version=args.version
-    version='train/first_official_run'
+    version='train/all_eval_metrics'
     # version='temp'
     project_dir = os.path.dirname(__file__)
     all_files = os.listdir(os.path.join(project_dir, 'datasets', data_base.upper(), 'train'))

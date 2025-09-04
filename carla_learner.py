@@ -2,7 +2,7 @@ import os
 import random
 
 import torch
-from torchmetrics.functional import precision_recall_curve, confusion_matrix, Kmeans
+from torchmetrics.functional import precision_recall_curve, confusion_matrix
 import numpy as np
 
 from utils.config import create_config
@@ -108,7 +108,9 @@ class CARLA:
             self.pretext_best_loss = float("inf")
             self.pretext_previous_loss = torch.tensor(float(0), device=self.device)
 
-            feats, metadata = contrastive_evaluate(train_dataloader, self.model)
+            feats, metadata, evaluation_metrics = contrastive_evaluate(train_dataloader, self.model)
+            for metric, value in evaluation_metrics.items():
+                self.logger.scalar_summary("Train Pretext Evaluation", metric, value, -1)
             self.logger.add_embedding("Cluster", feats, metadata, "Pretext Initial")
 
         self.logger.log('\n- Training:')        
@@ -225,9 +227,9 @@ class CARLA:
                 self.logger.scalar_summary("Train Classification", loss, value, self.epoch)
 
             predictions, metrics = self.eval_classification(tst_dataloader)  # Kanonika ginete sto tst kai oxi sto val
-            rep_f1 = metrics["rep_f1"]
+            rep_f1 = metrics["best_f1"]
 
-            classification_losses = classification_evaluate(predictions, **self.p['criterion_kwargs'])
+            # classification_losses = classification_evaluate(predictions, **self.p['criterion_kwargs'])
 
             for metric, value in metrics.items():
                 self.logger.scalar_summary("Train Val Dataset Evaluation", metric, value, self.epoch)
@@ -257,16 +259,14 @@ class CARLA:
         if train:
             self.majority_label = label_counts.argmax()
 
-        targets = predictions['targets']
+        targets = (predictions['targets'] != 0).int()
+        
         probs = predictions['probabilities']
 
         # find anomalites as classification task
-        anomalies = [1 if p == self.majority_label else 0 for p in predictions['predictions']]
-        classification_confusion_matrix = confusion_matrix(targets, anomalies)
-        tp = classification_confusion_matrix[1, 1]
-        tn = classification_confusion_matrix[0, 0]
-        fp = classification_confusion_matrix[0, 1]
-        fn = classification_confusion_matrix[1, 0]
+        anomalies = torch.tensor([1 if p == self.majority_label else 0 for p in predictions['predictions']]).to(self.device)
+        tn, fp, fn, tp = confusion_matrix(targets, anomalies, "binary").ravel()
+        
         eval_report = {"cls_tp": tp, "cls_tn": tn, "cls_fp": fp, "cls_fn": fn}
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
@@ -298,8 +298,8 @@ class CARLA:
         eval_report['best_f1'] = rep_f1
         eval_report['best_threshold'] = best_threshold
 
-        anomalies = [1 if s >= best_threshold else 0 for s in scores]
-        best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies).ravel()
+        anomalies = torch.tensor([1 if s >= best_threshold else 0 for s in scores]).to(self.device)
+        best_tn, best_fp, best_fn, best_tp = confusion_matrix(targets, anomalies, "binary").ravel()
         
         eval_report['best_tp'] = best_tp
         eval_report['best_tn'] = best_tn
@@ -380,24 +380,21 @@ class CARLA:
         use_fneighbors = self.p.get('use_fneighbors_in_repository', False)
         base_dataloader = get_dataloader(self.p, dataset)
 
-        aug_length = len(dataset) if self.p.get('use_fneighbors_in_repository', False) else len(dataset) * 2
-        ts_repository_aug = TSRepository(aug_length, self.p['model_kwargs']['features_dim'], use_fneighbors=use_fneighbors)  # need size of repository == 1+num_of_anomalies
+        ts_repository_aug = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'], use_fneighbors=use_fneighbors)
         ts_repository = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'])
 
         # Mine the topk nearest neighbors at the very end (Train)
         # These will be served as input to the classification loss.
         self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...')    
         
-        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository, 
-                           real_aug = True, ts_repository_aug = ts_repository_aug, 
-                           use_fneighbors=use_fneighbors, logger=self.logger)
+        # Fill augmented repository to extract they neighbors training dataset
+        ts_repository_aug.fill_ts_repository(self.p, base_dataloader, self.model, real_aug=True)
         
-        out_pre = np.column_stack((ts_repository.features.cpu().numpy(), ts_repository.targets.cpu().numpy()))
-
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, use_original_algorithm=False, memory_efficient=memmory_efficient)  # hear we mine from aug and not base
+        
+        # Aug and not base
+        kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk, memory_efficient=memmory_efficient)
 
-        np.save(self.p['pretext_features_train_path'], out_pre)
         np.save(self.p['topk_neighbors_train_path'], knearest)
         np.save(self.p['bottomk_neighbors_train_path'], kfurtherst)
         mean, std = dataset.get_info()
@@ -410,22 +407,16 @@ class CARLA:
                                   to_augmented_dataset=False, mean_data=mean, std_data=std, logger=self.logger)
         # Use the same variable to save some memory
         base_dataloader = get_dataloader(self.p, dataset)
-        ts_repository = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'],
-                                          self.p['num_classes'], self.p['criterion_kwargs']['temperature'])
+        ts_repository = TSRepository(len(dataset), self.p['model_kwargs']['features_dim'])
         # Mine the topk nearest neighbors at the very end (Val)
         # These will be used for validation.
         self.logger.log('Fill TS Repository for mining the nearest/furthest neighbors (val) ...')
 
-        fill_ts_repository(self.p, base_dataloader, self.model, ts_repository,
-                           real_aug = False, ts_repository_aug = None,
-                           use_fneighbors=use_fneighbors,logger=self.logger)
-        
-        out_pre = np.column_stack((ts_repository.features.cpu().numpy(), ts_repository.targets.cpu().numpy()))
+        ts_repository.fill_ts_repository(self.p, base_dataloader, self.model, real_aug=False)
 
         self.logger.log(f'Mine the nearest neighbors (Top-{topk})')
-        kfurtherst, knearest = ts_repository.furthest_nearest_neighbors(topk, use_original_algorithm=False, memory_efficient=memmory_efficient)  # hear we mine from val
+        kfurtherst, knearest = ts_repository.furthest_nearest_neighbors(topk, memory_efficient=memmory_efficient)  # hear we mine from val
         
-        np.save(self.p['pretext_features_test_path'], out_pre)
         np.save(self.p['topk_neighbors_val_path'], knearest)
         np.save(self.p['bottomk_neighbors_val_path'], kfurtherst)
     

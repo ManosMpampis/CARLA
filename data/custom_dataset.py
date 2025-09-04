@@ -212,6 +212,8 @@ class NeighborsDataset(Dataset):
         if hasattr(self.dataset, 'fneighbors'): # Backward compatible
             if self.dataset.fneighbors is not None:
                 FNeighbor = self.dataset.fneighbors.__getitem__(self.FN_index[FN_index])
+            else:
+                FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']
         else:
             FNeighbor = self.dataset.__getitem__(self.FN_index[FN_index])['ts_org']
 
