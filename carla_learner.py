@@ -11,7 +11,7 @@ from utils.common_config import get_transformations, get_aug_train_dataset,\
                                 get_optimizer, get_model, load_backbone,\
                                 get_criterion, adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import get_predictions, classification_evaluate, contrastive_evaluate
-from utils.repository import TSRepository, fill_ts_repository
+from utils.repository import TSRepository
 from utils.train_utils import self_sup_classification_train, pretext_train
 from utils.utils import Logger
 
@@ -295,6 +295,9 @@ class CARLA:
         rep_f1 = f1_score[best_f1_index]
         best_threshold = thresholds[best_f1_index]
 
+        eval_report['best_f1'] = rep_f1
+        eval_report['best_precision'] = precision[best_f1_index]
+        eval_report['best_recall'] = recall[best_f1_index]
         eval_report['best_f1'] = rep_f1
         eval_report['best_threshold'] = best_threshold
 

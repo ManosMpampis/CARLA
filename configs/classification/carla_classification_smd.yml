@@ -8,7 +8,7 @@ tag_class:
 # Loss
 criterion: classification
 criterion_kwargs:
-   entropy_weight: 4
+   entropy_weight: 1
    consistency_weight: 1
    inconsistency_weight: 0.5
 
