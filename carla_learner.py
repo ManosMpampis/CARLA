@@ -51,10 +51,9 @@ class CARLA:
         self.version = self.p['version']
 
         self.verbose = verbose
-        self.file_path=self.p['experiment_dir']
-
-        self.logger = Logger(self.p['version'], verbose=verbose, file_path=self.file_path,
-                             use_tensorboard=tensorboard, file_name=self.p['setup'])
+        
+        file_path = self.p["classification_tag"] if self.p["setup"] == "classification" else self.p["pretext_tag"]
+        self.logger = Logger(self.p['version'], verbose=verbose, file_path=file_path, use_tensorboard=tensorboard)
 
         self.model = get_model(self.p)
         self.logger.add_graph(self.model, torch.rand(self.p['res_kwargs']['in_channels'], self.p['window_size']).unsqueeze(0))

@@ -172,6 +172,9 @@ class TSRepository(object):
             self.update(output, targets)
 
             if real_aug:
+                con_data = torch.cat((con_data, ts_org.cpu()), dim=0)
+                con_target = torch.cat((con_target, targets), dim=0)
+
                 ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
                 targets = torch.tensor([4]*ts_ss_augment.shape[0], dtype=torch.long, device="cpu")
                 output = model(ts_ss_augment.reshape(b, h, w)).cpu()

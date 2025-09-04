@@ -55,11 +55,10 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 class Logger:
-    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', tag=None):
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log'):
 
         self.verbose = verbose
         self.use_tensorboard = use_tensorboard
-        self.tag = tag
 
         self._name = "Self-Awareness"
         self._version = version
@@ -121,7 +120,7 @@ class Logger:
             self.log(
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
-            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, self.file_name, f"tensorboard{"_"+self.tag if self.tag else ''}"))
+            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, "tensorboard"))
         self.init_tensorboard_functions()
             
     def init_tensorboard_functions(self):
