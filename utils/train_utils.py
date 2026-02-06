@@ -12,6 +12,7 @@ def pretext_train(train_loader, model, criterion, optimizer, scaler, epoch, prev
     total_l = AverageMeter('Total Loss', ':.4e')
     positive_l = AverageMeter('Positive Distance Loss', ':.4e')
     negative_l = AverageMeter('Negative Distance Loss', ':.4e')
+    h_negative_l = AverageMeter('Hard Negative Distance Loss', ':.4e')
     margin_l = AverageMeter('Margin', ':.4e')
 
     progress = ProgressMeter(len(train_loader),
@@ -61,7 +62,7 @@ def pretext_train(train_loader, model, criterion, optimizer, scaler, epoch, prev
 
         with torch.amp.autocast(device_type=device.type, dtype=torch.float16, enabled=scaler.is_enabled()):
             output = model(input_)
-            loss, positive_distance, hard_negative_distance = criterion(output, prev_loss)
+            loss, positive_distance, reg_neg, hard_negative_distance = criterion(output, prev_loss)
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -71,14 +72,15 @@ def pretext_train(train_loader, model, criterion, optimizer, scaler, epoch, prev
 
         total_l.update(loss.item())
         positive_l.update(positive_distance.item())
-        negative_l.update(hard_negative_distance.item())
+        negative_l.update(reg_neg.item())
+        h_negative_l.update(hard_negative_distance.item())
         margin_l.update(margin)
         prev_loss = loss.item()
         
         if i % 10 == 0:
             progress.display(i)
 
-    return {'Total Loss': total_l.avg, 'Positive Distance': positive_l.avg, 'Hard Negative Distance': negative_l.avg, 'margin': margin_l.avg}
+    return {'Total Loss': total_l.avg, 'Positive Distance': positive_l.avg, 'Negative Distance': negative_l.avg, 'Hard Negative Distance': h_negative_l.avg, 'margin': margin_l.avg}
 
 
 def self_sup_classification_train(train_loader, model, criterion, optimizer, scaler, epoch, logger=None):
