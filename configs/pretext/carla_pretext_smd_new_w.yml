@@ -19,6 +19,15 @@ num_classes: 10
 criterion: pretext
 criterion_kwargs:
   temperature: 0.4
+  initial_margin: 0.3
+  margin_constant: False
+  pos_weight: 1
+  neg_weight: 1
+  min_improvement: 0.00001
+  ema_alpha: 0.3
+  adjust_factor: 0.001
+  orig_margin: False
+
 
 # Hyperparameters
 epochs: 1000
@@ -27,7 +36,7 @@ optimizer_kwargs:
   #nesterov: False
   #momentum: 0.9
   lr: 0.001
-  weight_decay: 0.01
+  weight_decay: 0
 # Scheduler
 scheduler: cosine_restart
 scheduler_kwargs:
@@ -37,7 +46,7 @@ scheduler_kwargs:
   T_mul: 2
   lr_decay_epochs: [10, 20]
   lr_decay_rate: 0.01
-batch_size: 50
+batch_size: 650
 num_workers: 0
 
 # Transformations

@@ -9,7 +9,7 @@ import ast
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
 class SMD(Dataset):
 

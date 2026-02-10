@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import collections
 
+
 """ Custom collate function """
 def collate_custom(batch):
     if isinstance(batch[0], np.int64):
@@ -20,7 +21,7 @@ def collate_custom(batch):
     elif isinstance(batch[0], float):
         return torch.FloatTensor(batch)
 
-    elif isinstance(batch[0], (str, bytes)):
+    elif isinstance(batch[0], str):
         return batch
 
     elif isinstance(batch[0], collections.abc.Mapping):

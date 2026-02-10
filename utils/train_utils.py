@@ -4,13 +4,16 @@ import numpy as np
 from torch import Tensor
 
 from utils.utils import AverageMeter, ProgressMeter
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
-def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, device='cuda'):
+def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, logger, device='cuda'):
 
     losses = AverageMeter('Loss', ':.4e')
+    P_Losses = AverageMeter('P_Loss', ':.4e')
+    N_Losses = AverageMeter('N_Loss', ':.4e')
+    M_Losees = AverageMeter('Margin', ':.4e')
     progress = ProgressMeter(len(train_loader),
-        [losses],
+        [losses, P_Losses, N_Losses, M_Losees], logger,
         prefix="Epoch: [{}]".format(epoch+1))
 
     model.to(device)
@@ -32,24 +35,28 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, d
         output = model(input_)
         
         if prev_loss is not None:
-            loss = criterion(output, prev_loss)
+            loss, p_d_loss, n_d_loss = criterion(output, prev_loss)
         else:
-            loss = criterion(output)
+            loss, p_d_loss, n_d_loss = criterion(output)
 
         losses.update(loss.item())
+        P_Losses.update(p_d_loss.item())
+        N_Losses.update(n_d_loss.item())
+        M_Losees.update(criterion.margin)
+
         prev_loss = loss.item()
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        if i % 10 == 0:
+        if i % 100 == 0:
             progress.display(i)
 
-    return loss
+    return {"loss": losses.avg, "p_loss": P_Losses.avg, "n_loss": N_Losses.avg, "margin": M_Losees.avg}
 
 
-def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, update_cluster_head_only=False):
+def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, logger, update_cluster_head_only=False):
     """ 
     Train w/ classification-Loss
     """
@@ -58,7 +65,7 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
     inconsistency_losses = AverageMeter('Inconsistency Loss', ':.4e')
     entropy_losses = AverageMeter('Entropy', ':.4e')
     progress = ProgressMeter(len(train_loader),
-        [total_losses, consistency_losses, inconsistency_losses, entropy_losses],
+        [total_losses, consistency_losses, inconsistency_losses, entropy_losses], logger,
         prefix="Epoch: [{}]".format(epoch+1))
 
     if update_cluster_head_only:
@@ -81,7 +88,8 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         anchors = anchors.reshape(b, h, w)
         nneighbors = nneighbors.reshape(b, h, w)
         fneighbors = fneighbors.reshape(b, h, w)
-       
+
+        optimizer.zero_grad()
         if update_cluster_head_only: # Only calculate gradient for backprop of linear layer
             with torch.no_grad():
                 anchors_features = model(anchors, forward_pass='backbone')
@@ -131,9 +139,11 @@ def self_sup_classification_train(train_loader, model, criterion, optimizer, epo
         total_loss_final = torch.sum(torch.stack(total_loss, dim=0))
         assert total_loss_final.requires_grad, "Total loss does not require grad!"
 
-        optimizer.zero_grad()
+        
         total_loss_final.backward()
         optimizer.step()
 
         if i % 100 == 0:
             progress.display(i)
+    
+    return {"total_loss": total_losses.avg, "consistency_loss": consistency_losses.avg, "inconsistency_loss": inconsistency_losses.avg, "entropy_loss": entropy_losses.avg}

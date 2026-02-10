@@ -1,3 +1,4 @@
+
 import os
 
 
@@ -7,25 +8,24 @@ class MyPath(object):
         db_names = {'msl', 'smap', 'smd', 'power', 'yahoo', 'kpi', 'swat', 'wadi', 'gecco', 'swan', 'ucr'}
         assert(database in db_names)
 
-        project_dir = os.path.join(os.path.dirname(__file__), '..')
         if database == 'msl' or database == 'smap':
-            return f'{project_dir}/datasets/MSL_SMAP'
+            return 'datasets/MSL_SMAP'
         elif database == 'ucr':
-            return f'{project_dir}/datasets/UCR'
+            return 'datasets/UCR'
         elif database == 'yahoo':
-            return f'{project_dir}/datasets/Yahoo'
+            return 'datasets/Yahoo'
         elif database == 'smd':
-            return f'{project_dir}/datasets/SMD'
+            return 'datasets/SMD'
         elif database == 'swat':
-            return f'{project_dir}/datasets/SWAT'
+            return 'datasets/SWAT'
         elif database == 'wadi':
-            return f'{project_dir}/datasets/WADI'
+            return 'datasets/WADI'
         elif database == 'kpi':
-            return f'{project_dir}/datasets/KPI'
+            return 'datasets/KPI'
         elif database == 'swan':
-            return f'{project_dir}/datasets/Swan'
+            return 'datasets/Swan'
         elif database == 'gecco':
-            return f'{project_dir}/datasets/GECCO'
+            return 'datasets/GECCO'
         
         else:
             raise NotImplementedError

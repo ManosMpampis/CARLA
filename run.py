@@ -3,61 +3,68 @@ import numpy as np
 import pandas as pd
 import os
 import subprocess
+from easydict import EasyDict
+
+from carla_pretext import main as main_pretext
+from carla_classification import main as main_classification
+from evaluation import main as main_evaluation
+
+
+env = os.environ.copy()
+env['PYTHONPATH'] = '/home/manos/Documents/EKETA/HYPER_AI/gits/official_carla/unchanged/CARLA/'
+env['PATH'] = f'/usr/local/cuda/bin:{env.get("PATH", "")}'
+env['LD_LIBRARY_PATH'] = f'/usr/local/cuda/lib64:{env.get("LD_LIBRARY_PATH", "")}'
+
 
 # %%
-# with open('/home/zahraz/hz18_scratch/zahraz/datasets/MSL_SMAP/labeled_anomalies.csv', 'r') as file:
-#     csv_reader = pd.read_csv(file, delimiter=',')
-# data_info = csv_reader[csv_reader['spacecraft'] == 'MSL']
-
-all_files = os.listdir(os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'SMD/train'))
+all_files = os.listdir(os.path.join('datasets/', 'SMD/train'))
 file_list = [file for file in all_files if file.startswith('machine-')]
 file_list = sorted(file_list)
 print(file_list)
 
-# file_list = os.listdir(os.path.join('/home/zahraz/hz18_scratch/zahraz/datasets/', 'UCR'))                        
-# file_list = sorted(file_list)
-
-# for filename in files: #['swat']: #files: #data_info['chan_id']:
+# version = "original_with_logs"
+# for filename in file_list: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+#     # if 'real_' in filename:
 #     if filename != 'GECCO':
 #         print(filename)
-        
+
 #         # Run the pretext script
-#         subprocess.run([
-#             'python', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/carla_pretext.py',
-#             '--config_env', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/configs/env.yml',
-#             '--config_exp', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/configs/pretext/carla_pretext_smd.yml',
-#             '--fname', filename
-#         ])
+#         pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": "configs/pretext/carla_pretext_smd_original.yml",
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_pretext(pretext_args)
         
 #         # Run the classification script
-#         subprocess.run([
-#             'python', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/carla_classification.py',
-#             '--config_env', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/configs/env.yml',
-#             '--config_exp', '/home/zahraz/hz18_scratch/zahraz/Published/CARLA/configs/classification/carla_classification_smd.yml',
-#             '--fname', filename
-#         ])
-index = file_list.index("machine-3-11.txt")
+#         classification_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": "configs/classification/carla_classification_smd_original.yml",
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_classification(classification_args)
 
-for filename in file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+# eval_args = EasyDict({"version": f"{version}"})
+# main_evaluation(eval_args)
+
+index = file_list.index('machine-1-4.txt')
+version = "orig_big_batch/entropy_norm"
+for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:
     if filename != 'GECCO':
         print(filename)
-        genmodel = 'gen_anom_' + filename+'.pth'
 
         # Run the pretext script
-        subprocess.run([
-            'python', 'carla_pretext.py',
-            '--config_env', 'configs/env.yml',
-            '--config_exp', 'configs/pretext/carla_pretext_smd.yml',
-            '--fname', filename
-        ], check=True)
+        # pretext_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/pretext/carla_pretext_smd_new_w.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_pretext(pretext_args)
         
         # Run the classification script
-        subprocess.run([
-            'python', 'carla_classification.py',
-            '--config_env', 'configs/env.yml',
-            '--config_exp', 'configs/classification/carla_classification_smd.yml',
-            '--fname', filename
-        ], check=True)
+        classification_args = EasyDict({"config_env": "configs/env.yml",
+                        "config_exp": "configs/classification/carla_classification_smd_1_entropy.yml",
+                        "fname": filename,
+                        "version": f"{version}"})
+        main_classification(classification_args)
 
-
+eval_args = EasyDict({"version": f"{version}"})
+main_evaluation(eval_args)

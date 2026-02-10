@@ -1,10 +1,10 @@
-
 import os
+import time
 import yaml
 from easydict import EasyDict
-from utils.utils import mkdir_if_missing
+from utils.utils import mkdir_if_missing as mkdir
 
-def create_config(config_file_env, config_file_exp, fname):
+def create_config(config_file_env, config_file_exp, fname, version=None):
     # Config for environment path
     with open(config_file_env, 'r') as stream:
         root_dir = yaml.safe_load(stream)['root_dir']
@@ -19,13 +19,20 @@ def create_config(config_file_env, config_file_exp, fname):
         cfg[k] = v
 
     # Set paths for pretext task (These directories are needed in every stage)
-    base_dir = os.path.join(root_dir, cfg['train_db_name'])
-    pretext_dir = os.path.join(base_dir, fname+'/pretext')
-    mkdir_if_missing(base_dir)
-    mkdir_if_missing(pretext_dir)
+    version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) if version is None else version
+    base_dir = os.path.join(root_dir, f'{cfg['train_db_name']}/{version}/{fname}')
+    
+    pretext_tag = cfg.get('tag_pretext', None)
+    cfg['pretext_tag'] = ("_"+pretext_tag) if pretext_tag else ""
+    pretext_dir = os.path.join(base_dir, f'pretext{cfg['pretext_tag']}')
+    mkdir(base_dir)
+    mkdir(pretext_dir)
+    cfg['version'] = version
+    cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
     cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint.pth.tar')
+    cfg['pretext_checkpoint_last'] = os.path.join(pretext_dir, 'checkpoint_last.pth.tar')
     cfg['pretext_model'] = os.path.join(pretext_dir, 'model.pth.tar')
     cfg['topk_neighbors_train_path'] = os.path.join(pretext_dir, 'topk-train-neighbors.npy')
     cfg['bottomk_neighbors_train_path'] = os.path.join(pretext_dir, 'bottomk-train-neighbors.npy')
@@ -35,16 +42,19 @@ def create_config(config_file_env, config_file_exp, fname):
     cfg['topk_neighbors_val_path'] = os.path.join(pretext_dir, 'topk-test-neighbors.npy')
     cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
     cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
-    cfg['contrastive_dataset'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
+    cfg['contrastive_dataset'] = os.path.join(pretext_dir, 'con_train_dataset')
+    cfg['contrastive_dataloader'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
 
 
     if cfg['setup'] in ['classification']:
-        base_dir = os.path.join(root_dir, cfg['train_db_name'])
-        classification_dir = os.path.join(base_dir, fname+ '/classification')
-        mkdir_if_missing(base_dir)
-        mkdir_if_missing(classification_dir)
+        classification_tag = cfg.get('tag_class', None)
+        cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
+        classification_dir = os.path.join(base_dir, f'classification{cfg['classification_tag']}')
+        mkdir(base_dir)
+        mkdir(classification_dir)
         cfg['classification_dir'] = classification_dir
         cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
+        cfg['classification_checkpoint_last'] = os.path.join(classification_dir, 'checkpoint_last.pth.tar')
         cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')
         cfg['classification_trainfeatures'] = os.path.join(classification_dir, 'classification_traintfeatures.csv')
         cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')

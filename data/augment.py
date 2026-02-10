@@ -1,9 +1,8 @@
-
 import random
 import numpy as np
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
 
 class NoiseTransformation(object):
@@ -66,7 +65,6 @@ class SubAnomaly(object):
         # Set the scale_factor if not provided
         if scale_factor is None:
             scale_factor = np.random.uniform(0.1, 2.0, window.shape[1])
-            print('test')
 
         # Randomly select the start index for the subsequence
         if start_index is None:
@@ -107,11 +105,13 @@ class SubAnomaly(object):
         Adding sub anomaly with user-defined portion
         """
         window = X.clone() #X.copy()
+        
         anomaly_seasonal = window.clone() #.copy()
         anomaly_trend = window.clone() #.copy()
         anomaly_global = window.clone() #.copy()
         anomaly_contextual = window.clone() #.copy()
         anomaly_shapelet = window.clone() #.copy()
+
         min_len = int(window.shape[0] * 0.1)
         max_len = int(window.shape[0] * 0.9)
         subsequence_length = np.random.randint(min_len, max_len)

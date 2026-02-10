@@ -1,10 +1,8 @@
-
 import os
-import torch
-import numpy as np
+import logging
 import errno
-from data.ra_dataset import SaveAugmentedDataset
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+import torch
 
 def mkdir_if_missing(directory):
     if not os.path.exists(directory):
@@ -39,75 +37,182 @@ class AverageMeter(object):
 
 
 class ProgressMeter(object):
-    def __init__(self, num_batches, meters, prefix=""):
+    def __init__(self, num_batches, meters, logger, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
         self.prefix = prefix
+        self.logger = logger
+
 
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
+        self.logger.log('\t'.join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
+class Logger:
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log'):
 
-@torch.no_grad()
-def fill_ts_repository(p, loader, model, ts_repository, real_aug=False, ts_repository_aug=None):
-    model.eval()
-    ts_repository.reset()
-    if ts_repository_aug != None: ts_repository_aug.reset()
-    if real_aug:
-        ts_repository.resize(3)
+        self.verbose = verbose
+        self.use_tensorboard = use_tensorboard
 
-    con_data = torch.tensor([]).to(device)
-    con_target = torch.tensor([]).to(device)
-    for i, batch in enumerate(loader): 
-        ts_org = batch['ts_org'].to(device, non_blocking=True) #cuda
-        targets = batch['target'].to(device, non_blocking=True)
-        if ts_org.ndim == 3:
-            b, w, h = ts_org.shape
+        self._name = "Self-Awareness"
+        self._version = version
+        self.log_dir = os.path.join(file_path)
+        self.file_name = file_name
+        self._init_logger()
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def version(self):
+        return self._version
+        
+    def _init_logger(self):
+        self.logger = logging.getLogger(name=self.name)
+        self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False
+
+        # create file handler
+        if self.verbose == 0:
+            h = logging.NullHandler()
+
+            # add the handlers to the logger
+            self.logger.addHandler(h)
+        if self.verbose >= 1:
+            h = logging.StreamHandler()
+            h.setLevel(logging.INFO)
+            # set file formatter
+            fmt = "[%(asctime)s]: %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+            h.setFormatter(formatter)
+
+            # add the handlers to the logger
+            self.logger.addHandler(h)
+        if self.verbose >= 2:
+            mkdir_if_missing(self.log_dir)
+            h = logging.FileHandler(os.path.join(self.log_dir, f"{self.file_name}.txt"))
+            h.setLevel(logging.INFO)
+            # set file formatter
+            fmt = "[%(asctime)s]: %(message)s"
+            formatter = logging.Formatter(fmt, datefmt="%m-%d %H:%M:%S")
+            h.setFormatter(formatter)
+
+            # add the handlers to the logger
+            self.logger.addHandler(h)
+
+        # add tensorboard handler
+        if self.use_tensorboard:
+            try:
+                from torch.utils.tensorboard import SummaryWriter
+            except ImportError:
+                raise ImportError(
+                    'Please run "pip install future tensorboard" to install '
+                    "the dependencies to use torch.utils.tensorboard "
+                    "(applicable to PyTorch 1.1 or higher)"
+                ) from None
+            self.log(
+                "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
+            )
+            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, "tensorboard"))
+        self.init_tensorboard_functions()
+            
+    def init_tensorboard_functions(self):
+        if self.use_tensorboard:
+            self.log_metrics = self._log_metrics
+            self.scalar_summary = self._scalar_summary
+            self.metrics_summary = self._metrics_summary
+            self.add_figure = self._add_figure
+
+            self.pr_curv = self._pr_curv
+            self.add_graph = self._add_graph
+            self.add_embedding = self._add_embedding
         else:
-            b, w = ts_org.shape
-            h = 1
+            self.log_metrics = self._do_nothing
+            self.scalar_summary = self._do_nothing
+            self.metrics_summary = self._do_nothing
+            self.add_figure = self._do_nothing
 
-        # ts_org = torch.from_numpy(ts_org).float(). #cuda
-        output = model(ts_org.reshape(b, h, w))
-        ts_repository.update(output, targets)
-        if ts_repository_aug != None: ts_repository_aug.update(output, targets)
-        if i % 100 == 0:
-            print('Fill TS Repository [%d/%d]' %(i, len(loader)))
+            self.pr_curv = self._do_nothing
+            self.add_graph = self._do_nothing
+            self.add_embedding = self._do_nothing
 
-        if real_aug:
-            con_data = torch.cat((con_data, ts_org), dim=0)
-            # con_target = torch.cat((con_target, torch.from_numpy(targets).float()), dim=0)
-            con_target = torch.cat((con_target, targets), dim=0) #cuda
+    def warn(self, string):
+        self.logger.warning(string)
 
+    def error(self, string):
+        self.logger.error(string)
 
-            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True) #cuda
-            targets = torch.LongTensor([2]*ts_w_augment.shape[0]).to(device, non_blocking=True)
-            # ts_w_augment = torch.from_numpy(ts_w_augment).float() #cuda
-            output = model(ts_w_augment.reshape(b, h, w))
-            ts_repository.update(output, targets)
-            # ts_repository_aug.update(output, targets)
+    def info(self, string):
+        self.logger.info(string)
 
+    def log(self, string):
+        self.logger.info(string)
 
-            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True) #cuda
-            targets = torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device, non_blocking=True)
-            # ts_ss_augment = torch.from_numpy(ts_ss_augment).float() #cuda
-            con_data = torch.cat((con_data, ts_ss_augment), dim=0)
-            con_target = torch.cat((con_target, targets), dim=0)
-            output = model(ts_ss_augment.reshape(b, h, w))
-            ts_repository.update(output, targets)
-            ts_repository_aug.update(output, targets)
+    def dump_cfg(self, cfg_node):
+        with open(os.path.join(self.log_dir, "train_cfg.yml"), "w") as f:
+            cfg_node.dump(stream=f)
+    
+    def log_hyperparams(self, params):
+        string = "\nhyperparams: \n"
+        for key, value in params.items():
+            string += f"\t{key} : {value}\n"
+        self.info(string)
 
+    def _log_metrics(self, metrics, step):
+        self.logger.info(f"Val_metrics: {metrics}")
+        for k, v in metrics.items():
+            self.experiment.add_scalars("Val_metrics/" + k, {"Val": v}, step)
 
-    if real_aug:
-        con_dataset = SaveAugmentedDataset(con_data, con_target)
-        con_loader = torch.utils.data.DataLoader(con_dataset, num_workers=p['num_workers'],
-                                                 batch_size=p['batch_size'], pin_memory=True,
-                                                 drop_last=False, shuffle=False)
-        torch.save(con_loader, p['contrastive_dataset'])
+    def _scalar_summary(self, phase, tag, value, step):
+        # self.experiment.add_scalars(phase, {tag: value}, step)
+        self.experiment.add_scalar(f'{phase}/{tag}', value, step)
+
+    def _metrics_summary(self, phase, metrics, step):
+        for metric, value in metrics.items():
+            self.scalar_summary(phase, metric, value, step)
+            
+    def _add_figure(self, tag, figure, step):
+        import matplotlib
+        self.experiment.add_figure(tag, figure, step)
+
+    def _add_embedding(self, tag, vertices, labels, step):
+        self.experiment.add_embedding(mat=vertices, metadata=labels, tag=tag, global_step=step)
+
+    def _pr_curv(self, tag, labels, propabilites, step):
+        self.experiment.add_pr_curve(tag, labels, propabilites, step)
+
+    def _add_graph(self, model, input_to_model):
+        self.experiment.add_graph(model, input_to_model, False, False)
+
+    def finalize(self):
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+        if self.use_tensorboard:
+            self.experiment.flush()
+            self.experiment.close()
+        
+
+    def timer(self, method, *args):
+        torch.cuda.synchronize()
+        start_time = time.time()
+
+        output = method(*args)
+
+        torch.cuda.synchronize()
+        end_time = time.time()
+        time = end_time - start_time
+
+        self.log(f'[{method.__name__}] time: {time:.4f} sencods')
+        return output
+
+    def _do_nothing(self, *args, **kwargs):
+        pass

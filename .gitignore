@@ -1,8 +1,7 @@
-venv
-results
-datasets
 
-data/__pycache__
-losses/__pycache__
-models/__pycache__
-utils/__pycache__
+__pycache__/
+*.npy
+results/
+*.csv
+venv/
+datasets/

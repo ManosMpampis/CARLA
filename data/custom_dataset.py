@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset
 from scipy.spatial.distance import euclidean
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda")
 
 """ 
     AugmentedDataset
@@ -113,7 +113,7 @@ class NeighborsDataset(Dataset):
         FN_indices = F_indices.copy()  # Nearest neighbor indices (np.array  [len(dataset) x k])
         if p['num_neighbors'] is not None:
             self.NN_indices = NN_indices[:, :p['num_neighbors']]
-            self.FN_indices = FN_indices[:, -p['num_neighbors']:]
+            self.FN_indices = FN_indices[:, :-p['num_neighbors']]
         #assert( int(self.indices.shape[0]/4) == len(self.dataset) )
 
         self.dataset.data = dataset.data.to(device)

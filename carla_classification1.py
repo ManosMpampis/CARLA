@@ -1,7 +1,10 @@
+
 import argparse
 import os
 import torch
+import pandas
 import numpy as np
+from termcolor import colored
 from utils.config import create_config
 from utils.common_config import get_train_transformations, get_val_transformations,\
                                 get_val_transformations1, \
@@ -11,7 +14,6 @@ from utils.common_config import get_train_transformations, get_val_transformatio
                                 adjust_learning_rate, inject_sub_anomaly
 from utils.evaluate_utils import get_predictions, classification_evaluate, pr_evaluate
 from utils.train_utils import self_sup_classification_train
-from utils.utils import Logger
 
 import random
 
@@ -25,22 +27,25 @@ def set_seed(seed):
 
 set_seed(4)
 
-device = torch.device("cuda")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+FLAGS = argparse.ArgumentParser(description='classification Loss')
+FLAGS.add_argument('--config_env', help='Location of path config file')
+FLAGS.add_argument('--config_exp', help='Location of experiments config file')
+FLAGS.add_argument('--fname', help='Config the file name of Dataset')
+FLAGS.add_argument('--version', help='Experiment version', type=str)
 
-
-def main(args):
+def main():
     global best_f1
+    args = FLAGS.parse_args()
     p = create_config(args.config_env, args.config_exp, args.fname, args.version)
-    logger = Logger(p['version'], verbose=2, file_path=p['classification_dir'], use_tensorboard=True)
-    
-    logger.log('CARLA Self-supervised Classification stage --> ')
+    print(colored('CARLA Self-supervised Classification stage --> ', 'yellow'))
 
     # CUDNN
    # torch.backends.cudnn.benchmark = True
 
     # Data
-    logger.log('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'])
+    print(colored('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'], 'green'))
     train_transformations = get_train_transformations(p)
     sanomaly = inject_sub_anomaly(p)
     val_transformations = get_val_transformations1(p)
@@ -53,7 +58,7 @@ def main(args):
 
     val_dataloader = get_val_dataloader(p, val_dataset)
 
-    logger.log('-- Train samples size: %d - Test samples size: %d' %(len(train_dataset), len(val_dataset)))
+    print(colored('-- Train samples size: %d - Test samples size: %d' %(len(train_dataset), len(val_dataset)), 'green'))
 
     # Model
     model = get_model(p, p['pretext_model'])
@@ -65,16 +70,16 @@ def main(args):
 
     # Warning
     if p['update_cluster_head_only']:
-        logger.log('WARNING: classification will only update the cluster head')
+        print(colored('WARNING: classification will only update the cluster head', 'red'))
 
     # Loss function
     criterion = get_criterion(p)
     criterion.to(device)
 
-    logger.log('\n- Model initialisation')
+    print(colored('\n- Model initialisation', 'green'))
     # Checkpoint
     if os.path.exists(p['classification_checkpoint']):
-        logger.log('-- Model initialised from last checkpoint: {}'.format(p['classification_checkpoint']))
+        print(colored('-- Model initialised from last checkpoint: {}'.format(p['classification_checkpoint']), 'green'))
         checkpoint = torch.load(p['classification_checkpoint'], map_location='cpu')
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
@@ -84,7 +89,7 @@ def main(args):
         normal_label = checkpoint['normal_label']
 
     else:
-        logger.log('-- No checkpoint file at {} -- new model initialised'.format(p['classification_checkpoint']))
+        print(colored('-- No checkpoint file at {} -- new model initialised'.format(p['classification_checkpoint']), 'green'))
         start_epoch = 0
         best_loss = 1e4
         best_loss_head = None
@@ -93,13 +98,13 @@ def main(args):
 
     best_f1 = -1 * np.inf
     # best_loss = np.inf
-    logger.log('\n- Training:')
+    print(colored('\n- Training:', 'blue'))
     for epoch in range(start_epoch, p['epochs']):
-        logger.log('-- Epoch %d/%d' %(epoch+1, p['epochs']))
+        print(colored('-- Epoch %d/%d' %(epoch+1, p['epochs']), 'blue'))
 
         lr = adjust_learning_rate(p, optimizer, epoch)
-        loss_dict = self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
-                                      logger, p['update_cluster_head_only'])
+        _ = self_sup_classification_train(train_dataloader, model, criterion, optimizer, epoch,
+                                      p['update_cluster_head_only'])
 
         if (epoch == p['epochs']-1):
             tst_dl = get_val_dataloader(p, train_dataset)
@@ -116,22 +121,12 @@ def main(args):
         lowest_loss = classification_stats['lowest_loss']
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
-        eval_metrics = pr_evaluate(predictions, compute_confusion_matrix=False, majority_label=majority_label)
-        rep_f1 = eval_metrics['best_f1']
+        rep_f1 = pr_evaluate(predictions, compute_confusion_matrix=False, majority_label=majority_label)['best_f1']
 
-        if epoch % 50 == 0 or epoch == p['epochs']-1 or rep_f1 >= best_f1:
-            logger.metrics_summary("Classification Evaluation", eval_metrics, epoch)
-            report_str = f"\nValidation Set Metrics\n" \
-                        f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"\
-                        f"Anomalies Best F1 --> TP: {eval_metrics['best_tp']}, TN: {eval_metrics['best_tn']}, FN: {eval_metrics['best_fn']}, FP: {eval_metrics['best_fp']}\n"\
-                        f"Majority label: {majority_label}"
-            logger.log(report_str)
-            logger.metrics_summary("Classification Loss", loss_dict, epoch)
-
-        if rep_f1 >= best_f1:
+        if rep_f1 > best_f1:
             best_f1 = rep_f1
-            normal_label = majority_label
-            # logger.log('New Checkpoint ...')
+            nomral_label = majority_label
+            # print('New Checkpoint ...')
             torch.save({'model': model.module.state_dict(), 'head': best_loss_head, 'normal_label': normal_label}, p['classification_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
                         'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
@@ -146,13 +141,6 @@ def main(args):
     normal_label = model_checkpoint['normal_label']
     tst_dl = get_val_dataloader(p, val_dataset)
     predictions, _ = get_predictions(p, tst_dl, model, True)
-    logger.finalize()
 
 if __name__ == "__main__":
-    FLAGS = argparse.ArgumentParser(description='classification Loss')
-    FLAGS.add_argument('--config_env', help='Location of path config file')
-    FLAGS.add_argument('--config_exp', help='Location of experiments config file')
-    FLAGS.add_argument('--fname', help='Config the file name of Dataset')
-    FLAGS.add_argument('--version', help='Experiment version', type=str)
-    args = FLAGS.parse_args()
-    main(args)
+    main()

@@ -1,36 +1,77 @@
-
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+from sklearn.cluster import MiniBatchKMeans
+from sklearn import metrics
+from sklearn.metrics import precision_recall_curve, confusion_matrix, multilabel_confusion_matrix
+# from torchmetrics.functional.classification import confusion_matrix
+# from torchmetrics.functional import precision_recall_curve
+
 from utils.common_config import get_feature_dimensions_backbone
 from utils.utils import AverageMeter
 from data.custom_dataset import NeighborsDataset
-from sklearn import metrics
-from scipy.optimize import linear_sum_assignment
 from losses.losses import entropy
-from sklearn.metrics import precision_recall_curve, confusion_matrix
+from termcolor import colored
+
 
 @torch.no_grad()
-def contrastive_evaluate(val_loader, model, ts_repository):
-    top1 = AverageMeter('Acc@1', ':6.2f')
+def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_metrics=True):
     model.eval()
+    device = next(model.parameters()).device
 
-    for batch in val_loader:
-        ts_org = batch['ts_org'] #.cuda(non_blocking=True)
-        target = batch['target'] #.cuda(non_blocking=True)
-        ts_org = torch.from_numpy(ts_org).float()
-        #ts_org=torch.unsqueeze(ts_org, dim=1)
+    all_feats = []
+    all_meta = []
+    for batch in dataloader:
+        ts_org = batch['ts_org'].to(device, non_blocking=True)
         b, w, h = ts_org.shape
-        target = torch.from_numpy(target)
-        output = model(ts_org.view(b, h, w))
+        target = batch['target'].to(device, non_blocking=True)
+        target_str = [str(l) for l in target.tolist()]
 
-        output = ts_repository.weighted_knn(output)
+        vertices_org = model(ts_org.view(b, h, w)).cpu()
 
-        acc1 = 100*torch.mean(torch.eq(output, target).float())
-        top1.update(acc1.item(), ts_org.size(0))
+        ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+        target_w = target.detach().clone()
+        target_w_str = [str(l*2) for l in torch.ones_like(target).tolist()]
+        vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
 
-    return top1.avg
+        ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+        target_ss = torch.ones_like(target)
+        target_ss_str = [str(l) for l in target_ss.tolist()]
+        vertices_ss = model(ts_ss_augment.view(b, h, w)).cpu()
+
+        all_feats.extend([vertices_org, vertices_w, vertices_ss])
+        all_meta.extend([target_str, target_w_str, target_ss_str])
+
+    feats = torch.cat(all_feats, dim=0)
+    metadata = [m for group in all_meta for m in group]
+    
+    # K-means clustering
+    evaluation_metrics = {}
+    if output_metrics:
+        kmeans = MiniBatchKMeans(n_clusters=3, random_state=4, n_init="auto", batch_size=dataloader.batch_size)
+        cluster_labels = kmeans.fit_predict(feats.numpy())
+        cluster_centers = torch.from_numpy(kmeans.cluster_centers_)
+        
+        try:
+            # Calculate Silhouette Score
+            s_score = metrics.silhouette_score(feats.numpy(), cluster_labels, metric='euclidean')
+            # Calculate Calinski-Harabasz Index
+            ch_score = metrics.calinski_harabasz_score(feats.numpy(), cluster_labels)
+            # Calculate Davies-Bouldin Index
+            db_score = metrics.davies_bouldin_score(feats.numpy(), cluster_labels)
+        except ValueError as e:
+            s_score = 0
+            ch_score = 0
+            db_score = 0
+            print(colored(f'cluster_labels: {cluster_labels}', 'red'))
+            print(colored(f'{e}', 'red'))
+
+        # Add centroids to the graph
+        feats = torch.cat([feats, cluster_centers], dim=0)
+        metadata = metadata + ["centroid 1", "centroid 2", "centroid 3"]
+        evaluation_metrics = {"Silhouette Score": s_score, "Calinski-Harabasz Score": ch_score, "Davies-Bouldin Score": db_score}
+    return feats, metadata, evaluation_metrics
 
 
 @torch.no_grad()
@@ -173,11 +214,24 @@ def pr_evaluate(all_predictions, class_names=None,
                 confusion_matrix_file=None, majority_label=0):
 
     head = all_predictions[0]
-    targets = head['targets'] #.cuda()
-    predictions = head['predictions'] #.cuda()
-    probs = head['probabilities'] #.cuda()
+    targets = head['targets'].cpu() #.cuda()
+    predictions = head['predictions'].cpu() #.cuda()
+    probs = head['probabilities'].cpu() #.cuda()
     num_classes = torch.unique(targets).numel()
     num_elems = targets.size(0)
+
+    cls_targets = np.where((targets == 0), 0, 1)
+    number_of_real, number_of_anomalies = torch.bincount(targets).ravel()
+    anomalies = np.where((predictions == majority_label), 0, 1)
+
+    MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels = [1, 0])
+    tn = MCM[0][0, 0]
+    tp = MCM[0][1, 1]
+    fp = MCM[0][0, 1]
+    fn = MCM[0][1, 0]
+    pre=tp/(tp+fp) if (tp+fp) != 0 else 0
+    recall = tp/(tp+fn)
+    f_1 = 2*pre*recall/(pre+recall)
 
     scores = 1-np.array(probs)[:,majority_label]
     # labels = np.array(targets).tolist() CUDA
@@ -197,15 +251,18 @@ def pr_evaluate(all_predictions, class_names=None,
 
     rep_f1 = f1_score[best_f1_index]
 
-    if class_names=='Anom':
-        best_threshold = thresholds[best_f1_index]
-        anomalies = [1 if s >= best_threshold else 0 for s in scores]
-        best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
-        print("Anomalies --> TP: ", best_tp, ", TN: ", best_tn, ", FN: ", best_fn, ", FP: ", best_fp)
-        print(majority_label)
-        print(metrics.classification_report(labels, anomalies))
+    best_threshold = thresholds[best_f1_index]
+    best_precision = precision[best_f1_index]
+    best_recall = recall[best_f1_index]
 
-    return rep_f1
+    anomalies = [1 if s >= best_threshold else 0 for s in scores]
+    best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
+    print("Anomalies --> TP: ", best_tp, ", TN: ", best_tn, ", FN: ", best_fn, ", FP: ", best_fp)
+    print(majority_label)
+    print(metrics.classification_report(labels, anomalies))
+
+    return {'cls_tp': tp,'cls_tn': tn,'cls_fp': fp,'cls_fn': fn,'cls_pre': best_precision,'cls_rec': best_recall,'cls_f1': f_1, 'best_tp': best_tp, 'best_tn': best_tn, 'best_fp': best_fp, 'best_fn': best_fn, 'best_th': best_threshold, 'best_pre': best_precision, 'best_rec': best_recall, 'best_f1': rep_f1}
+
 
 def replace_majority_label(flat_preds, majority_label):
     #unique_labels = torch.unique(flat_preds)
