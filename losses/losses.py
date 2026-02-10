@@ -129,7 +129,6 @@ class PretextLoss(nn.Module):
 
         loss = torch.clamp(self.margin + (positive_distance * self.pos_weight) - (hard_negative_distance * self.neg_weight), min=0.0)
         
-        # loss = self.margin + positive_distance - hard_negative_distance
 
         loss = torch.mean(loss)
         positive_distance = torch.mean(positive_distance)

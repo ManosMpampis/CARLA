@@ -15,9 +15,8 @@ class NoiseTransformation(object):
         return X + noise
 
 class SubAnomaly(object):
-    def __init__(self, portion_len, logger=None):
+    def __init__(self, logger=None):
         self.logger = EmptyLogger() if logger is None else logger
-        self.portion_len = portion_len
         self.anomalies = ["ANOMALY_SEASONAL", "ANOMALY_TREND", "ANOMALY_GLOBAL", "ANOMALY_CONTEXTUAL", "ANOMALY_SHAPELET"]
 
 
@@ -48,25 +47,25 @@ class SubAnomaly(object):
         """
 
         # Clone the input tensor to avoid modifying the original data
-        # window = window.clone() #.copy()
+        window = window.clone() #.copy()
 
         # Set the subsequence_length if not provided
         if subsequence_length is None:
             min_len = int(window.shape[0] * 0.1)
             max_len = int(window.shape[0] * 0.9)
-            subsequence_length = torch.randint(min_len, max_len, (1,))
+            subsequence_length = torch.randint(min_len, max_len, ())
 
         # Set the compression_factor if not provided
         if compression_factor is None:
-            compression_factor = torch.randint(2, 5, (1,))
+            compression_factor = torch.randint(2, 5, ())
 
         # Set the scale_factor if not provided
         if scale_factor is None:
-            scale_factor = torch.empty(window.size(1), device=window.device, dtype=window.dtype).uniform_(0.1, 2.0)
+            scale_factor = torch.empty(window.shape[1], device=window.device, dtype=window.dtype).uniform_(0.1, 2.0)
 
         # Randomly select the start index for the subsequence
         if start_index is None:
-            start_index = torch.randint(0, len(window) - subsequence_length, (1,))
+            start_index = torch.randint(0, len(window) - subsequence_length, ())
         
         # Calculate the end index for the subsequence
         end_index = window.shape[0] if trend_end else min(start_index + subsequence_length, window.shape[0])
@@ -89,7 +88,7 @@ class SubAnomaly(object):
         anomalous_subsequence = anomalous_subsequence + coef * trend_factor
 
         if shapelet_factor:
-            anomalous_subsequence = window[start_index] + (torch.rand_like(window[start_index]) * 0.1)  #cuda use!
+            anomalous_subsequence = window[start_index] + (torch.rand_like(window[start_index]) * 0.1)
 
         window[start_index:end_index] = anomalous_subsequence
 
@@ -99,19 +98,22 @@ class SubAnomaly(object):
         """
         Adding sub anomaly with user-defined portion
         """
-        anomalous_window = X.clone() #X.copy()
+        anomalous_window = X.clone()
 
         min_len = int(anomalous_window.shape[0] * 0.1)
         max_len = int(anomalous_window.shape[0] * 0.9)
-        subsequence_length = torch.randint(min_len, max_len, (1,))
-        start_index = torch.randint(0, len(anomalous_window) - subsequence_length, (1,))
+        subsequence_length = torch.randint(min_len, max_len, ())
+        start_index = torch.randint(0, len(anomalous_window) - subsequence_length, ())
         anomaly_type = random.choice(self.anomalies)
 
         if (anomalous_window.ndim > 1):
             num_features = anomalous_window.shape[1]
-            random_augmented_features = torch.randint(int(num_features/10), int(num_features/2), (1,)) #(int(num_features/5), int(num_features/2))
-            list_non_overlaped_features = random.sample([k for k in range(num_features)], random_augmented_features)
-            for augmented_feature in list_non_overlaped_features:
+            number_of_augmented_features = torch.randint(int(num_features/10), int(num_features/2), (1,)) #(int(num_features/5), int(num_features/2))
+            for _ in range(number_of_augmented_features): # original augmentation
+                augmented_feature = torch.randint(0, num_features, ()).item()
+                # print(augmented_feature)
+            # list_non_overlaped_features = random.sample([k for k in range(num_features)], number_of_augmented_features)
+            # for augmented_feature in list_non_overlaped_features:
                 # anomaly_type = random.choice(self.anomalies)
                 temp_win = anomalous_window[:, augmented_feature].reshape((anomalous_window.shape[0], 1))
                 match anomaly_type:

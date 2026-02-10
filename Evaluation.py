@@ -78,6 +78,14 @@ def add_summary_statistics(res_df):
     pr_avg = res_df['pr'].mean()
     pr_std = res_df['pr'].std()
 
+    best_tp_std = res_df['best_tp'].std()
+    best_tn_std = res_df['best_tn'].std()
+    best_fp_std = res_df['best_fp'].std()
+    best_fn_std = res_df['best_fn'].std()
+    best_pre_std = res_df['best_pre'].std()
+    best_rec_std = res_df['best_rec'].std()
+    b_f_1_std = res_df['b_f_1'].std()
+
     # Append the results to the dataframe
     summary_row = pd.Series({
         'name': 'Best Test Threshold/Train Threshold values',
@@ -102,7 +110,14 @@ def add_summary_statistics(res_df):
     std_row = pd.Series({
         'name': 'Std of roc and pr',
         'roc': roc_std,
-        'pr': pr_std
+        'pr': pr_std,
+        'b_f_1': b_f_1_std,
+        'best_tp': best_tp_std,
+        'best_tn': best_tn_std,
+        'best_fp': best_fp_std,
+        'best_fn': best_fn_std,
+        'best_pre': best_pre_std,
+        'best_rec': best_rec_std
     })
 
     # Append the rows to the dataframe
@@ -151,13 +166,13 @@ if __name__ == "__main__":
     # pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
     database = 'SMD'
     database = database.lower()
-    version = 'temp'
-
+    version = 'default/default'
+    tag="_reverce_order"
     result_file_path = os.path.join(os.path.dirname(__file__), 'results', database, version)
     data_info = os.listdir(result_file_path)
     files = [ dir_name for dir_name in data_info if os.path.isdir(os.path.join(result_file_path, dir_name))]
     files = sorted(files)
-
+    files = ["machine-1-1.txt"]
     logger = Logger(version=version, verbose=2, file_path=result_file_path, use_tensorboard=False, file_name='Evaluation_logs.txt')
 
 
@@ -165,7 +180,7 @@ if __name__ == "__main__":
         if filename!='.json': # and 'real_' in filename:
             logger.log(filename)
 
-            experiment_folder = f"results/{database}/{version}/{filename}/classification"
+            experiment_folder = f"results/{database}/{version}/{filename}/classification{tag}"
 
             df_train = pd.read_csv(os.path.join(experiment_folder, 'classification_trainprobs.csv'))
             df_test = pd.read_csv(os.path.join(experiment_folder, 'classification_testprobs.csv'))
@@ -178,6 +193,7 @@ if __name__ == "__main__":
 
             score_col = df_train['pred'].value_counts().idxmax()
             score_col = str(majority_class)
+
             train_scores = 1-df_train[score_col]
             train_precision, train_recall, train_thresholds = precision_recall_curve(df_train['Class'], train_scores, pos_label=1)
             train_f1_scores = 2 * train_precision * train_recall / (train_precision + train_recall)

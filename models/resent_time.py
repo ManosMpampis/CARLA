@@ -102,7 +102,7 @@ class ResNetRepresentation(nn.Module):
         The number of output classes
     """
 
-    def __init__(self, in_channels: int, mid_channels: list[int] = [4, 8]) -> None:
+    def __init__(self, in_channels: int, mid_channels: list[int] = [4, 8, 8]) -> None:
         super().__init__()
 
         # for easier saving and loading
@@ -127,7 +127,6 @@ class ResNetRepresentation(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
-        # z = self.avgpool(z).squeeze(-1)
         z = z.mean(dim=-1)  # Average over the batch dimension
         return z
 

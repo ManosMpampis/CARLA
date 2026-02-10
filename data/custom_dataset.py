@@ -179,7 +179,7 @@ class NeighborsDataset(Dataset):
         dataset.transform = None
         self.dataset = dataset
         self.mean = [self.dataset.get_info()[0]]
-        self.std = [self.dataset.get_info()[0]]
+        self.std = [self.dataset.get_info()[1]]
 
         NN_indices = N_indices.copy() # Nearest neighbor indices (np.array  [len(dataset) x k])
         FN_indices = F_indices.copy()  # Nearest neighbor indices (np.array  [len(dataset) x k])

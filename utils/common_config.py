@@ -172,7 +172,7 @@ def get_dataloader(p, dataset, pin_memory=True, train=False):
                                        drop_last=train, shuffle=train)
 
 def inject_sub_anomaly(p, logger=None):
-    return SubAnomaly(p['anomaly_kwargs']['portion'], logger=logger)
+    return SubAnomaly(logger=logger)
 
 def get_transformations(p):
     if p['augmentation_strategy'] == 'standard':
