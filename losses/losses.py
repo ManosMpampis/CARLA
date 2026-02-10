@@ -120,6 +120,7 @@ class PretextLoss(nn.Module):
         # self.margin = self.margin - self.adjust_factor * current_loss
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
         # Hear we find all the distances of negatives to anchors and corelate each anchor with the lowest distance negative example
+        reg_negative_distance = torch.sum((anchor - negative) ** 2, dim=-1) / self.temperature  # the substraction provides the distance of each anchor to all negative examples
         negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature  # the substraction provides the distance of each anchor to all negative examples
         # eye = torch.eye(self.bs, device=negative_distance.device, dtype=torch.bool)
         # negative_distance = negative_distance.masked_fill(eye, float("inf"))
@@ -127,14 +128,15 @@ class PretextLoss(nn.Module):
         hard_negative_distance = torch.min(negative_distance, dim=1)[0] # Find the closest negative example for each anchor to push it even further away
         # hard_neg_clamp = torch.clamp(self.margin - hard_negative_distance, min=0)
 
-        loss = torch.clamp(self.margin + (positive_distance * self.pos_weight) - (hard_negative_distance * self.neg_weight), min=0.0)
+        loss = torch.clamp(self.margin + (positive_distance * self.pos_weight) - (reg_negative_distance * self.neg_weight), min=0.0)
         
 
         loss = torch.mean(loss)
         positive_distance = torch.mean(positive_distance)
+        reg_neg = torch.mean(reg_negative_distance)
         hard_negative_distance = torch.mean(hard_negative_distance)
 
-        return loss, positive_distance, hard_negative_distance
+        return loss, positive_distance, reg_neg, hard_negative_distance
 
     def cosine_similarity(self, x1, x2):
         dot_product = torch.sum(x1 * x2, dim=1)

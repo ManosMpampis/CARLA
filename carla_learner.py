@@ -52,7 +52,7 @@ class CARLA:
 
         self.verbose = verbose
         
-        file_path = self.p["classification_tag"] if self.p["setup"] == "classification" else self.p["pretext_tag"]
+        file_path = f"{self.p['experiment_dir']}/{self.p["classification_tag"] if self.p["setup"] == "classification" else self.p["pretext_tag"]}"
         self.logger = Logger(self.p['version'], verbose=verbose, file_path=file_path, use_tensorboard=tensorboard)
 
         self.model = get_model(self.p)
