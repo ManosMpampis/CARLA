@@ -10,10 +10,11 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
 
     losses = AverageMeter('Loss', ':.4e')
     P_Losses = AverageMeter('P_Loss', ':.4e')
+    H_N_Losses = AverageMeter('H_N_Loss', ':.4e')
     N_Losses = AverageMeter('N_Loss', ':.4e')
     M_Losees = AverageMeter('Margin', ':.4e')
     progress = ProgressMeter(len(train_loader),
-        [losses, P_Losses, N_Losses, M_Losees], logger,
+        [losses, P_Losses, N_Losses, H_N_Losses, M_Losees], logger,
         prefix="Epoch: [{}]".format(epoch+1))
 
     model.to(device)
@@ -35,13 +36,14 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         output = model(input_)
         
         if prev_loss is not None:
-            loss, p_d_loss, n_d_loss = criterion(output, prev_loss)
+            loss, p_d_loss, n_d_loss, h_n_d_loss = criterion(output, prev_loss)
         else:
-            loss, p_d_loss, n_d_loss = criterion(output)
+            loss, p_d_loss, n_d_loss, h_n_d_loss = criterion(output)
 
         losses.update(loss.item())
         P_Losses.update(p_d_loss.item())
         N_Losses.update(n_d_loss.item())
+        H_N_Losses.update(h_n_d_loss.item())
         M_Losees.update(criterion.margin)
 
         prev_loss = loss.item()
@@ -53,7 +55,7 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         if i % 100 == 0:
             progress.display(i)
 
-    return {"loss": losses.avg, "p_loss": P_Losses.avg, "n_loss": N_Losses.avg, "margin": M_Losees.avg}
+    return {"loss": losses.avg, "p_loss": P_Losses.avg, "n_loss": N_Losses.avg, "h_n_loss": H_N_Losses.avg, "margin": M_Losees.avg}
 
 
 def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, logger, update_cluster_head_only=False):

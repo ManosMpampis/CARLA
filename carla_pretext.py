@@ -36,6 +36,7 @@ def main(args):
 
     model = get_model(p)
     best_model = None
+    logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))
     model = model.to(device)
    
     # CUDNN

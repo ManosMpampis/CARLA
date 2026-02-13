@@ -151,7 +151,7 @@ def main(args):
 
     pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
 
-    folder = "orig_big_batch/entropy_norm" #args.version #"big_train_custom_lr" #args.version
+    folder = args.version #"big_train_custom_lr" #args.version
 
     data_info = os.listdir(f'results/smd/{folder}')
     files = [file for file in data_info if file.startswith('machine-')]

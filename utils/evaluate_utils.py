@@ -69,7 +69,7 @@ def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_
 
         # Add centroids to the graph
         feats = torch.cat([feats, cluster_centers], dim=0)
-        metadata = metadata + ["centroid 1", "centroid 2", "centroid 3"]
+        metadata = metadata + ["centroid 0", "centroid 1", "centroid 2"]
         evaluation_metrics = {"Silhouette Score": s_score, "Calinski-Harabasz Score": ch_score, "Davies-Bouldin Score": db_score}
     return feats, metadata, evaluation_metrics
 

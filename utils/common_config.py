@@ -36,7 +36,7 @@ def get_feature_dimensions_backbone(p):
 def get_model(p, pretrain_path=None):
     # Get backbone
     if p['backbone'] == 'resnet_ts':
-        from models.resent_time import resnet_ts
+        from models import resnet_ts
         backbone = resnet_ts(**p['res_kwargs'])
 
     else:
@@ -85,55 +85,55 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
     if p['train_db_name'] == 'MSL' or p['train_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'yahoo':
         from data.Yahoo import Yahoo
         dataset = Yahoo(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                        data=data, label=label)
+                        data=data, label=label, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                       mean_data=None, std_data=None)
+                       mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swan':
         from data.Swan import Swan
         dataset = Swan(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'gecco':
         from data.GECCO import GECCO
         dataset = GECCO(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
     
     elif p['train_db_name'] == 'ucr':
         from data.UCR import UCR
         dataset = UCR(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None)
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
     else:
@@ -172,47 +172,47 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
     if p['val_db_name'] == 'MSL' or p['val_db_name'] == 'SMAP':
         from data.MSL import MSL
         dataset = MSL(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['train_db_name'] == 'yahoo':
         from data.Yahoo import Yahoo
         dataset = Yahoo(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                        mean_data=mean_data, std_data=std_data, data=data, label=label)
+                        mean_data=mean_data, std_data=std_data, data=data, label=label, wsz=p['wsz'], stride=p['stride'])
 
     elif p['train_db_name'] == 'kpi':
         from data.KPI import KPI
         dataset = KPI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'swan':
         from data.Swan import Swan
         dataset = Swan(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'gecco':
         from data.GECCO import GECCO
         dataset = GECCO(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
     
     elif p['val_db_name'] == 'ucr':
         from data.UCR import UCR
         dataset = UCR(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data)
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     else:
         raise ValueError('Invalid validation dataset {}'.format(p['val_db_name']))

@@ -8,11 +8,13 @@ model_kwargs:
   features_dim: 4
 res_kwargs:
   in_channels: 38
-  mid_channels: 4
+  mid_channels: [4, 8, 8]
 
 # Dataset
 train_db_name: smd
 val_db_name: smd
+wsz: 256 #200
+stride: 5
 num_classes: 10
 
 # Loss
@@ -27,19 +29,20 @@ criterion_kwargs:
   ema_alpha: 0.5
   adjust_factor: 0.1
   orig_margin: True
+  hard_neg: False
 
 # Hyperparameters
-epochs: 30
+epochs: 1000
 optimizer: adam
 optimizer_kwargs:
   #nesterov: False
   #momentum: 0.9
   lr: 0.001
-  weight_decay: 0.01
+  weight_decay: 0
 # Scheduler
-scheduler: cosine
+scheduler: cosine_restart
 scheduler_kwargs:
-  lr_warmup_epochs: 0
+  lr_warmup_epochs: 20
   lr_eta_min: 0.000000001
   T_period: 50
   T_mul: 2
@@ -56,4 +59,4 @@ transformation_kwargs:
 anomaly_kwargs:
   portion: 0.99
 
-evaluation_extra_metrics: False
+evaluation_extra_metrics: True

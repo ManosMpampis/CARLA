@@ -94,7 +94,8 @@ class ClassificationLoss(nn.Module):
 
 class PretextLoss(nn.Module):
     # Based on the implementation of SupContrast
-    def __init__(self, bs, temperature, pos_weight=1, neg_weight=1, initial_margin=1.0, margin_constant=False, adjust_factor=0.1, ema_alpha=0, min_improvement=0.0001, orig_margin=False):
+    def __init__(self, bs, temperature, pos_weight=1, neg_weight=1, initial_margin=1.0, margin_constant=False,
+                 adjust_factor=0.1, ema_alpha=0, min_improvement=0.0001, orig_margin=False, hard_neg=True):
         super(PretextLoss, self).__init__()
         self.temperature = temperature
         self.bs = bs
@@ -103,6 +104,7 @@ class PretextLoss(nn.Module):
         self.initial_margin = initial_margin
         self.max_margin = 5.0
         self.margin_constant = margin_constant
+        self.hard_neg = hard_neg
         
         self.adjust_factor = adjust_factor
         self.pos_weight = pos_weight
@@ -133,16 +135,21 @@ class PretextLoss(nn.Module):
             self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
 
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
-        negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
-        hard_negative_distance = torch.min(negative_distance, dim=1)[0]
-        loss = torch.clamp(self.margin + positive_distance - hard_negative_distance, min=0.0)
+        negative_distance = torch.sum((anchor - negative) ** 2, dim=-1) / self.temperature
+
+        hard_negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
+        hard_negative_distance = torch.min(hard_negative_distance, dim=1)[0]
+
+        n_d = hard_negative_distance if self.hard_neg else negative_distance
+        loss = torch.clamp(self.margin + positive_distance - n_d, min=0.0)
         # clamped_distance = torch.clamp(self.margin + positive_distance - negative_distance, min=0.0)
         # loss = torch.sum(clamped_distance, dim=1)
         loss = torch.mean(loss)
         positive_d_loss = torch.mean(positive_distance)
+        negative_d_loss = torch.mean(negative_distance)
         hard_negative_d_loss = torch.mean(hard_negative_distance)
 
-        return loss, positive_d_loss, hard_negative_d_loss
+        return loss, positive_d_loss, negative_d_loss, hard_negative_d_loss
     
     def forward(self, features, current_loss=None):
         """
@@ -161,17 +168,19 @@ class PretextLoss(nn.Module):
         positive = F.normalize(features_pos, dim=-1)
         negative = F.normalize(features_subseq, dim=-1)
 
-        negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
-        hard_negative_distance = torch.min(negative_distance, dim=1)[0]
-        hard_negative_d_loss = torch.mean(hard_negative_distance)
+        negative_distance = torch.sum((anchor - negative) ** 2, dim=-1) / self.temperature
+        
+        hard_negative_distance = torch.sum(torch.pow(anchor.unsqueeze(1) - negative, 2), dim=-1) / self.temperature
+        hard_negative_distance = torch.min(hard_negative_distance, dim=1)[0]
+        
+        n_d = hard_negative_distance if self.hard_neg else negative_distance
 
-        pos_supression_weight = 1 - ((self.margin - (self.neg_weight * hard_negative_d_loss)) / self.margin)
+        pos_supression_weight = 1 - ((self.margin - (self.neg_weight * torch.mean(n_d))) / self.margin)
         pos_supression_weight = torch.clamp(pos_supression_weight, min=0, max=self.neg_weight)
-
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
-        positive_d_loss = torch.mean(positive_distance)
-
-        clamp_neg_loss = torch.clamp((self.neg_weight * hard_negative_distance), max=self.margin)
+        
+        clamp_neg_loss = torch.clamp((self.neg_weight * n_d), max=self.margin)
+        
         loss = (self.pos_weight * positive_distance * pos_supression_weight) - clamp_neg_loss
         # loss = torch.clamp((self.pos_weight * positive_distance * pos_supression_weight) - clamp_neg_loss, min=-self.margin)
         loss = torch.mean(loss)
@@ -189,7 +198,11 @@ class PretextLoss(nn.Module):
             else:
                 self.margin = self.initial_margin
         self.prev_ema_loss = ema_loss
-        return loss, positive_d_loss, hard_negative_d_loss
+
+        positive_d_loss = torch.mean(positive_distance)
+        negative_d_loss = torch.mean(negative_distance)
+        hard_negative_d_loss = torch.mean(hard_negative_distance)
+        return loss, positive_d_loss, negative_d_loss, hard_negative_d_loss
 
 
     def cosine_similarity(self, x1, x2):
