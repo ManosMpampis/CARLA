@@ -5,6 +5,8 @@ import errno
 import torch
 
 def mkdir_if_missing(directory):
+    if directory == None:
+        return
     if not os.path.exists(directory):
         try:
             os.makedirs(directory)

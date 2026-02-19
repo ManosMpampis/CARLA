@@ -99,7 +99,7 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
 
 if __name__ == "__main__":
     import argparse
-    experiments_ = ["origin", "model", "orig_big_batch"]
+    # experiment_cluster = ["origin", "model", "orig_big_batch"]
     directories = []
     experiment_cluster = os.listdir(f'results/smd/')
     for exp_c in experiment_cluster:
@@ -109,6 +109,8 @@ if __name__ == "__main__":
             machines = [file for file in machines if file.startswith('machine-')]
             for machine in machines:
                 directories.append(f'results/smd/{exp_c}/{exp}/{machine}/pretext/tensorboard/')
+                # os.remove(f'results/smd/{exp_c}/{exp}/{machine}/pretext/con_train_dataset')
     
+
     for directory in directories:
         clean_directories(directory, dry_run=False)

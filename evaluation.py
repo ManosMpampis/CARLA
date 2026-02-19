@@ -150,8 +150,13 @@ def main(args):
                                'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1']) 
 
     pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
-
-    folder = args.version #"big_train_custom_lr" #args.version
+    
+    version = args.version
+    save_dir = args.save_dir
+    mkdir_if_missing(save_dir)
+    save_dir = f'_{save_dir}' if save_dir is not None else ''
+    
+    folder = version #"big_train_custom_lr" #args.version
 
     data_info = os.listdir(f'results/smd/{folder}')
     files = [file for file in data_info if file.startswith('machine-')]
@@ -161,8 +166,8 @@ def main(args):
     for filename in files: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
         if filename!='.json': # and 'real_' in filename:
             print(filename)
-            df_train = pd.read_csv(f"results/{ds_name}/{folder}/" + filename + "/classification/classification_trainprobs.csv")
-            df_test = pd.read_csv(f"results/{ds_name}/{folder}/" + filename + "/classification/classification_testprobs.csv")
+            df_train = pd.read_csv(f"results/{ds_name}/{folder}/{filename}/classification{save_dir}/classification_trainprobs.csv")
+            df_test = pd.read_csv(f"results/{ds_name}/{folder}/{filename}/classification{save_dir}/classification_testprobs.csv")
             cl_num = df_train.shape[1] - 1
 
             df_train['Class'] = np.where((df_train['Class'] == 0), 0, 1)
@@ -208,8 +213,8 @@ def main(args):
                 plt.title("Receiver Operating Characteristic (ROC) Curve")
                 plt.legend(loc="lower right")
                 # plt.grid(True)
-                mkdir_if_missing(f'results/{ds_name}/{folder}/roc_curves')
-                plt.savefig(f'results/{ds_name}/{folder}/roc_curves/roc_{filename.split(".")[0]}.png')
+                mkdir_if_missing(f'results/{ds_name}/{folder}/{save_dir}/roc_curves')
+                plt.savefig(f'results/{ds_name}/{folder}/{save_dir}/roc_curves/roc_{filename.split(".")[0]}.png')
 
                 precision, recall, thresholds = precision_recall_curve(df_test['Class'], scores, pos_label=1)
                 plt.figure(figsize=(5, 5))
@@ -220,8 +225,8 @@ def main(args):
                 plt.title("Precision/Recall Curve")
                 plt.legend(loc="lower right")
                 # plt.grid(True)
-                mkdir_if_missing(f'results/{ds_name}/{folder}/pr_rec_curves')
-                plt.savefig(f'results/{ds_name}/{folder}/pr_rec_curves/pr_{filename.split(".")[0]}.png')
+                mkdir_if_missing(f'results/{ds_name}/{folder}/{save_dir}/pr_rec_curves')
+                plt.savefig(f'results/{ds_name}/{folder}/{save_dir}/pr_rec_curves/pr_{filename.split(".")[0]}.png')
 
                 res = pd.DataFrame()
                 res['pre'] = precision
@@ -257,7 +262,7 @@ def main(args):
             
         
     res_df = add_summary_statistics(res_df)
-    res_df.to_csv(f'results/{ds_name}/{folder}/results_woincon.csv')
+    res_df.to_csv(f'results/{ds_name}/{folder}/{save_dir}/results_woincon.csv')
 
     # pa_df = add_summary_statistics_pa(pa_df)
     # pa_df.to_csv('smd_5_results_pa.csv')
@@ -266,6 +271,7 @@ def main(args):
 if __name__ == "__main__":
     FLAGS = argparse.ArgumentParser(description='classification Loss')
     FLAGS.add_argument('--version', help='Experiment version', type=str)
+    FLAGS.add_argument('--save_dir', help='Save directory', type=str)
     args = FLAGS.parse_args()
     main(args)
 

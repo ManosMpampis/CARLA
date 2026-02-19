@@ -1,11 +1,12 @@
 # setup
 setup: classification
 
-tag_class: eno
+tag_class: entropy
+
 # Loss
 criterion: classification
 criterion_kwargs:
-   entropy_weight: 5
+   entropy_weight: 2
    consistency_weight: 1
    inconsistency_weight: 1.3
 
