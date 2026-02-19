@@ -99,18 +99,19 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
 
 if __name__ == "__main__":
     import argparse
-    # experiment_cluster = ["origin", "model", "orig_big_batch"]
+    experiment_cluster = ["model"] #["origin", "model", "orig_big_batch"]
     directories = []
-    experiment_cluster = os.listdir(f'results/smd/')
+    # experiment_cluster = os.listdir(f'results/smd/')
     for exp_c in experiment_cluster:
-        experiments = os.listdir(f'results/smd/{exp_c}')
+        # experiments = os.listdir(f'results/smd/{exp_c}')
+        experiments = ["negL_threeB_twoC"]
         for exp in experiments:
             machines = os.listdir(f'results/smd/{exp_c}/{exp}/')
             machines = [file for file in machines if file.startswith('machine-')]
             for machine in machines:
-                directories.append(f'results/smd/{exp_c}/{exp}/{machine}/pretext/tensorboard/')
-                # os.remove(f'results/smd/{exp_c}/{exp}/{machine}/pretext/con_train_dataset')
+                # directories.append(f'results/smd/{exp_c}/{exp}/{machine}/pretext/tensorboard/')
+                shutil.rmtree(f'results/smd/{exp_c}/{exp}/{machine}/classification_entropy')
     
 
-    for directory in directories:
-        clean_directories(directory, dry_run=False)
+    # for directory in directories:
+    #     clean_directories(directory, dry_run=False)

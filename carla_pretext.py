@@ -34,6 +34,8 @@ def main(args):
     logger = Logger(p['version'], verbose=2, file_path=p['pretext_dir'], use_tensorboard=True)
     logger.log('CARLA Pretext stage --> ')
 
+    logger.log_hyperparams(p)
+    
     model = get_model(p)
     best_model = None
     logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))

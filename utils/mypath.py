@@ -16,6 +16,8 @@ class MyPath(object):
             return 'datasets/Yahoo'
         elif database == 'smd':
             return 'datasets/SMD'
+        elif database == 'psm':
+            return 'datasets/PSM'
         elif database == 'swat':
             return 'datasets/SWAT'
         elif database == 'wadi':

@@ -35,9 +35,9 @@ def main(args):
     logger = Logger(p['version'], verbose=2, file_path=p['classification_dir'], use_tensorboard=True)
     
     logger.log('CARLA Self-supervised Classification stage --> ')
-
+    logger.log_hyperparams(p)
     # CUDNN
-   # torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.benchmark = True
 
     # Data
     logger.log('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'])

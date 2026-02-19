@@ -200,11 +200,40 @@ for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]: 
                         "config_exp": "configs/classification/carla_classification_smd_threeB_twoC_entropy.yml",
                         "fname": filename,
                         "version": f"{version}"})
-        with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-   
-        # main_classification(classification_args)
+        main_classification(classification_args)
 
+with open(classification_args.config_exp, 'r') as stream:
+            config = yaml.safe_load(stream)
+eval_args = EasyDict({"version": f"{version}",
+                    "save_dir": f"{config.get('tag_class', None)}"})
+main_evaluation(eval_args)
+
+index = file_list.index('machine-1-1.txt')
+version = "model/negL_twoB_threeC"
+for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+    # if 'real_' in filename:
+    if filename != 'GECCO':
+        print(filename)
+
+        # # Run the pretext script
+        # pretext_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/pretext/carla_pretext_smd_threeB_twoC.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_pretext(pretext_args)
+
+
+
+        # Run the classification script
+        classification_args = EasyDict({"config_env": "configs/env.yml",
+                        "config_exp": "configs/classification/carla_classification_smd_twoB_threeC_entropy.yml",
+                        "fname": filename,
+                        "version": f"{version}"})
+        
+        main_classification(classification_args)
+
+with open(classification_args.config_exp, 'r') as stream:
+            config = yaml.safe_load(stream)
 eval_args = EasyDict({"version": f"{version}",
                     "save_dir": f"{config.get('tag_class', None)}"})
 main_evaluation(eval_args)

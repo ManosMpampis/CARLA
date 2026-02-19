@@ -105,6 +105,12 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
         dataset = SMD(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
                       mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
+    
+    elif p['train_db_name'] == 'psm':
+        from data.PSM import PSM
+        dataset = PSM(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
+                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
+        mean, std = dataset.get_info()
 
     elif p['train_db_name'] == 'swat':
         from data.SWAT import SWAT
@@ -187,6 +193,11 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
     elif p['val_db_name'] == 'smd':
         from data.SMD import SMD
         dataset = SMD(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
+                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
+        
+    elif p['val_db_name'] == 'psm':
+        from data.PSM import PSM
+        dataset = PSM(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
                       mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'swat':
