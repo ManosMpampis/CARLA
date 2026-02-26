@@ -5,7 +5,7 @@ import errno
 import torch
 
 def mkdir_if_missing(directory):
-    if directory == None:
+    if directory == None or directory == "None" or directory == "":
         return
     if not os.path.exists(directory):
         try:
@@ -45,7 +45,9 @@ class ProgressMeter(object):
         self.prefix = prefix
         self.logger = logger
 
-
+    def update(self, meters):
+        self.meters += meters
+        
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
@@ -185,6 +187,8 @@ class Logger:
         self.experiment.add_figure(tag, figure, step)
 
     def _add_embedding(self, tag, vertices, labels, step):
+        if vertices.ndim == 3:
+            vertices = vertices.mean(dim=-1)
         self.experiment.add_embedding(mat=vertices, metadata=labels, tag=tag, global_step=step)
 
     def _pr_curv(self, tag, labels, propabilites, step):

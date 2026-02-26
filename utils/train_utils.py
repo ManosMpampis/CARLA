@@ -8,13 +8,9 @@ device = torch.device("cuda")
 
 def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, logger, device='cuda'):
 
-    losses = AverageMeter('Loss', ':.4e')
-    P_Losses = AverageMeter('P_Loss', ':.4e')
-    H_N_Losses = AverageMeter('H_N_Loss', ':.4e')
-    N_Losses = AverageMeter('N_Loss', ':.4e')
-    M_Losees = AverageMeter('Margin', ':.4e')
+    meter_Margin = AverageMeter('Margin', ':.4e')
     progress = ProgressMeter(len(train_loader),
-        [losses, P_Losses, N_Losses, H_N_Losses, M_Losees], logger,
+        [meter_Margin], logger,
         prefix="Epoch: [{}]".format(epoch+1))
 
     model.to(device)
@@ -33,29 +29,30 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
 
         input_: Tensor = torch.cat([ts_org, ts_w_augmented, ts_ss_augmented], dim=0).view(b * 3, h, w)
 
+        optimizer.zero_grad()
+
         output = model(input_)
         
-        if prev_loss is not None:
-            loss, p_d_loss, n_d_loss, h_n_d_loss = criterion(output, prev_loss)
-        else:
-            loss, p_d_loss, n_d_loss, h_n_d_loss = criterion(output)
+        losses = criterion(output)
 
-        losses.update(loss.item())
-        P_Losses.update(p_d_loss.item())
-        N_Losses.update(n_d_loss.item())
-        H_N_Losses.update(h_n_d_loss.item())
-        M_Losees.update(criterion.margin)
+        for loss in losses.keys():
+            if f"meter_{loss}" not in locals():
+                #init meter if not exists
+                locals()[f"meter_{loss}"] = AverageMeter(loss, ':.4e')
+                progress.update([locals()[f"meter_{loss}"]])
+            locals()[f"meter_{loss}"].update(losses[loss].item())
+        
+        meter_Margin.update(criterion.margin)
 
-        prev_loss = loss.item()
-
-        optimizer.zero_grad()
-        loss.backward()
+        losses["loss"].backward()
         optimizer.step()
 
         if i % 100 == 0:
             progress.display(i)
 
-    return {"loss": losses.avg, "p_loss": P_Losses.avg, "n_loss": N_Losses.avg, "h_n_loss": H_N_Losses.avg, "margin": M_Losees.avg}
+    return_dict = {key: locals()[f"meter_{key}"].avg for key in losses.keys()}
+    return_dict["margin"] = meter_Margin.avg
+    return return_dict
 
 
 def self_sup_classification_train(train_loader, model, criterion, optimizer, epoch, logger, update_cluster_head_only=False):

@@ -1,13 +1,14 @@
-import numpy as np
 import torch
-from sklearn.neighbors import NearestNeighbors
 from data.ra_dataset import SaveAugmentedDataset
-import faiss
 
 class TSRepository(object):
-    def __init__(self, n, dim, num_classes, temperature):
+    def __init__(self, n, model_kwargs, res_kwargs):
         self.n = n
-        self.dim = dim 
+        self.head = model_kwargs['head']
+        if model_kwargs['head'] == 'tcl':
+            self.dim = res_kwargs['mid_channels'][-1]
+        else:
+            self.dim = model_kwargs['features_dim']
         self.features = torch.FloatTensor(self.n, self.dim)
         self.targets = torch.LongTensor(self.n)
         self.ptr = 0
@@ -43,7 +44,7 @@ class TSRepository(object):
         
         assert(b + self.ptr <= self.n)
         
-        self.features[self.ptr:self.ptr+b].copy_(features.detach())
+        self.features[self.ptr:self.ptr+b].copy_(features.mean(dim=-1).detach())
         if not torch.is_tensor(targets): targets = torch.from_numpy(targets)
         self.targets[self.ptr:self.ptr+b].copy_(targets.detach())
         self.ptr += b

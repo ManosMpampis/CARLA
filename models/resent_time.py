@@ -96,7 +96,7 @@ class ResNetRepresentation(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
-        z = z.mean(dim=-1)
+        # z = z.mean(dim=-1)
         return z
 
 def resnet_ts(**kwargs):

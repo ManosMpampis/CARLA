@@ -38,11 +38,8 @@ def main(args):
     
     model = get_model(p)
     best_model = None
-    logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))
+    # logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))
     model = model.to(device)
-   
-    # CUDNN
-    # torch.backends.cudnn.benchmark = True
 
     train_transforms = get_train_transformations(p)
 
@@ -59,16 +56,11 @@ def main(args):
 
     logger.log('Dataset contains {}/{} train/val samples'.format(len(train_dataset), len(val_dataset)))
     
-    # TS Repository
-   # base_dataset = get_train_dataset(p, train_transforms, panomaly, sanomaly, to_augmented_dataset=True, split='train')
-
     ts_repository_base = TSRepository(len(train_dataset),
-                                      p['model_kwargs']['features_dim'],
-                                      p['num_classes'], p['criterion_kwargs']['temperature'])
+                                      p['model_kwargs'], p['res_kwargs'])
     ts_repository_base.to(device)
     ts_repository_val = TSRepository(len(val_dataset),
-                                     p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature'])
+                                     p['model_kwargs'], p['res_kwargs'])
     ts_repository_val.to(device)
 
     criterion = get_criterion(p)
@@ -85,11 +77,18 @@ def main(args):
         model.load_state_dict(checkpoint['model'])
         model.to(device)
         start_epoch = checkpoint['epoch']
-
+        pretext_best_loss = checkpoint['pretext_best_loss']
+        criterion.update_margin = checkpoint.get('last_margin', None)
+        if 'prev_ema_loss' in checkpoint:
+            criterion.prev_ema_loss = checkpoint['prev_ema_loss']
+        if 'last_loss' in checkpoint:
+            criterion.last_loss = checkpoint['last_loss']
+        
     else:
         logger.log('No checkpoint file at {}'.format(p['pretext_checkpoint']))
         start_epoch = 0
         model = model.to(device)
+        pretext_best_loss = np.inf
     
     # Training
     pretext_best_loss = np.inf
@@ -103,6 +102,7 @@ def main(args):
         
         # logger.log('EPOCH ----> ', epoch)
         loss_dict = pretext_train(train_dataloader, model, criterion, optimizer, epoch, prev_loss, logger, device=device)
+        last_margin = loss_dict["margin"]
         tmp_loss = loss_dict['loss']
         
         if epoch % 50 == 0 or epoch == p['epochs']-1 or tmp_loss <= pretext_best_loss:
@@ -115,6 +115,18 @@ def main(args):
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
             best_model = model
+            save_dict = {
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'epoch': epoch,
+                'pretext_best_loss': pretext_best_loss,
+                'last_margin': last_margin
+            }
+            if hasattr(criterion, 'prev_ema_loss'):
+                save_dict['prev_ema_loss'] = criterion.prev_ema_loss
+            if hasattr(criterion, 'last_loss'):
+                save_dict['last_loss'] = criterion.last_loss
+            torch.save(save_dict, p['pretext_checkpoint'])
 
     # Save final model
     torch.save(best_model.state_dict(), p['pretext_model'])
@@ -123,8 +135,7 @@ def main(args):
     # These will be served as input to the classification loss.
     logger.log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...')
     ts_repository_aug = TSRepository(len(train_dataset) * 2,
-                                     p['model_kwargs']['features_dim'],
-                                     p['num_classes'], p['criterion_kwargs']['temperature']) #need size of repository == 1+num_of_anomalies
+                                     p['model_kwargs'], p['res_kwargs']) #need size of repository == 1+num_of_anomalies
     fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug)
     # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
     out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))

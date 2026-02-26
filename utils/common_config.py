@@ -15,6 +15,10 @@ def get_criterion(p):
     elif p['criterion'] == 'classification':
         from losses.losses import ClassificationLoss
         criterion = ClassificationLoss(**p['criterion_kwargs'])
+    
+    elif p['criterion'] == 'tcl':
+        from losses.tcl import TCLoss
+        criterion = TCLoss(p['batch_size'], **p['criterion_kwargs'])
 
     else:
         raise ValueError('Invalid criterion {}'.format(p['criterion']))
@@ -118,24 +122,6 @@ def get_train_dataset(p, transform, sanomaly, to_augmented_dataset=False,
                       mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
         mean, std = dataset.get_info()
 
-    elif p['train_db_name'] == 'swan':
-        from data.Swan import Swan
-        dataset = Swan(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
-        mean, std = dataset.get_info()
-
-    elif p['train_db_name'] == 'gecco':
-        from data.GECCO import GECCO
-        dataset = GECCO(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
-        mean, std = dataset.get_info()
-    
-    elif p['train_db_name'] == 'ucr':
-        from data.UCR import UCR
-        dataset = UCR(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
-                      mean_data=None, std_data=None, wsz=p['wsz'], stride=p['stride'])
-        mean, std = dataset.get_info()
-
     elif p['train_db_name'] == 'wadi':
         from data.WADI import WADI
         dataset = WADI(p['fname'], train=True, transform=transform, sanomaly=sanomaly,
@@ -203,21 +189,6 @@ def get_val_dataset(p, transform=None, sanomaly=None, to_neighbors_dataset=False
     elif p['val_db_name'] == 'swat':
         from data.SWAT import SWAT
         dataset = SWAT(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
-
-    elif p['val_db_name'] == 'swan':
-        from data.Swan import Swan
-        dataset = Swan(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
-
-    elif p['val_db_name'] == 'gecco':
-        from data.GECCO import GECCO
-        dataset = GECCO(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
-                      mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
-    
-    elif p['val_db_name'] == 'ucr':
-        from data.UCR import UCR
-        dataset = UCR(p['fname'], train=False, transform=transform, sanomaly=sanomaly,
                       mean_data=mean_data, std_data=std_data, wsz=p['wsz'], stride=p['stride'])
 
     elif p['val_db_name'] == 'wadi':

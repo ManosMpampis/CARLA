@@ -154,7 +154,7 @@ def main(args):
     version = args.version
     save_dir = args.save_dir
     mkdir_if_missing(save_dir)
-    save_dir = f'_{save_dir}' if save_dir is not None else ''
+    save_dir = f'_{save_dir}' if (save_dir is not None and save_dir != "None") else ''
     
     folder = version #"big_train_custom_lr" #args.version
 

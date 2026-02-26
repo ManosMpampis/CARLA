@@ -115,7 +115,9 @@ class PretextLoss(nn.Module):
         self.prev_ema_loss = None
         self.orig_margin = orig_margin
 
-    def orig_forward(self, features, current_loss=None):
+        self.previous_loss = None
+
+    def orig_forward(self, features):
         """
         input:
             - features: hidden feature representation of shape [b, 3, dim]
@@ -131,8 +133,8 @@ class PretextLoss(nn.Module):
         negative = F.normalize(features_subseq, dim=-1)
 
         # self.margin = 5
-        if current_loss is not None:
-            self.margin = max(0.01, self.margin - self.adjust_factor * current_loss)
+        if self.previous_loss is not None:
+            self.margin = max(0.01, self.margin - self.adjust_factor * self.previous_loss)
 
         positive_distance = torch.sum((anchor - positive) ** 2, dim=-1) / self.temperature
         negative_distance = torch.sum((anchor - negative) ** 2, dim=-1) / self.temperature
@@ -149,9 +151,15 @@ class PretextLoss(nn.Module):
         negative_d_loss = torch.mean(negative_distance)
         hard_negative_d_loss = torch.mean(hard_negative_distance)
 
-        return loss, positive_d_loss, negative_d_loss, hard_negative_d_loss
+        self.previous_loss = loss.item()
+        return {"loss": loss, "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss, "hard_negative_d_loss": hard_negative_d_loss}
     
-    def forward(self, features, current_loss=None):
+    def update_margin(self,  new_margin):
+        if new_margin is None:
+            return
+        self.margin = new_margin.to(self.device) if isinstance(new_margin, torch.Tensor) else torch.tensor(new_margin).to(self.device)
+
+    def forward(self, features):
         """
         input:
             - features: hidden feature representation of shape [b, 3, dim]
@@ -160,7 +168,7 @@ class PretextLoss(nn.Module):
             - loss: loss computed according to pretext triplet loss
         """
         if self.orig_margin:
-            return self.orig_forward(features, current_loss)
+            return self.orig_forward(features)
         features_org, features_pos, features_subseq = torch.split(features, self.bs, dim=0)
 
         # Normalize features for stable distance computation
@@ -186,23 +194,25 @@ class PretextLoss(nn.Module):
         loss = torch.mean(loss)
 
         # Use ema and update margin for the next batch
-        if current_loss is None:
+        if self.previous_loss is None:
             ema_loss = torch.mean(loss)
         else:
-            ema_loss = torch.mean((1.0 - self.ema_alpha) * loss + self.ema_alpha * current_loss)
+            ema_loss = torch.mean((1.0 - self.ema_alpha) * loss + self.ema_alpha * self.previous_loss)
 
         if not self.margin_constant:
             improvement = (ema_loss - self.prev_ema_loss) / max(self.prev_ema_loss, EPS) if self.prev_ema_loss is not None else ema_loss
             if improvement > self.min_improvement:
-                self.margin = torch.clamp(torch.tensor(self.margin * (1 + self.adjust_factor)), min=self.initial_margin, max=self.max_margin).item()
+                self.update_margin(torch.clamp(torch.tensor(self.margin * (1 + self.adjust_factor)), min=self.initial_margin, max=self.max_margin).item())
             else:
-                self.margin = self.initial_margin
+                self.update_margin(self.initial_margin)
         self.prev_ema_loss = ema_loss
 
         positive_d_loss = torch.mean(positive_distance)
         negative_d_loss = torch.mean(negative_distance)
         hard_negative_d_loss = torch.mean(hard_negative_distance)
-        return loss, positive_d_loss, negative_d_loss, hard_negative_d_loss
+
+        self.previous_loss = loss.item()
+        return {"loss": loss, "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss, "hard_negative_d_loss": hard_negative_d_loss}
 
 
     def cosine_similarity(self, x1, x2):
