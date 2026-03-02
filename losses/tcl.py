@@ -16,8 +16,7 @@ class TCLoss(nn.Module):
     """Temporal Contrastive Loss.
     """
     def __init__(self, bs, device, gamma=1, crop_size_min=5, crop_size_max=10,
-                if_use_dtw=False, max_margin=5, min_margin=1,
-                temperature=.1, margin=5):
+                use_cuda=False, max_margin=5, min_margin=1, temperature=.1, margin=5):
         """_summary_
 
         Args:
@@ -33,13 +32,12 @@ class TCLoss(nn.Module):
             margin (int, optional): Margin value. Defaults to 5.
         """
         super(TCLoss, self).__init__()
-        self.sim_loss = DTWLoss(device, use_soft_dtw=True, use_cuda=False, gamma=gamma)
+        self.sim_loss = DTWLoss(device, use_soft_dtw=True, use_cuda=use_cuda, gamma=gamma)
         
         self.bs = bs
 
         self.crop_size_min = crop_size_min
         self.crop_size_max = crop_size_max
-        self.use_dtw = if_use_dtw
         self.max_margin = max_margin
         self.min_margin = min_margin
         self.margin = margin

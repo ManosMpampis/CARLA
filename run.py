@@ -291,7 +291,7 @@ print(file_list)
 #                     "save_dir": f"{config.get('tag_class', None)}"})
 # main_evaluation(eval_args)
 
-index = file_list.index('machine-1-1.txt')
+index = file_list.index('machine-1-7.txt')
 version = "loss_pretex/negL_twoB_threeC_tcl"
 for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:

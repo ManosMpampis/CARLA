@@ -25,7 +25,7 @@ criterion_kwargs:
   gamma: 1
   crop_size_min: 5
   crop_size_max: 10
-  if_use_dtw: False
+  use_cuda: True
   max_margin: 5
   min_margin: 1
   temperature: 0.1
