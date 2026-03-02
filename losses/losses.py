@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,20 +5,6 @@ import torch.nn.functional as F
 import math
 
 EPS=1e-8
-
-
-class MaskedCrossEntropyLoss(nn.Module):
-    def __init__(self):
-        super(MaskedCrossEntropyLoss, self).__init__()
-        
-    def forward(self, input, target, mask, weight, reduction='mean'):
-        if not (mask != 0).any():
-            raise ValueError('Mask in MaskedCrossEntropyLoss is all zeros.')
-        target = torch.masked_select(target, mask)
-        b, c = input.size()
-        n = target.size(0)
-        input = torch.masked_select(input, mask.view(b, 1)).view(n, c)
-        return F.cross_entropy(input, target, weight = weight, reduction = reduction)
 
 
 def entropy(x, input_as_probabilities):
@@ -214,14 +199,5 @@ class PretextLoss(nn.Module):
         self.previous_loss = loss.item()
         return {"loss": loss, "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss, "hard_negative_d_loss": hard_negative_d_loss}
 
-
-    def cosine_similarity(self, x1, x2):
-        dot_product = torch.sum(x1 * x2, dim=1)
-        norm_product = torch.norm(x1, dim=1) * torch.norm(x2, dim=1)
-        cosine_similarity = dot_product / norm_product
-        return cosine_similarity
-
-    def euclidan_dist(self, x1, x2):
-        return torch.sqrt(((x1 - x2)**2).sum(dim=1))
 
 

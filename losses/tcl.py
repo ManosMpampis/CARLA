@@ -32,7 +32,7 @@ class TCLoss(nn.Module):
             margin (int, optional): Margin value. Defaults to 5.
         """
         super(TCLoss, self).__init__()
-        self.sim_loss = DTWLoss(device, use_soft_dtw=True, use_cuda=use_cuda, gamma=gamma)
+        self.sim_loss = DTWLoss(device, use_cuda=use_cuda, gamma=gamma)
         
         self.bs = bs
 
