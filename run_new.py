@@ -18,25 +18,16 @@ filename = os.path.join('datasets/', 'psm/train')
 # %% 
 version = "loss/original"
 # Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_pretext(pretext_args)
-
-version = "loss/original"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_pretext(pretext_args)
-
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_pretext(pretext_args)
 
 version = "loss/original_re_weight"
 # Run the pretext script
 pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_reweight.yml",
+                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_re_weight.yml",
                 "fname": filename,
                 "version": f"{version}"})
 main_pretext(pretext_args)
@@ -52,7 +43,7 @@ main_pretext(pretext_args)
 version = "loss/original_neg_clamp_re_weight"
 # Run the pretext script
 pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp_reweight.yml",
+                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp_re_weight.yml",
                 "fname": filename,
                 "version": f"{version}"})
 main_pretext(pretext_args)
