@@ -107,9 +107,9 @@ class PretextLoss(nn.Module):
 
         # Normalize features for stable distance computation
         if self.normalize:
-            anchor = F.normalize(anchor, dim=1)
-            positive = F.normalize(positive, dim=1)
-            negative = F.normalize(negative, dim=1)
+            anchor = F.normalize(anchor, dim=-1)
+            positive = F.normalize(positive, dim=-1)
+            negative = F.normalize(negative, dim=-1)
 
         pos_1 = []
         pos_2 = []
@@ -120,7 +120,7 @@ class PretextLoss(nn.Module):
             pos_1.append(crop_a)
             pos_2.append(crop_b)
             neg_1.append(crop_n)
-            crop_a, crop_b, crop_n = self.random_crop(anchor, negative)
+            crop_a, crop_b, crop_n = self.random_crop(positive, negative)
             pos_1.append(crop_a)
             pos_2.append(crop_b)
             neg_1.append(crop_n)
@@ -129,8 +129,8 @@ class PretextLoss(nn.Module):
             pos_2.append(positive)
             neg_1.append(negative)
 
-        if self.previous_loss is not None:
-            self.margin = max(0.01, self.margin - self.adjust_factor * self.previous_loss)
+        # if self.previous_loss is not None:
+        #     self.margin = max(0.01, self.margin - self.adjust_factor * self.previous_loss)
 
         positive_distance = 0
         negative_distance = 0
@@ -160,12 +160,11 @@ class PretextLoss(nn.Module):
         else:
             loss = torch.clamp(self.margin + positive_distance_c - negative_distance_c, min=0.0)
 
-
+        mask = loss > 0
         loss = torch.mean(loss)
         positive_d_loss = torch.mean(positive_distance)
         negative_d_loss = torch.mean(negative_distance)
         
-        mask = loss > 0
         loss_pos_nc = torch.mean(positive_distance_c[~mask])
         loss_neg_nc = torch.mean(negative_distance_c[~mask])
 
@@ -193,4 +192,4 @@ class PretextLoss(nn.Module):
     def update_margin(self,  new_margin):
         if new_margin is None:
             return
-        self.margin = new_margin.to(self.device) if isinstance(new_margin, torch.Tensor) else torch.tensor(new_margin).to(self.device)
+        self.margin = new_margin

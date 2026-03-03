@@ -46,7 +46,7 @@ class ProgressMeter(object):
         self.logger = logger
 
     def update(self, meters):
-        self.meters += meters
+        self.meters.append(meters)
         
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]

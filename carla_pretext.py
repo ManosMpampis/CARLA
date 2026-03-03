@@ -78,17 +78,23 @@ def main(args):
         model.to(device)
         start_epoch = checkpoint['epoch']
         pretext_best_loss = checkpoint['pretext_best_loss']
-        criterion.update_margin = checkpoint.get('last_margin', None)
+        criterion.update_margin(checkpoint.get('last_margin', None))
         if 'prev_ema_loss' in checkpoint:
             criterion.prev_ema_loss = checkpoint['prev_ema_loss']
-        if 'last_loss' in checkpoint:
-            criterion.last_loss = checkpoint['last_loss']
+        if 'previous_loss' in checkpoint:
+            criterion.previous_loss = checkpoint['previous_loss']
         
     else:
         logger.log('No checkpoint file at {}'.format(p['pretext_checkpoint']))
         start_epoch = 0
         model = model.to(device)
         pretext_best_loss = np.inf
+
+        # Make an evaluation run to check random state
+        feats, metadata, evaluation_metrics = contrastive_evaluate(train_dataloader, model, output_metrics=p.get('evaluation_extra_metrics', False))
+        logger.add_embedding("Cluster", feats, metadata, 0)
+        logger.metrics_summary("Pretext Evaluation", evaluation_metrics, 0)
+
     
     # Training
     pretext_best_loss = np.inf
@@ -105,11 +111,11 @@ def main(args):
         last_margin = loss_dict["margin"]
         tmp_loss = loss_dict['loss']
         
-        if epoch % 50 == 0 or epoch == p['epochs']-1 or tmp_loss <= pretext_best_loss:
-            logger.metrics_summary("Pretext Loss", loss_dict, epoch)
+        if epoch % 200 == 0 or epoch == p['epochs']-1 or tmp_loss <= pretext_best_loss:
+            logger.metrics_summary("Pretext Loss", loss_dict, epoch+1)
             feats, metadata, evaluation_metrics = contrastive_evaluate(train_dataloader, model, output_metrics=p.get('evaluation_extra_metrics', False))
-            logger.add_embedding("Cluster", feats, metadata, epoch)
-            logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch)
+            logger.add_embedding("Cluster", feats, metadata, epoch+1)
+            logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch+1)
 
         # Checkpoint
         if tmp_loss <= pretext_best_loss:
@@ -124,8 +130,8 @@ def main(args):
             }
             if hasattr(criterion, 'prev_ema_loss'):
                 save_dict['prev_ema_loss'] = criterion.prev_ema_loss
-            if hasattr(criterion, 'last_loss'):
-                save_dict['last_loss'] = criterion.last_loss
+            if hasattr(criterion, 'previous_loss'):
+                save_dict['previous_loss'] = criterion.previous_loss
             torch.save(save_dict, p['pretext_checkpoint'])
 
     # Save final model

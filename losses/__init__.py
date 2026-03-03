@@ -45,7 +45,7 @@ class EuclideanDistanceLoss(nn.Module):
         self.temperature = temperature
 
     def forward(self, x1, x2):
-        return torch.sum(((x1 - x2)**2), dim=1) / self.temperature
+        return torch.sum(((x1 - x2)**2), dim=-1) / self.temperature
 
 def entropy(x, input_as_probabilities):
     """ 

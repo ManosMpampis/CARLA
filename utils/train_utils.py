@@ -8,9 +8,9 @@ device = torch.device("cuda")
 
 def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, logger, device='cuda'):
 
-    meter_Margin = AverageMeter('Margin', ':.4e')
+    avg_meters = {"meter_Margin": AverageMeter('Margin', ':.4e')}
     progress = ProgressMeter(len(train_loader),
-        [meter_Margin], logger,
+        list(avg_meters.values()), logger,
         prefix="Epoch: [{}]".format(epoch+1))
 
     model.to(device)
@@ -38,11 +38,11 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         for loss in losses.keys():
             if f"meter_{loss}" not in locals():
                 #init meter if not exists
-                locals()[f"meter_{loss}"] = AverageMeter(loss, ':.4e')
-                progress.update([locals()[f"meter_{loss}"]])
-            locals()[f"meter_{loss}"].update(losses[loss].item())
+                avg_meters[f"meter_{loss}"] = AverageMeter(loss, ':.4e')
+                progress.update(avg_meters[f"meter_{loss}"])
+            avg_meters[f"meter_{loss}"].update(losses[loss].item())
         
-        meter_Margin.update(criterion.margin)
+        avg_meters['meter_Margin'].update(criterion.margin)
 
         losses["loss"].backward()
         optimizer.step()
@@ -50,8 +50,8 @@ def pretext_train(train_loader, model, criterion, optimizer, epoch, prev_loss, l
         if i % 100 == 0:
             progress.display(i)
 
-    return_dict = {key: locals()[f"meter_{key}"].avg for key in losses.keys()}
-    return_dict["margin"] = meter_Margin.avg
+    return_dict = {key: avg_meters[f"meter_{key}"].avg for key in losses.keys()}
+    return_dict["margin"] = avg_meters['meter_Margin'].avg
     return return_dict
 
 
