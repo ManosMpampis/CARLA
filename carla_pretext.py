@@ -37,7 +37,6 @@ def main(args):
     logger.log_hyperparams(p)
     
     model = get_model(p)
-    best_model = None
     # logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))
     model = model.to(device)
 
@@ -47,6 +46,8 @@ def main(args):
     val_transforms = get_val_transformations1(p)
 
     train_dataset = get_train_dataset(p, train_transforms, sanomaly, to_augmented_dataset=True)
+    len_train = len(train_dataset)
+
     val_dataset = get_val_dataset(p, val_transforms, sanomaly, False, train_dataset.mean,
                                     train_dataset.std)
 
@@ -56,7 +57,7 @@ def main(args):
 
     logger.log('Dataset contains {}/{} train/val samples'.format(len(train_dataset), len(val_dataset)))
     
-    ts_repository_base = TSRepository(len(train_dataset),
+    ts_repository_base = TSRepository(len_train,
                                       p['model_kwargs'], p['res_kwargs'])
     ts_repository_base.to(device)
     ts_repository_val = TSRepository(len(val_dataset),
@@ -83,6 +84,11 @@ def main(args):
             criterion.prev_ema_loss = checkpoint['prev_ema_loss']
         if 'previous_loss' in checkpoint:
             criterion.previous_loss = checkpoint['previous_loss']
+
+        if os.path.exists(p['pretext_model']):
+            model.load_state_dict(torch.load(p['pretext_model'], map_location='cpu'))
+            model.to(device)
+            start_epoch = p['epochs'] # skip training if model already exists
         
     else:
         logger.log('No checkpoint file at {}'.format(p['pretext_checkpoint']))
@@ -120,7 +126,6 @@ def main(args):
         # Checkpoint
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
-            best_model = model
             save_dict = {
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -135,14 +140,20 @@ def main(args):
             torch.save(save_dict, p['pretext_checkpoint'])
 
     # Save final model
-    torch.save(best_model.state_dict(), p['pretext_model'])
+    checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
+    model.load_state_dict(checkpoint['model'])
+    model.to(device)
+    torch.save(model.state_dict(), p['pretext_model'])
 
+    # Relesase some memory
+    del train_dataloader, 
     # Mine the topk nearest neighbors at the very end (Train)
     # These will be served as input to the classification loss.
     logger.log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...')
-    ts_repository_aug = TSRepository(len(train_dataset) * 2,
+    ts_repository_aug = TSRepository(len_train * 2,
                                      p['model_kwargs'], p['res_kwargs']) #need size of repository == 1+num_of_anomalies
     fill_ts_repository(p, base_dataloader, model, ts_repository_base, real_aug = True, ts_repository_aug = ts_repository_aug)
+    del base_dataloader, train_dataset
     # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
     out_pre = np.column_stack((ts_repository_base.features.cpu().numpy(), ts_repository_base.targets.cpu().numpy()))
 
@@ -152,6 +163,7 @@ def main(args):
     kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)
     np.save(p['topk_neighbors_train_path'], knearest)
     np.save(p['bottomk_neighbors_train_path'], kfurtherst)
+    del ts_repository_aug, kfurtherst, knearest
 
     # Mine the topk nearest neighbors at the very end (Val)
     # These will be used for validation.
@@ -159,12 +171,14 @@ def main(args):
 
     fill_ts_repository(p, val_dataloader, model, ts_repository_val, real_aug=False, ts_repository_aug=None)
     # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
+    del val_dataloader, val_dataset, model
     out_pre = np.column_stack((ts_repository_val.features.cpu().numpy(), ts_repository_val.targets.cpu().numpy()))
 
     np.save(p['pretext_features_test_path'], out_pre)
     topk = 10
     logger.log('Mine the nearest and furthest neighbors (Top-%d)' %(topk))
     kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)
+    
     np.save(p['topk_neighbors_val_path'], knearest)
     np.save(p['bottomk_neighbors_val_path'], kfurtherst)
     logger.finalize()

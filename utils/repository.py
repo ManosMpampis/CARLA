@@ -43,8 +43,8 @@ class TSRepository(object):
         b = features.size(0)
         
         assert(b + self.ptr <= self.n)
-        
-        self.features[self.ptr:self.ptr+b].copy_(features.mean(dim=-1).detach())
+        features = features.mean(dim=-1) if features.ndim == 3 else features
+        self.features[self.ptr:self.ptr+b].copy_(features.detach())
         if not torch.is_tensor(targets): targets = torch.from_numpy(targets)
         self.targets[self.ptr:self.ptr+b].copy_(targets.detach())
         self.ptr += b
