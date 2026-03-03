@@ -33,11 +33,13 @@ class PSM(Dataset):
         else:
             self.base_folder += 'test'
             labels = pd.read_csv(os.path.join(self.root, 'test_label.csv'))
-            labels = labels.drop(columns=['timestamp_(min)'], axis=1)
+            labels = labels.drop(columns=['timestamp_(min)'])
             labels = np.asarray(labels)
 
         file_path = os.path.join(self.root, f"{self.base_folder}.csv")
         temp = pd.read_csv(file_path)
+        temp = temp.drop(columns=['timestamp_(min)'])
+        temp.fillna(0, inplace=True) # Replace NaN values with 0 as the original code of RANSynCoders does
         temp = np.asarray(temp)
 
         if np.any(sum(np.isnan(temp))!=0):

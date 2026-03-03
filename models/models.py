@@ -42,8 +42,6 @@ class ContrastiveModel(nn.Module):
         
         elif head == 'tcl':
             self.contrastive_head = nn.Identity()
-            None
-
         else:
             raise ValueError('Invalid head {}'.format(head))
 

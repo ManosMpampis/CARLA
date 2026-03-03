@@ -19,7 +19,9 @@ def get_criterion(p):
     elif p['criterion'] == 'tcl':
         from losses.tcl import TCLoss
         criterion = TCLoss(p['batch_size'], **p['criterion_kwargs'])
-
+    elif p['criterion'] == 'pretext_new':
+        from losses._losses import PretextLoss
+        criterion = PretextLoss(p['batch_size'], **p['criterion_kwargs'])
     else:
         raise ValueError('Invalid criterion {}'.format(p['criterion']))
 
@@ -28,10 +30,10 @@ def get_criterion(p):
 
 def get_feature_dimensions_backbone(p):
     if p['backbone'] == 'resnet18':
-        return 8
+        return p['res_kwargs']['mid_channels'][-1]
 
     elif p['backbone'] == 'resnet_ts':
-        return 8
+        return p['res_kwargs']['mid_channels'][-1]
 
     else:
         raise NotImplementedError
