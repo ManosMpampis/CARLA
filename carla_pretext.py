@@ -73,7 +73,7 @@ def main(args):
     # Checkpoint
     if os.path.exists(p['pretext_checkpoint']):
         logger.log('Restart from checkpoint {}'.format(p['pretext_checkpoint']))
-        checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
+        checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu', weights_only=False)
         optimizer.load_state_dict(checkpoint['optimizer'])
         model.load_state_dict(checkpoint['model'])
         model.to(device)
@@ -86,9 +86,9 @@ def main(args):
             criterion.previous_loss = checkpoint['previous_loss']
 
         if os.path.exists(p['pretext_model']):
-            model.load_state_dict(torch.load(p['pretext_model'], map_location='cpu'))
+            model.load_state_dict(torch.load(p['pretext_model'], map_location='cpu', weights_only=False))
             model.to(device)
-            start_epoch = p['epochs'] # skip training if model already exists
+            start_epoch = p['epochs'] + 1 # skip training if model already exists
         
     else:
         logger.log('No checkpoint file at {}'.format(p['pretext_checkpoint']))
@@ -140,7 +140,7 @@ def main(args):
             torch.save(save_dict, p['pretext_checkpoint'])
 
     # Save final model
-    checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu')
+    checkpoint = torch.load(p['pretext_checkpoint'], map_location='cpu', weights_only=False)
     model.load_state_dict(checkpoint['model'])
     model.to(device)
     torch.save(model.state_dict(), p['pretext_model'])

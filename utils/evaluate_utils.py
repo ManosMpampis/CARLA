@@ -115,7 +115,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         res = model(ts.view(bs, h, w), forward_pass='return_all')
         output = res['output']
         if return_features:
-            features[ptr: ptr+bs] = res['features']
+            features[ptr: ptr+bs] = res['features'].mean(dim=-1)
             ptr += bs
         for i, output_i in enumerate(output):
             predictions[i].append(torch.argmax(output_i, dim=1))

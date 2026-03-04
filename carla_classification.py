@@ -36,8 +36,6 @@ def main(args):
     
     logger.log('CARLA Self-supervised Classification stage --> ')
     logger.log_hyperparams(p)
-    # CUDNN
-    # torch.backends.cudnn.benchmark = True
 
     # Data
     logger.log('\n- Get dataset and dataloaders for ' + p['train_db_name'] + ' dataset - timeseries ' + p['fname'])
@@ -57,7 +55,6 @@ def main(args):
 
     # Model
     model = get_model(p, p['pretext_model'])
-    model = torch.nn.DataParallel(model)
     model = model.to(device)
 
     # Optimizer
@@ -75,24 +72,26 @@ def main(args):
     # Checkpoint
     if os.path.exists(p['classification_checkpoint']):
         logger.log('-- Model initialised from last checkpoint: {}'.format(p['classification_checkpoint']))
-        checkpoint = torch.load(p['classification_checkpoint'], map_location='cpu')
+        checkpoint = torch.load(p['classification_checkpoint'], map_location='cpu', weights_only=False)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         start_epoch = checkpoint['epoch']
         best_loss = checkpoint['best_loss']
-        best_loss_head = checkpoint['best_loss_head']
         normal_label = checkpoint['normal_label']
+        best_f1 = checkpoint['best_f1']
+
+        if os.path.exists(p['classification_model']):
+            model.load_state_dict(torch.load(p['classification_model'], map_location='cpu'), weights_only=False)
+            model.to(device)
+            start_epoch = p['epochs'] + 1  # skip training if model already exists
 
     else:
         logger.log('-- No checkpoint file at {} -- new model initialised'.format(p['classification_checkpoint']))
         start_epoch = 0
         best_loss = 1e4
-        best_loss_head = None
         normal_label = 0
+        best_f1 = -1 * np.inf
 
-
-    best_f1 = -1 * np.inf
-    # best_loss = np.inf
     logger.log('\n- Training:')
     for epoch in range(start_epoch, p['epochs']):
         logger.log('-- Epoch %d/%d' %(epoch+1, p['epochs']))
@@ -111,15 +110,12 @@ def main(args):
         label_counts = torch.bincount(predictions[0]['predictions'])
         majority_label = label_counts.argmax()
 
-        classification_stats = classification_evaluate(predictions)
-        lowest_loss_head = classification_stats['lowest_loss_head']
-        lowest_loss = classification_stats['lowest_loss']
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
         eval_metrics = pr_evaluate(predictions, compute_confusion_matrix=False, majority_label=majority_label)
         rep_f1 = eval_metrics['best_f1']
 
-        if epoch % 50 == 0 or epoch == p['epochs']-1 or rep_f1 >= best_f1:
+        if epoch % 100 == 0 or epoch == p['epochs']-1 or rep_f1 >= best_f1:
             logger.metrics_summary("Classification Evaluation", eval_metrics, epoch)
             report_str = f"\nValidation Set Metrics\n" \
                         f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"\
@@ -132,18 +128,17 @@ def main(args):
             best_f1 = rep_f1
             normal_label = majority_label
             # logger.log('New Checkpoint ...')
-            torch.save({'model': model.module.state_dict(), 'head': best_loss_head, 'normal_label': normal_label}, p['classification_model'])
             torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                        'epoch': epoch + 1, 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
+                        'epoch': epoch, 'best_loss': best_loss, 'normal_label': normal_label, 'best_f1': best_f1},
                        p['classification_checkpoint'])
 
 
-    model_checkpoint = torch.load(p['classification_model'], map_location='cpu')
-    model.module.load_state_dict(model_checkpoint['model'])
-    torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(),
-                'epoch': p['epochs'], 'best_loss': best_loss, 'best_loss_head': best_loss_head, 'normal_label': normal_label},
-               p['classification_checkpoint'])
+    model_checkpoint = torch.load(p['classification_checkpoint'], map_location='cpu', weights_only=False)
+    model.load_state_dict(model_checkpoint['model'])
+
+    torch.save({'model': model.state_dict(), 'normal_label': normal_label}, p['classification_model'])
     normal_label = model_checkpoint['normal_label']
+
     tst_dl = get_val_dataloader(p, val_dataset)
     predictions, _ = get_predictions(p, tst_dl, model, True)
     logger.finalize()

@@ -28,7 +28,7 @@ class Carla():
         # Checkpoint
         if os.path.exists(self.p['classification_checkpoint']):
             print(colored('-- Model initialised from last checkpoint: {}'.format(self.p['classification_checkpoint']), 'green'))
-            checkpoint = torch.load(self.p['classification_checkpoint'], map_location='cpu')
+            checkpoint = torch.load(self.p['classification_checkpoint'], map_location='cpu', weights_only=False)
             self.model.load_state_dict(checkpoint['model'])
             self.normal_label = checkpoint['normal_label']
         else:

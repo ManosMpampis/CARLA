@@ -76,43 +76,20 @@ def add_summary_statistics(res_df):
 
 
     # Append the results to the dataframe
-    summary_row = pd.Series({
-        'name': 'sum',
-        'best_tp': sum_best_tp,
-        'best_tn': sum_best_tn,
-        'best_fp': sum_best_fp,
-        'best_fn': sum_best_fn,
-        'best_pre': precision,
-        'best_rec': recall,
-        'b_f_1': f1_score,
-        'roc': roc_avg,
-        'pr': pr_avg
-    })
-
-    std_row = pd.Series({
-        'name': 'std',
-        'roc': roc_std,
-        'pr': pr_std,
-        'b_f_1': f1_std,
-        'best_pre': prec_std,
-        'best_rec': rec_std
-    })
-
-    mean_row = pd.Series({
-        'name': 'mean',
-        'roc': roc_avg,
-        'pr': pr_avg,
-        'b_f_1': f1_avg,
-        'best_pre': prec_avg,
-        'best_rec': rec_avg
-    })
-
-    # Append the rows to the dataframe
-    res_df = res_df._append(summary_row, ignore_index=True)
-    res_df = res_df._append(mean_row, ignore_index=True)
-    res_df = res_df._append(std_row, ignore_index=True)
+    summary_row = {
+        'name': ['sum', 'mean', 'std'],
+        'best_tp': [sum_best_tp, 0, 0],
+        'best_tn': [sum_best_tn, 0, 0],
+        'best_fp': [sum_best_fp, 0, 0],
+        'best_fn': [sum_best_fn, 0, 0],
+        'best_pre': [precision, prec_avg, prec_std],
+        'best_rec': [recall, rec_avg, rec_std],
+        'b_f_1': [f1_score, f1_avg, f1_std],
+        'roc': [0, roc_avg, roc_std],
+        'pr': [0, pr_avg, pr_std],
+    }
     
-    return res_df
+    return summary_row
 
 def add_summary_statistics_pa(res_df):
     # Compute the sum of 'best_tp', 'best_tn', 'best_fp', 'best_fn'
@@ -128,7 +105,7 @@ def add_summary_statistics_pa(res_df):
 
 
     # Append the results to the dataframe
-    summary_row = pd.Series({
+    summary_row = {
         'pa_tp': sum_pa_tp,
         'pa_tn': sum_pa_tn,
         'pa_fp': sum_pa_fp,
@@ -136,33 +113,46 @@ def add_summary_statistics_pa(res_df):
         'pa_pre': precision,
         'pa_rec': recall,
         'pa_f1': f1_score,
-    })
-
-
-    # Append the row to the dataframe
-    res_df = res_df._append(summary_row, ignore_index=True)
+    }
     
-    return res_df
+    return summary_row
 
 def main(args):
 
-    res_df = pd.DataFrame(columns=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
-                               'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1']) 
+    res_dict = {'name': [],
+                'tp': [],
+                'tn': [],
+                'fp': [],
+                'fn': [],
+                'roc': [],
+                'pr': [],
+                'best_tp': [],
+                'best_tn': [],
+                'best_fp': [],
+                'best_fn': [],
+                'best_pre': [],
+                'best_rec': [],
+                'b_f_1': []}
 
-    pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
+    # res_df = pd.DataFrame(columns=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
+    #                            'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1']) 
+
+    # pa_df = pd.DataFrame(columns=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])
     
     version = args.version
     save_dir = args.save_dir
+    ds_name = args.get('dataset', 'smd')
+
     mkdir_if_missing(save_dir)
     save_dir = f'_{save_dir}' if (save_dir is not None and save_dir != "None") else ''
     
     folder = version #"big_train_custom_lr" #args.version
 
-    data_info = os.listdir(f'results/smd/{folder}')
+    data_info = os.listdir(f'results/{ds_name}/{folder}')
     files = [file for file in data_info if file.startswith('machine-')]
-    files = sorted(files)
+    files = sorted(files) if len(files) > 0 else [""]
     print(files)
-    ds_name = 'smd'
+    
     for filename in files: #['GECCO']: #data_info['chan_id']: #files: #['M-6']: #data_info['chan_id']:
         if filename!='.json': # and 'real_' in filename:
             print(filename)
@@ -243,10 +233,25 @@ def main(args):
                 best_tn, best_fp, best_fn, best_tp = confusion_matrix(df_test['Class'], anomalies).ravel()
             except ValueError:
                 pass
-
-            new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1],
-                                    index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1'])
-            res_df = res_df._append(new_row, ignore_index=True)
+            
+            res_dict['name'].append(filename)
+            res_dict['tp'].append(tp)
+            res_dict['tn'].append(tn)
+            res_dict['fp'].append(fp)
+            res_dict['fn'].append(fn)
+            res_dict['roc'].append(roc_auc)
+            res_dict['pr'].append(pr_auc)
+            res_dict['best_tp'].append(best_tp)
+            res_dict['best_tn'].append(best_tn)
+            res_dict['best_fp'].append(best_fp)
+            res_dict['best_fn'].append(best_fn)
+            res_dict['best_pre'].append(best_pre)
+            res_dict['best_rec'].append(best_rec)
+            res_dict['b_f_1'].append(best_f1)
+            
+            # new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1],
+            #                         index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1'])
+            # res_df = res_df.join(new_row, ignore_index=True)
             
             
             # pa_f1 = -1
@@ -260,12 +265,16 @@ def main(args):
             #                         index=['name', 'pa_tp', 'pa_tn', 'pa_fp', 'pa_fn', 'pa_pre', 'pa_rec', 'pa_f1', 'latency'])   
             # pa_df = pa_df._append(new_row1, ignore_index=True)
             
-        
-    res_df = add_summary_statistics(res_df)
+
+    res_df = pd.DataFrame(res_dict)
+      
+    summary_dict = add_summary_statistics(res_df)
+    res_df = pd.concat([res_df, pd.DataFrame(summary_dict).fillna(0)], ignore_index=True).fillna('')
     res_df.to_csv(f'results/{ds_name}/{folder}/{save_dir}/results_woincon.csv')
 
-    # pa_df = add_summary_statistics_pa(pa_df)
-    # pa_df.to_csv('smd_5_results_pa.csv')
+    # summary_dict = add_summary_statistics_pa(pa_df)
+    # res_df = pd.concat(res_df, pd.DataFrame(summary_dict).fillna(0), ignore_index=True).fillna('')
+    # res_df.to_csv(f'results/{ds_name}/{folder}/{save_dir}/results_pa.csv')
 
 
 if __name__ == "__main__":
