@@ -250,6 +250,7 @@ class PretextLoss(nn.Module):
         else:
             loss = torch.clamp(self.margin + positive_distance_c - negative_distance_c, min=0.0)
 
+        clear_loss = (positive_distance - negative_distance).mean()
         mask = loss > 0
         loss = torch.mean(loss)
         positive_d_loss = torch.mean(positive_distance)
@@ -277,7 +278,11 @@ class PretextLoss(nn.Module):
         else:
             self.update_margin(self.initial_margin)
         self.prev_ema_loss = ema_loss
-        return {"loss": loss, "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss, "loss_pos_c": positive_distance_c, "loss_neg_c": negative_distance_c, "loss_pos_nc": loss_pos_nc, "loss_neg_nc": loss_neg_nc}
+        return {"loss": loss,
+                "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss,
+                "loss_pos_c": positive_distance_c, "loss_neg_c": negative_distance_c,
+                "loss_pos_nc": loss_pos_nc, "loss_neg_nc": loss_neg_nc,
+                "clear_loss": clear_loss}
     
     def update_margin(self,  new_margin):
         if new_margin is None:
