@@ -16,13 +16,965 @@ env['LD_LIBRARY_PATH'] = f'/usr/local/cuda/lib64:{env.get("LD_LIBRARY_PATH", "")
 # %%
 filename = "" #os.path.join('datasets/', 'psm/train')
 # %% 
-version = "loss/original"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
+# version = "loss/original"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
 # main_pretext(pretext_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_pretext(pretext_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_neg_clamp"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_neg_clamp_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # ==================================================================================================================================
+# version = "loss/original_margin_dist"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_pos_supr"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_pos_supr_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_neg_clamp"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_neg_clamp.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_neg_clamp_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_neg_clamp_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_pos_supr_neg_clamp"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_neg_clamp.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_dist_pos_supr_neg_clamp_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_neg_clamp_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # ==================================================================================================================================
+# version = "loss/original_margin_ema"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_pos_supr"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_pos_supr_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_neg_clamp"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_neg_clamp.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_pretext(pretext_arg)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_neg_clamp_re_weight"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_neg_clamp_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext(pretext_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# version = "loss/original_margin_ema_pos_supr_neg_clamp"
+# # Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_neg_clamp.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext(pretext_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+# # Run the classification script
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# main_classification(classification_args)
+
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}",
+#                     "dataset": 'psm'})
+# main_evaluation(eval_args)
+
+version = "loss/original_margin_ema_pos_supr_neg_clamp_re_weight"
+# Run the pretext script
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_neg_clamp_re_weight.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
+# # main_pretext(pretext_args)
 
 # # Run the classification script
 # classification_args = EasyDict({"config_env": "configs/env.yml",
@@ -65,958 +1017,6 @@ eval_args = EasyDict({"version": f"{version}",
                     "save_dir": f"{config.get('tag_class', None)}",
                     "dataset": 'psm'})
 main_evaluation(eval_args)
-
-version = "loss/original_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_neg_clamp"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_neg_clamp_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/orig_re_weight_and_clamp_neg_re_weight/original_neg_clamp_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-# ==================================================================================================================================
-version = "loss/original_margin_dist"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_pos_supr"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_pos_supr_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_neg_clamp"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_neg_clamp.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_neg_clamp_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_neg_clamp_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_pos_supr_neg_clamp"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_neg_clamp.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_dist_pos_supr_neg_clamp_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_dist_and_supr_re_weight_clamp_neg_re_weight/original_margin_dist_pos_supr_neg_clamp_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-# ==================================================================================================================================
-version = "loss/original_margin_ema"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_pos_supr"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_pos_supr_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_neg_clamp"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_neg_clamp.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_neg_clamp_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_neg_clamp_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_pos_supr_neg_clamp"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_neg_clamp.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
-
-version = "loss/original_margin_ema_pos_supr_neg_clamp_re_weight"
-# Run the pretext script
-pretext_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_neg_clamp_re_weight.yml",
-                "fname": filename,
-                "version": f"{version}"})
-# main_pretext
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_no_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)
-
-# Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/new_loss/psm/original_norm_entropy.yml",
-                "fname": filename,
-                "version": f"{version}"})
-main_classification(classification_args)
-
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}",
-                    "dataset": 'psm'})
-main_evaluation(eval_args)(pretext_args)
 
 # # Run the classification script
 # classification_args = EasyDict({"config_env": "configs/env.yml",
