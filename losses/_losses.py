@@ -3,13 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from losses import find_similarity_loss, entropy
-EPS=1e-8
+
+EPS = 1e-8
+
 
 class GCLoss(torch.nn.Module):
     """Global Contrastive Learning loss.
     Based on this implementation
     https://github.com/emadeldeen24/TS-TCC/blob/main/models/loss.py
     """
+
     def __init__(self, device, temperature, class_num=2):
         """
         Args:
@@ -20,10 +23,9 @@ class GCLoss(torch.nn.Module):
         super(GCLoss, self).__init__()
         self.temperature = temperature
         self.device = device
-        
+
         self.class_num = class_num
         self._cosine_similarity = torch.nn.CosineSimilarity(dim=-1)
-        #self.similarity_function = self._get_similarity_function(use_cosine_similarity)
         self.criterion = torch.nn.CrossEntropyLoss(reduction="sum")
 
     def _get_nt_xent_loss(self, z_pos_1, z_pos_2, z_neg):
@@ -52,7 +54,6 @@ class GCLoss(torch.nn.Module):
                                                         z_neg.unsqueeze(0)))
 
         non_neg_values = torch.cat(sim_matrix_neg).view(2 * batch_size, -1)
-
 
         # Compute similarity matrix between positive views
         similarity_matrix = self._cosine_similarity(representations.unsqueeze(1),
@@ -97,11 +98,17 @@ class GCLoss(torch.nn.Module):
 
 
 class ClassificationLoss(nn.Module):
-    def __init__(self, entropy_weight = 2.0, inconsistency_weight=1.0, consistency_weight=1.0, entropy_norm=False):
+    def __init__(
+        self,
+        entropy_weight=2.0,
+        inconsistency_weight=1.0,
+        consistency_weight=1.0,
+        entropy_norm=False,
+    ):
         super(ClassificationLoss, self).__init__()
-        self.softmax = nn.Softmax(dim = 1)
+        self.softmax = nn.Softmax(dim=1)
         self.bce = nn.BCELoss()
-        self.entropy_weight = entropy_weight 
+        self.entropy_weight = entropy_weight
         self.inconsistency_weight = inconsistency_weight
         self.consistency_weight = consistency_weight
         self.entropy_norm = entropy_norm
@@ -120,23 +127,39 @@ class ClassificationLoss(nn.Module):
         anchors_prob = self.softmax(anchors)
         positives_prob = self.softmax(nneighbors)
         negatives_prob = self.softmax(fneighbors)
-       
+
         # Similarity in output space
         similarity = torch.bmm(anchors_prob.view(b, 1, n), positives_prob.view(b, n, 1)).squeeze()
         ones = torch.ones_like(similarity)
         consistency_loss = self.bce(similarity, ones)
 
         # DiSimilarity in output space
-        negsimilarity = torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze()
+        negsimilarities = []
+        negsimilarities.append(torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze())
+
         zeros = torch.zeros_like(negsimilarity)
-        inconsistency_loss = self.bce(negsimilarity, zeros)
+
+        # DiSimilarity with the near-neighbors
+        if self.entropy_to_all_instances:
+            negsimilarities.append(torch.bmm(positives_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze())
         
+        inconsistency_loss = 0
+        for negsimilarity in negsimilarities:
+            inconsistency_loss += self.bce(negsimilarity, zeros)
+        inconsistency_loss /= len(negsimilarities)
+
         # Entropy loss
+        if self.entropy_to_all_instances:
+            anchors_prob = torch.cat([anchors_prob, positives_prob])
+        
+        entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)
+
         if self.entropy_norm:
             entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)/torch.log(torch.tensor(n)) # Normalize to 1
         else:
-            entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)
-        #-torch.sum(anchors_prob * torch.log(anchors_prob + 1e-12), dim=-1).mean() #
+            entropy_loss = entropy(
+                torch.mean(anchors_prob, 0), input_as_probabilities=True
+            )
 
         # Total loss
         total_loss = (self.consistency_weight*consistency_loss) - (self.entropy_weight * entropy_loss) + (self.inconsistency_weight * inconsistency_loss)
@@ -146,10 +169,29 @@ class ClassificationLoss(nn.Module):
 
 class PretextLoss(nn.Module):
     # Based on the implementation of SupContrast
-    def __init__(self, bs, temperature, loss_name='euclidean', device='cuda', normalize=True, clamp_neg_loss=True, 
-                 crop=True, crop_size_min=5, crop_size_max=10, pos_weight=1, neg_weight=1,
-                 initial_margin=1.0, max_margin=5.0, min_margin=0.01, margin_distance=False,
-                 adjust_factor=0, ema_alpha=0, min_improvement=0.0001, pos_supression=False, re_weight=False):
+    def __init__(
+        self,
+        bs,
+        temperature,
+        loss_name="euclidean",
+        device="cuda",
+        normalize=True,
+        clamp_neg_loss=True,
+        crop=True,
+        crop_size_min=5,
+        crop_size_max=10,
+        pos_weight=1,
+        neg_weight=1,
+        initial_margin=1.0,
+        max_margin=5.0,
+        min_margin=0.01,
+        margin_distance=False,
+        adjust_factor=0,
+        ema_alpha=0,
+        min_improvement=0.0001,
+        pos_supression=False,
+        re_weight=False,
+    ):
         super(PretextLoss, self).__init__()
         self.temperature = temperature
         self.bs = bs
@@ -165,11 +207,11 @@ class PretextLoss(nn.Module):
         self.min_margin = min_margin
         self.max_margin = max_margin
         self.margin_distance = margin_distance
-        
+
         self.pos_supression = pos_supression
         self.pos_weight = pos_weight
         self.neg_weight = neg_weight
-        
+
         self.min_improvement = min_improvement
         self.ema_alpha = ema_alpha
         self.adjust_factor = adjust_factor
@@ -206,21 +248,19 @@ class PretextLoss(nn.Module):
         neg_1 = []
 
         if self.crop:
-            crop_a, crop_b, crop_n = self.random_crop(anchor, negative)
+            crop_a, crop_b = self.random_crop(anchor)
             pos_1.append(crop_a)
             pos_2.append(crop_b)
-            neg_1.append(crop_n)
-            crop_a, crop_b, crop_n = self.random_crop(positive, negative)
+            crop_a, crop_b = self.random_crop(positive)
             pos_1.append(crop_a)
             pos_2.append(crop_b)
-            neg_1.append(crop_n)
+            crop_a, crop_b = self.random_crop(negative)
+            neg_1.append(crop_a)
+            neg_1.append(crop_b)
         else:
             pos_1.append(anchor)
             pos_2.append(positive)
             neg_1.append(negative)
-
-        # if self.previous_loss is not None:
-        #     self.margin = max(0.01, self.margin - self.adjust_factor * self.previous_loss)
 
         positive_distance = 0
         negative_distance = 0
@@ -229,7 +269,7 @@ class PretextLoss(nn.Module):
         for crop_a, crop_b, crop_n in zip(pos_1, pos_2, neg_1):
             positive_distance += self.sim_loss(crop_a, crop_b)
             negative_distance += self.sim_loss(crop_a, crop_n)
-            
+
         positive_distance /= len(pos_1)
         negative_distance /= len(pos_1)
 
@@ -255,36 +295,38 @@ class PretextLoss(nn.Module):
         loss = torch.mean(loss)
         positive_d_loss = torch.mean(positive_distance)
         negative_d_loss = torch.mean(negative_distance)
-        
+
         loss_pos_nc = torch.mean(positive_distance_c[~mask])
         loss_neg_nc = torch.mean(negative_distance_c[~mask])
 
         positive_distance_c = torch.mean(positive_distance_c[mask])
         negative_distance_c = torch.mean(negative_distance_c[mask])
-        
+
         mask_number = torch.sum(mask)
         if mask_number > 0 and self.re_weight:
             weight = self.bs / mask_number
             positive_distance_c *= weight
             negative_distance_c *= weight
             loss = self.margin + positive_distance_c - negative_distance_c
+
+        ema_loss = torch.mean(((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)) if self.previous_loss is not None else loss
+        improvement = (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS) if self.prev_ema_loss is not None else ema_loss
+        self.update_margin(torch.clamp(torch.tensor(self.margin * (1 + improvement)), min=self.initial_margin, max=self.max_margin).item())
         
         self.previous_loss = loss.item()
-
-        ema_loss = torch.mean(((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss))
-        improvement = (ema_loss - self.prev_ema_loss) / max(self.prev_ema_loss, EPS) if self.prev_ema_loss is not None else ema_loss
-        if improvement > self.min_improvement:
-            self.update_margin(torch.clamp(torch.tensor(self.margin * (1 + self.adjust_factor)), min=self.initial_margin, max=self.max_margin).item())
-        else:
-            self.update_margin(self.initial_margin)
         self.prev_ema_loss = ema_loss
-        return {"loss": loss,
-                "positive_d_loss": positive_d_loss, "negative_d_loss": negative_d_loss,
-                "loss_pos_c": positive_distance_c, "loss_neg_c": negative_distance_c,
-                "loss_pos_nc": loss_pos_nc, "loss_neg_nc": loss_neg_nc,
-                "clear_loss": clear_loss}
-    
-    def update_margin(self,  new_margin):
+        return {
+            "loss": loss,
+            "positive_d_loss": positive_d_loss,
+            "negative_d_loss": negative_d_loss,
+            "loss_pos_c": positive_distance_c,
+            "loss_neg_c": negative_distance_c,
+            "loss_pos_nc": loss_pos_nc,
+            "loss_neg_nc": loss_neg_nc,
+            "clear_loss": clear_loss,
+        }
+
+    def update_margin(self, new_margin):
         if new_margin is None:
             return
         self.margin = new_margin
