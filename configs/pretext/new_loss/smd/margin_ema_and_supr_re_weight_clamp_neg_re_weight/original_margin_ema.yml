@@ -34,7 +34,7 @@ criterion_kwargs:
   initial_margin: 0.3
   max_margin: 5.0
   min_margin: 0.01
-  margin_distance: True
+  margin_distance: False
   adjust_factor: 0.001
   ema_alpha: 0.3
   min_improvement: 0.00001

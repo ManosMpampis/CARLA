@@ -146,7 +146,7 @@ def main(args):
     torch.save(model.state_dict(), p['pretext_model'])
 
     # Relesase some memory
-    del train_dataloader, 
+    del train_dataloader
     # Mine the topk nearest neighbors at the very end (Train)
     # These will be served as input to the classification loss.
     logger.log('Fill TS Repository for mining the nearest/furthest neighbors (train) ...')

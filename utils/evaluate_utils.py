@@ -31,7 +31,6 @@ def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_
         vertices_org = model(ts_org.view(b, h, w)).cpu()
 
         ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-        target_w = target.detach().clone()
         target_w_str = [str(l*2) for l in torch.ones_like(target).tolist()]
         vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
 

@@ -70,7 +70,8 @@ def get_model(p, pretrain_path=None):
                 'contrastive_head.1.weight', 'contrastive_head.1.bias',
                 'contrastive_head.3.weight', 'contrastive_head.3.bias'}
                     or set(missing[1]) == {
-                        'contrastive_head.weight', 'contrastive_head.bias'})
+                        'contrastive_head.0.weight', 'contrastive_head.0.bias'}
+                    or set(missing[1]) == set())
 
         else:
             raise NotImplementedError
