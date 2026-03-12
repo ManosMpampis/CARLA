@@ -4,7 +4,11 @@ import torch
 import torch.nn.functional as F
 from sklearn.cluster import MiniBatchKMeans
 from sklearn import metrics
-from sklearn.metrics import precision_recall_curve, confusion_matrix, multilabel_confusion_matrix
+from sklearn.metrics import (
+    precision_recall_curve,
+    confusion_matrix,
+    multilabel_confusion_matrix,
+)
 # from torchmetrics.functional.classification import confusion_matrix
 # from torchmetrics.functional import precision_recall_curve
 
@@ -16,25 +20,27 @@ from termcolor import colored
 
 
 @torch.no_grad()
-def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_metrics=True):
+def contrastive_evaluate(
+    dataloader: torch.utils.data.DataLoader, model, output_metrics=True
+):
     model.eval()
     device = next(model.parameters()).device
 
     all_feats = []
     all_meta = []
     for batch in dataloader:
-        ts_org = batch['ts_org'].to(device, non_blocking=True)
+        ts_org = batch["ts_org"].to(device, non_blocking=True)
         b, w, h = ts_org.shape
-        target = batch['target'].to(device, non_blocking=True)
+        target = batch["target"].to(device, non_blocking=True)
         target_str = [str(l) for l in target.tolist()]
 
         vertices_org = model(ts_org.view(b, h, w)).cpu()
 
-        ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-        target_w_str = [str(l*2) for l in torch.ones_like(target).tolist()]
+        ts_w_augment = batch["ts_w_augment"].to(device, non_blocking=True)
+        target_w_str = [str(l * 2) for l in torch.ones_like(target).tolist()]
         vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
 
-        ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+        ts_ss_augment = batch["ts_ss_augment"].to(device, non_blocking=True)
         target_ss = torch.ones_like(target)
         target_ss_str = [str(l) for l in target_ss.tolist()]
         vertices_ss = model(ts_ss_augment.view(b, h, w)).cpu()
@@ -44,17 +50,24 @@ def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_
 
     feats = torch.cat(all_feats, dim=0)
     metadata = [m for group in all_meta for m in group]
-    
+
     # K-means clustering
     evaluation_metrics = {}
     if output_metrics:
-        kmeans = MiniBatchKMeans(n_clusters=3, random_state=4, n_init="auto", batch_size=dataloader.batch_size)
+        kmeans = MiniBatchKMeans(
+            n_clusters=3,
+            random_state=4,
+            n_init="auto",
+            batch_size=dataloader.batch_size,
+        )
         cluster_labels = kmeans.fit_predict(feats.numpy())
         cluster_centers = torch.from_numpy(kmeans.cluster_centers_)
-        
+
         try:
             # Calculate Silhouette Score
-            s_score = metrics.silhouette_score(feats.numpy(), cluster_labels, metric='euclidean')
+            s_score = metrics.silhouette_score(
+                feats.numpy(), cluster_labels, metric="euclidean"
+            )
             # Calculate Calinski-Harabasz Index
             ch_score = metrics.calinski_harabasz_score(feats.numpy(), cluster_labels)
             # Calculate Davies-Bouldin Index
@@ -63,13 +76,17 @@ def contrastive_evaluate(dataloader: torch.utils.data.DataLoader, model, output_
             s_score = 0
             ch_score = 0
             db_score = 0
-            print(colored(f'cluster_labels: {cluster_labels}', 'red'))
-            print(colored(f'{e}', 'red'))
+            print(colored(f"cluster_labels: {cluster_labels}", "red"))
+            print(colored(f"{e}", "red"))
 
         # Add centroids to the graph
         feats = torch.cat([feats, cluster_centers], dim=0)
         metadata = metadata + ["centroid 0", "centroid 1", "centroid 2"]
-        evaluation_metrics = {"Silhouette Score": s_score, "Calinski-Harabasz Score": ch_score, "Davies-Bouldin Score": db_score}
+        evaluation_metrics = {
+            "Silhouette Score": s_score,
+            "Calinski-Harabasz Score": ch_score,
+            "Davies-Bouldin Score": db_score,
+        }
     return feats, metadata, evaluation_metrics
 
 
@@ -78,84 +95,97 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     # Make predictions on a dataset with neighbors
     global features, nneighbors, fneighbors
     model.eval()
-    predictions = [[] for _ in range(p['num_heads'])]
-    probs = [[] for _ in range(p['num_heads'])]
+    predictions = []
+    probs = []
     targets = []
     if return_features:
         ft_dim = get_feature_dimensions_backbone(p)
-        features = torch.zeros((len(dataloader.sampler), ft_dim)) #.cuda()
+        features = torch.zeros((len(dataloader.sampler), ft_dim))  # .cuda()
 
-    if isinstance(dataloader.dataset, NeighborsDataset): # Also return the neighbors
-        key_ = 'anchor'
+    if isinstance(dataloader.dataset, NeighborsDataset):  # Also return the neighbors
+        key_ = "anchor"
         include_neighbors = True
         nneighbors = []
         fneighbors = []
 
     else:
-        key_ = 'ts_org'
+        key_ = "ts_org"
         include_neighbors = False
 
     ptr = 0
     for batch in dataloader:
         ts = batch[key_]
-        #ts = torch.unsqueeze(ts, dim=1)
+        # ts = torch.unsqueeze(ts, dim=1)
         if ts.ndim == 3:
             bs, w, h = ts.shape
         else:
             bs, w = ts.shape
-            h =1
+            h = 1
 
         if isinstance(ts, np.ndarray):
             ts = torch.from_numpy(ts).float()
-            targets.append(torch.from_numpy(batch['target']))
+            targets.append(torch.from_numpy(batch["target"]))
         else:
-            targets.append(batch['target'])
+            targets.append(batch["target"])
 
-        res = model(ts.view(bs, h, w), forward_pass='return_all')
-        output = res['output']
+        res = model(ts.view(bs, h, w), forward_pass="return_all")
+        output = res["output"]
         if return_features:
-            features[ptr: ptr+bs] = res['features'].mean(dim=-1)
+            features[ptr : ptr + bs] = res["features"].mean(dim=-1)
             ptr += bs
-        for i, output_i in enumerate(output):
-            predictions[i].append(torch.argmax(output_i, dim=1))
-            probs[i].append(F.softmax(output_i, dim=1))
+        predictions.append(torch.argmax(output, dim=1))
+        probs.append(F.softmax(output, dim=1))
 
         if include_neighbors:
-            nneighbors.append(batch['possible_nneighbors'])
-            fneighbors.append(batch['possible_fneighbors'])
+            nneighbors.append(batch["possible_nneighbors"])
+            fneighbors.append(batch["possible_fneighbors"])
 
-    predictions = [torch.cat(pred_, dim = 0).cpu() for pred_ in predictions]
-    probs = [torch.cat(prob_, dim=0).cpu() for prob_ in probs]
+    predictions = torch.cat(predictions, dim=0).cpu()
+    probs = torch.cat(probs, dim=0).cpu()
     targets = torch.cat(targets, dim=0)
 
     if include_neighbors:
         nneighbors = torch.cat(nneighbors, dim=0)
         fneighbors = torch.cat(fneighbors, dim=0)
-        out = [{'predictions': pred_, 'probabilities': prob_, 'targets': targets, 'neighbors': nneighbors, 'fneighbors': fneighbors} for pred_, prob_ in zip(predictions, probs)]
+        out = {
+            "predictions": predictions,
+            "probabilities": probs,
+            "targets": targets,
+            "neighbors": nneighbors,
+            "fneighbors": fneighbors,
+        }
 
     else:
-        out = [{'predictions': pred_, 'probabilities': prob_, 'targets': targets} for pred_, prob_ in zip(predictions, probs)]
+        out = {"predictions": predictions, "probabilities": probs, "targets": targets}
 
     if return_features:
         feat_np = features.numpy()  # save features in csv
-        fhdr = [str(x) for x in range(feat_np.shape[1])] + ['Class']
+        fhdr = [str(x) for x in range(feat_np.shape[1])] + ["Class"]
         # feat_np = np.hstack((feat_np, np.array(targets)[np.newaxis].T)) CUDA
-        feat_np = np.hstack((feat_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
+        feat_np = np.hstack((feat_np, np.array(targets.cpu().numpy())[np.newaxis].T))
 
         feat_df = pd.DataFrame(feat_np, columns=fhdr)
 
-        prob_np = np.array(out[0]['probabilities'])
-        phdr = [str(x) for x in range(prob_np.shape[1])] + ['Class']
+        prob_np = np.array(out["probabilities"])
+        phdr = [str(x) for x in range(prob_np.shape[1])] + ["Class"]
         # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
-        prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T)) 
+        prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T))
         prob_df = pd.DataFrame(prob_np, columns=phdr)
 
         if is_training:
-            feat_df.to_csv(p['classification_trainfeatures'], index=False, header=True, sep=',')
-            prob_df.to_csv(p['classification_trainprobs'], index=False, header=True, sep=',')
+            feat_df.to_csv(
+                p["classification_trainfeatures"], index=False, header=True, sep=","
+            )
+            prob_df.to_csv(
+                p["classification_trainprobs"], index=False, header=True, sep=","
+            )
         else:
-            feat_df.to_csv(p['classification_testfeatures'], index=False, header=True, sep=',')
-            prob_df.to_csv(p['classification_testprobs'], index=False, header=True, sep=',')
+            feat_df.to_csv(
+                p["classification_testfeatures"], index=False, header=True, sep=","
+            )
+            prob_df.to_csv(
+                p["classification_testprobs"], index=False, header=True, sep=","
+            )
 
         return out, features.cpu()
 
@@ -167,55 +197,57 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 @torch.no_grad()
 def classification_evaluate(predictions):
     # Evaluate model based on classification loss.
-    num_heads = len(predictions)
-    output = []
 
-    for head in predictions:
-        # Neighbors and anchors
-        probs = head['probabilities']
-        neighbors = head['neighbors']
-        fneighbors = head['fneighbors']
-        org_anchors = torch.arange(neighbors.size(0)).view(-1,1).expand_as(neighbors)
+    # Neighbors and anchors
+    probs = predictions["probabilities"]
+    neighbors = predictions["neighbors"]
+    fneighbors = predictions["fneighbors"]
+    org_anchors = torch.arange(neighbors.size(0)).view(-1, 1).expand_as(neighbors)
 
-        # Entropy loss
-        entropy_loss = entropy(torch.mean(probs, dim=0), input_as_probabilities=True).item()
+    # Entropy loss
+    entropy_loss = entropy(torch.mean(probs, dim=0), input_as_probabilities=True).item()
 
-        # Consistency loss
-        similarity = torch.matmul(probs, probs.t())
-        neighbors = neighbors.contiguous().view(-1)
-        anchors = org_anchors.contiguous().view(-1)
-        similarity = similarity[anchors, neighbors]
-        ones = torch.ones_like(similarity)
-        consistency_loss = F.binary_cross_entropy(similarity, ones).item()
+    # Consistency loss
+    similarity = torch.matmul(probs, probs.t())
+    neighbors = neighbors.contiguous().view(-1)
+    anchors = org_anchors.contiguous().view(-1)
+    similarity = similarity[anchors, neighbors]
+    ones = torch.ones_like(similarity)
+    consistency_loss = F.binary_cross_entropy(similarity, ones).item()
 
-        similarity = torch.matmul(probs, probs.t())
-        fneighbors = fneighbors.contiguous().view(-1)
-        anchors = org_anchors.contiguous().view(-1)
-        similarity = similarity[anchors, fneighbors]
-        ones = torch.ones_like(similarity)
-        inconsistency_loss = F.binary_cross_entropy(similarity, ones).item()
+    similarity = torch.matmul(probs, probs.t())
+    fneighbors = fneighbors.contiguous().view(-1)
+    anchors = org_anchors.contiguous().view(-1)
+    similarity = similarity[anchors, fneighbors]
+    ones = torch.ones_like(similarity)
+    inconsistency_loss = F.binary_cross_entropy(similarity, ones).item()
 
-        # Total loss
-        total_loss = 5*entropy_loss + consistency_loss - 0*inconsistency_loss
+    # Total loss
+    total_loss = 5 * entropy_loss + consistency_loss - 0 * inconsistency_loss
 
-        output.append({'entropy': entropy_loss, 'consistency': consistency_loss, 'inconsistency': inconsistency_loss, 'total_loss': total_loss})
-
-    total_losses = [output_['total_loss'] for output_ in output]
-    lowest_loss_head = np.argmin(total_losses)
-    lowest_loss = np.min(total_losses)
-
-    return {'classification': output, 'lowest_loss_head': lowest_loss_head, 'lowest_loss': lowest_loss}
+    output = {
+        "entropy": entropy_loss,
+        "consistency": consistency_loss,
+        "inconsistency": inconsistency_loss,
+        "total_loss": total_loss,
+    }
+    return {"classification": output}
 
 
 @torch.no_grad()
-def pr_evaluate(all_predictions, class_names=None,
-                compute_purity=True, compute_confusion_matrix=True,
-                confusion_matrix_file=None, majority_label=0):
+def pr_evaluate(
+    all_predictions,
+    class_names=None,
+    compute_purity=True,
+    compute_confusion_matrix=True,
+    confusion_matrix_file=None,
+    majority_label=0,
+):
 
     head = all_predictions[0]
-    targets = head['targets'].cpu() #.cuda()
-    predictions = head['predictions'].cpu() #.cuda()
-    probs = head['probabilities'].cpu() #.cuda()
+    targets = head["targets"].cpu()  # .cuda()
+    predictions = head["predictions"].cpu()  # .cuda()
+    probs = head["probabilities"].cpu()  # .cuda()
     num_classes = torch.unique(targets).numel()
     num_elems = targets.size(0)
 
@@ -223,28 +255,28 @@ def pr_evaluate(all_predictions, class_names=None,
     number_of_real, number_of_anomalies = torch.bincount(targets).ravel()
     anomalies = np.where((predictions == majority_label), 0, 1)
 
-    MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels = [1, 0])
+    MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels=[1, 0])
     tn = MCM[0][0, 0]
     tp = MCM[0][1, 1]
     fp = MCM[0][0, 1]
     fn = MCM[0][1, 0]
-    pre=tp/(tp+fp) if (tp+fp) != 0 else 0
-    recall = tp/(tp+fn)
-    f_1 = 2*pre*recall/(pre+recall)
+    pre = tp / (tp + fp) if (tp + fp) != 0 else 0
+    recall = tp / (tp + fn)
+    f_1 = 2 * pre * recall / (pre + recall)
 
-    scores = 1-np.array(probs)[:,majority_label]
+    scores = 1 - np.array(probs)[:, majority_label]
     # labels = np.array(targets).tolist() CUDA
     labels = np.array(targets.cpu().numpy()).tolist()
 
     precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
     try:
-        f1_score = 2*precision*recall / (precision+recall)
+        f1_score = 2 * precision * recall / (precision + recall)
         if np.isnan(f1_score).any():
             f1_score = np.nan_to_num(f1_score)
-            print('f1: Nan --> 0')
+            print("f1: Nan --> 0")
     except ZeroDivisionError:
         f1_score = [0.0]
-        print('f1: 0 --> 0')
+        print("f1: 0 --> 0")
 
     best_f1_index = np.argmax(f1_score)
 
@@ -256,14 +288,40 @@ def pr_evaluate(all_predictions, class_names=None,
 
     anomalies = [1 if s >= best_threshold else 0 for s in scores]
     best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
-    print("Anomalies --> TP: ", best_tp, ", TN: ", best_tn, ", FN: ", best_fn, ", FP: ", best_fp)
+    print(
+        "Anomalies --> TP: ",
+        best_tp,
+        ", TN: ",
+        best_tn,
+        ", FN: ",
+        best_fn,
+        ", FP: ",
+        best_fp,
+    )
     print(majority_label)
     print(metrics.classification_report(labels, anomalies))
 
-    return {'cls_tp': tp,'cls_tn': tn,'cls_fp': fp,'cls_fn': fn,'cls_pre': best_precision,'cls_rec': best_recall,'cls_f1': f_1, 'best_tp': best_tp, 'best_tn': best_tn, 'best_fp': best_fp, 'best_fn': best_fn, 'best_th': best_threshold, 'best_pre': best_precision, 'best_rec': best_recall, 'best_f1': rep_f1}
+    return {
+        "cls_tp": tp,
+        "cls_tn": tn,
+        "cls_fp": fp,
+        "cls_fn": fn,
+        "cls_pre": best_precision,
+        "cls_rec": best_recall,
+        "cls_f1": f_1,
+        "best_tp": best_tp,
+        "best_tn": best_tn,
+        "best_fp": best_fp,
+        "best_fn": best_fn,
+        "best_th": best_threshold,
+        "best_pre": best_precision,
+        "best_rec": best_recall,
+        "best_f1": rep_f1,
+    }
 
 
 def replace_majority_label(flat_preds, majority_label):
-    #unique_labels = torch.unique(flat_preds)
+    # unique_labels = torch.unique(flat_preds)
     new_pred = torch.where(flat_preds == majority_label, 0, 1)
     return new_pred
+

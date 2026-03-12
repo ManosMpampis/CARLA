@@ -48,30 +48,38 @@ class GCLoss(torch.nn.Module):
         labels = labels.to(self.device)
 
         sim_matrix_neg = []
-        sim_matrix_neg.append(self._cosine_similarity(z_pos_1.unsqueeze(0),
-                                                        z_neg.unsqueeze(0)))
-        sim_matrix_neg.append(self._cosine_similarity(z_pos_2.unsqueeze(0),
-                                                        z_neg.unsqueeze(0)))
+        sim_matrix_neg.append(
+            self._cosine_similarity(z_pos_1.unsqueeze(0), z_neg.unsqueeze(0))
+        )
+        sim_matrix_neg.append(
+            self._cosine_similarity(z_pos_2.unsqueeze(0), z_neg.unsqueeze(0))
+        )
 
         non_neg_values = torch.cat(sim_matrix_neg).view(2 * batch_size, -1)
 
         # Compute similarity matrix between positive views
-        similarity_matrix = self._cosine_similarity(representations.unsqueeze(1),
-                                                    representations.unsqueeze(0))
+        similarity_matrix = self._cosine_similarity(
+            representations.unsqueeze(1), representations.unsqueeze(0)
+        )
         # print(similarity_matrix.shape)
 
         # discard the main diagonal from both: labels and similarities matrix
         mask = torch.eye(labels.shape[0], dtype=torch.bool).to(self.device)
         labels = labels[~mask].view(labels.shape[0], -1)
-        similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)
-
+        similarity_matrix = similarity_matrix[~mask].view(
+            similarity_matrix.shape[0], -1
+        )
 
         # select and combine multiple positives
         positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)
 
         # select only the negatives the negatives
-        negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)
-        negatives = torch.cat([non_neg_values, negatives], dim=1).view(2 * batch_size, -1)
+        negatives = similarity_matrix[~labels.bool()].view(
+            similarity_matrix.shape[0], -1
+        )
+        negatives = torch.cat([non_neg_values, negatives], dim=1).view(
+            2 * batch_size, -1
+        )
 
         logits = torch.cat((positives, negatives), dim=1)
         logits /= self.temperature
@@ -104,6 +112,7 @@ class ClassificationLoss(nn.Module):
         inconsistency_weight=1.0,
         consistency_weight=1.0,
         entropy_norm=False,
+        entropy_to_all_instances=False,
     ):
         super(ClassificationLoss, self).__init__()
         self.softmax = nn.Softmax(dim=1)
@@ -112,6 +121,7 @@ class ClassificationLoss(nn.Module):
         self.inconsistency_weight = inconsistency_weight
         self.consistency_weight = consistency_weight
         self.entropy_norm = entropy_norm
+        self.entropy_to_all_instances = entropy_to_all_instances
 
     def forward(self, anchors, nneighbors, fneighbors):
         """
@@ -129,42 +139,63 @@ class ClassificationLoss(nn.Module):
         negatives_prob = self.softmax(fneighbors)
 
         # Similarity in output space
-        similarity = torch.bmm(anchors_prob.view(b, 1, n), positives_prob.view(b, n, 1)).squeeze()
+        similarity = torch.bmm(
+            anchors_prob.view(b, 1, n), positives_prob.view(b, n, 1)
+        ).squeeze()
         ones = torch.ones_like(similarity)
         consistency_loss = self.bce(similarity, ones)
 
         # DiSimilarity in output space
         negsimilarities = []
-        negsimilarities.append(torch.bmm(anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze())
+        negsimilarities.append(
+            torch.bmm(
+                anchors_prob.view(b, 1, n), negatives_prob.view(b, n, 1)
+            ).squeeze()
+        )
 
         zeros = torch.zeros_like(negsimilarity)
 
         # DiSimilarity with the near-neighbors
         if self.entropy_to_all_instances:
-            negsimilarities.append(torch.bmm(positives_prob.view(b, 1, n), negatives_prob.view(b, n, 1)).squeeze())
-        
+            negsimilarities.append(
+                torch.bmm(
+                    positives_prob.view(b, 1, n), negatives_prob.view(b, n, 1)
+                ).squeeze()
+            )
+
         inconsistency_loss = 0
         for negsimilarity in negsimilarities:
             inconsistency_loss += self.bce(negsimilarity, zeros)
         inconsistency_loss /= len(negsimilarities)
 
         # Entropy loss
+        entropy_loss = 0
         if self.entropy_to_all_instances:
             anchors_prob = torch.cat([anchors_prob, positives_prob])
-        
-        entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)
-
-        if self.entropy_norm:
-            entropy_loss = entropy(torch.mean(anchors_prob, 0), input_as_probabilities = True)/torch.log(torch.tensor(n)) # Normalize to 1
-        else:
-            entropy_loss = entropy(
-                torch.mean(anchors_prob, 0), input_as_probabilities=True
+            entropy_loss -= entropy(
+                torch.mean(negatives_prob, 0), input_as_probabilities=True
             )
 
-        # Total loss
-        total_loss = (self.consistency_weight*consistency_loss) - (self.entropy_weight * entropy_loss) + (self.inconsistency_weight * inconsistency_loss)
+        entropy_loss += entropy(
+            torch.mean(anchors_prob, 0), input_as_probabilities=True
+        )
 
-        return total_loss, consistency_loss, inconsistency_loss, entropy_loss
+        if self.entropy_norm:
+            entropy_loss /= torch.log(torch.tensor(n))  # Normalize to 1
+
+        # Total loss
+        total_loss = (
+            (self.consistency_weight * consistency_loss)
+            - (self.entropy_weight * entropy_loss)
+            + (self.inconsistency_weight * inconsistency_loss)
+        )
+
+        return {
+            "total_loss": total_loss,
+            "consistency_loss": consistency_loss,
+            "inconsistency_loss": inconsistency_loss,
+            "entropy_loss": entropy_loss,
+        }
 
 
 class PretextLoss(nn.Module):
@@ -220,8 +251,10 @@ class PretextLoss(nn.Module):
 
         self.prev_ema_loss = None
         self.previous_loss = None
-        
-        self.sim_loss = find_similarity_loss(loss_name, device=device, use_cuda=True, temperature=temperature)
+
+        self.sim_loss = find_similarity_loss(
+            loss_name, device=device, use_cuda=True, temperature=temperature
+        )
 
     def forward(self, features):
         """
@@ -275,20 +308,36 @@ class PretextLoss(nn.Module):
 
         # Update margin based on the current loss
         if self.margin_distance:
-            self.update_margin(torch.clamp(self.max_margin - torch.mean(negative_distance), min=self.min_margin))
+            self.update_margin(
+                torch.clamp(
+                    self.max_margin - torch.mean(negative_distance), min=self.min_margin
+                )
+            )
 
         # Calculate suppression of positive distance on the loss
-        pos_supression_weight = 1 - (((self.margin - (self.neg_weight * torch.mean(negative_distance))) / self.margin) * self.pos_supression)
-        pos_supression_weight = torch.clamp(pos_supression_weight, min=0, max=self.neg_weight)
+        pos_supression_weight = 1 - (
+            (
+                (self.margin - (self.neg_weight * torch.mean(negative_distance)))
+                / self.margin
+            )
+            * self.pos_supression
+        )
+        pos_supression_weight = torch.clamp(
+            pos_supression_weight, min=0, max=self.neg_weight
+        )
 
-        positive_distance_c = positive_distance * pos_supression_weight * self.pos_weight
+        positive_distance_c = (
+            positive_distance * pos_supression_weight * self.pos_weight
+        )
         negative_distance_c = negative_distance * self.neg_weight
 
         if self.clamp_neg_loss:
             negative_distance_c = torch.clamp(negative_distance_c, max=self.margin)
             loss = positive_distance_c - negative_distance_c
         else:
-            loss = torch.clamp(self.margin + positive_distance_c - negative_distance_c, min=0.0)
+            loss = torch.clamp(
+                self.margin + positive_distance_c - negative_distance_c, min=0.0
+            )
 
         clear_loss = (positive_distance - negative_distance).mean()
         mask = loss > 0
@@ -309,10 +358,26 @@ class PretextLoss(nn.Module):
             negative_distance_c *= weight
             loss = self.margin + positive_distance_c - negative_distance_c
 
-        ema_loss = torch.mean(((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)) if self.previous_loss is not None else loss
-        improvement = (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS) if self.prev_ema_loss is not None else ema_loss
-        self.update_margin(torch.clamp(torch.tensor(self.margin * (1 + improvement)), min=self.initial_margin, max=self.max_margin).item())
-        
+        ema_loss = (
+            torch.mean(
+                ((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)
+            )
+            if self.previous_loss is not None
+            else loss
+        )
+        improvement = (
+            (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS)
+            if self.prev_ema_loss is not None
+            else ema_loss
+        )
+        self.update_margin(
+            torch.clamp(
+                torch.tensor(self.margin * (1 + improvement)),
+                min=self.initial_margin,
+                max=self.max_margin,
+            ).item()
+        )
+
         self.previous_loss = loss.item()
         self.prev_ema_loss = ema_loss
         return {
