@@ -26,6 +26,10 @@ def get_criterion(p):
         from losses._losses import PretextLoss
 
         criterion = PretextLoss(p["batch_size"], **p["criterion_kwargs"])
+    elif p["criterion"] == "classification_new":
+        from losses._losses import ClassificationLoss
+
+        criterion = ClassificationLoss(**p["criterion_kwargs"])
     else:
         raise ValueError("Invalid criterion {}".format(p["criterion"]))
 

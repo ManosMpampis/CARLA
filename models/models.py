@@ -62,9 +62,7 @@ class ClusteringModel(nn.Module):
         super(ClusteringModel, self).__init__()
         self.backbone = backbone["backbone"]
         self.backbone_output_dim = backbone["dim"][-1]
-        self.cluster_head = nn.ModuleList(
-            nn.Linear(self.backbone_output_dim, nclusters)
-        )
+        self.cluster_head = nn.Linear(self.backbone_output_dim, nclusters)
 
     def forward(self, x, forward_pass="default"):
         if forward_pass == "default":

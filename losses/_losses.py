@@ -153,7 +153,7 @@ class ClassificationLoss(nn.Module):
             ).squeeze()
         )
 
-        zeros = torch.zeros_like(negsimilarity)
+        zeros = torch.zeros_like(ones)
 
         # DiSimilarity with the near-neighbors
         if self.entropy_to_all_instances:

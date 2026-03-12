@@ -244,10 +244,9 @@ def pr_evaluate(
     majority_label=0,
 ):
 
-    head = all_predictions[0]
-    targets = head["targets"].cpu()  # .cuda()
-    predictions = head["predictions"].cpu()  # .cuda()
-    probs = head["probabilities"].cpu()  # .cuda()
+    targets = all_predictions["targets"].cpu()  # .cuda()
+    predictions = all_predictions["predictions"].cpu()  # .cuda()
+    probs = all_predictions["probabilities"].cpu()  # .cuda()
     num_classes = torch.unique(targets).numel()
     num_elems = targets.size(0)
 
@@ -288,17 +287,8 @@ def pr_evaluate(
 
     anomalies = [1 if s >= best_threshold else 0 for s in scores]
     best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
-    print(
-        "Anomalies --> TP: ",
-        best_tp,
-        ", TN: ",
-        best_tn,
-        ", FN: ",
-        best_fn,
-        ", FP: ",
-        best_fp,
-    )
-    print(majority_label)
+    print(f"Anomalies --> TP: {best_tp} TN: {best_tn} FN: {best_fn} FP: {best_fp}")
+    print(f"Majority label:{majority_label.item()}")
     print(metrics.classification_report(labels, anomalies))
 
     return {
