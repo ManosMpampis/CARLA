@@ -15,8 +15,8 @@ class SMD(Dataset):
     def __init__(
         self,
         fname,
-        mean_data,
-        std_data,
+        mean_data=None,
+        std_data=None,
         root=MyPath.db_root_dir("smd"),
         train=True,
         transform=None,
