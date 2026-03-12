@@ -157,8 +157,6 @@ def main(args):
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
 
-        # Checkpoint
-        if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
             save_dict = {
                 "model": model.state_dict(),
@@ -173,13 +171,17 @@ def main(args):
                 save_dict["previous_loss"] = criterion.previous_loss
             torch.save(save_dict, p["pretext_checkpoint"])
 
+        # Checkpoint
+        if tmp_loss <= pretext_best_loss:
+            pretext_best_loss = tmp_loss
+            torch.save(model.state_dict(), p["pretext_model"])
+
     # Save final model
     checkpoint = torch.load(
-        p["pretext_checkpoint"], map_location="cpu", weights_only=False
-    )
+        p["pretext_model"], map_location="cpu", weights_only=False
+    )    
     model.load_state_dict(checkpoint["model"])
     model.to(device)
-    torch.save(model.state_dict(), p["pretext_model"])
 
     # Relesase some memory
     del train_dataloader

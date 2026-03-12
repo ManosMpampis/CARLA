@@ -106,7 +106,6 @@ def main(args):
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
-        best_loss = checkpoint["best_loss"]
         normal_label = checkpoint["normal_label"]
         best_f1 = checkpoint["best_f1"]
 
@@ -125,7 +124,6 @@ def main(args):
             )
         )
         start_epoch = 0
-        best_loss = 1e4
         normal_label = 0
         best_f1 = -1 * np.inf
 
@@ -152,12 +150,12 @@ def main(args):
             predictions = get_predictions(p, tst_dl, model, False, False)
 
         label_counts = torch.bincount(predictions["predictions"])
-        majority_label = label_counts.argmax()
+        normal_label = label_counts.argmax()
 
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
         eval_metrics = pr_evaluate(
-            predictions, compute_confusion_matrix=False, majority_label=majority_label
+            predictions, compute_confusion_matrix=False, majority_label=normal_label
         )
         rep_f1 = eval_metrics["best_f1"]
 
@@ -167,36 +165,35 @@ def main(args):
                 f"\nValidation Set Metrics\n"
                 f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"
                 f"Anomalies Best F1 --> TP: {eval_metrics['best_tp']}, TN: {eval_metrics['best_tn']}, FN: {eval_metrics['best_fn']}, FP: {eval_metrics['best_fp']}\n"
-                f"Majority label: {majority_label}"
+                f"Majority label: {normal_label}"
             )
             logger.log(report_str)
             logger.metrics_summary("Classification Loss", loss_dict, epoch)
 
-        if rep_f1 >= best_f1:
-            best_f1 = rep_f1
-            normal_label = majority_label
-            # logger.log('New Checkpoint ...')
             torch.save(
                 {
                     "optimizer": optimizer.state_dict(),
                     "model": model.state_dict(),
                     "epoch": epoch,
-                    "best_loss": best_loss,
                     "normal_label": normal_label,
                     "best_f1": best_f1,
                 },
                 p["classification_checkpoint"],
             )
 
+        if rep_f1 >= best_f1:
+            best_f1 = rep_f1
+            # logger.log('New Checkpoint ...')
+            torch.save(
+                {"model": model.state_dict(), "normal_label": normal_label},
+                p["classification_model"],
+            )
+
+
     model_checkpoint = torch.load(
-        p["classification_checkpoint"], map_location="cpu", weights_only=False
+        p["classification_model"], map_location="cpu", weights_only=False
     )
     model.load_state_dict(model_checkpoint["model"])
-
-    torch.save(
-        {"model": model.state_dict(), "normal_label": normal_label},
-        p["classification_model"],
-    )
     normal_label = model_checkpoint["normal_label"]
 
     tst_dl = get_val_dataloader(p, val_dataset)
