@@ -237,21 +237,15 @@ def classification_evaluate(predictions):
 @torch.no_grad()
 def pr_evaluate(
     all_predictions,
-    class_names=None,
-    compute_purity=True,
-    compute_confusion_matrix=True,
-    confusion_matrix_file=None,
     majority_label=0,
+    train=False,
 ):
 
     targets = all_predictions["targets"].cpu()  # .cuda()
     predictions = all_predictions["predictions"].cpu()  # .cuda()
     probs = all_predictions["probabilities"].cpu()  # .cuda()
-    num_classes = torch.unique(targets).numel()
-    num_elems = targets.size(0)
 
     cls_targets = np.where((targets == 0), 0, 1)
-    number_of_real, number_of_anomalies = torch.bincount(targets).ravel()
     anomalies = np.where((predictions == majority_label), 0, 1)
 
     MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels=[1, 0])
@@ -266,13 +260,13 @@ def pr_evaluate(
     scores = 1 - np.array(probs)[:, majority_label]
     # labels = np.array(targets).tolist() CUDA
     labels = np.array(targets.cpu().numpy()).tolist()
-
-    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
+    pos_label = 4 if train else 1
+    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=pos_label)
     try:
         f1_score = 2 * precision * recall / (precision + recall)
         if np.isnan(f1_score).any():
             f1_score = np.nan_to_num(f1_score)
-            print("f1: Nan --> 0")
+            # print("f1: Nan --> 0")
     except ZeroDivisionError:
         f1_score = [0.0]
         print("f1: 0 --> 0")
@@ -285,11 +279,14 @@ def pr_evaluate(
     best_precision = precision[best_f1_index]
     best_recall = recall[best_f1_index]
 
-    anomalies = [1 if s >= best_threshold else 0 for s in scores]
+    if train:
+        anomalies = [4 if s >= best_threshold else 0 for s in scores]
+    else:
+        anomalies = [1 if s >= best_threshold else 0 for s in scores]
     best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
-    print(f"Anomalies --> TP: {best_tp} TN: {best_tn} FN: {best_fn} FP: {best_fp}")
-    print(f"Majority label:{majority_label.item()}")
-    print(metrics.classification_report(labels, anomalies))
+    # print(f"Anomalies --> TP: {best_tp} TN: {best_tn} FN: {best_fn} FP: {best_fp}")
+    # print(f"Majority label:{majority_label.item()}")
+    # print(metrics.classification_report(labels, anomalies))
 
     return {
         "cls_tp": tp,

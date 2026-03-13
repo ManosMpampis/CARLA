@@ -89,7 +89,7 @@ class Logger:
 
             # add the handlers to the logger
             self.logger.addHandler(h)
-        if self.verbose >= 1:
+        if self.verbose == 1 or self.verbose >2:
             h = logging.StreamHandler()
             h.setLevel(logging.INFO)
             # set file formatter

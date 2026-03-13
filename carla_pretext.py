@@ -105,7 +105,7 @@ def main(args):
         if "previous_loss" in checkpoint:
             criterion.previous_loss = checkpoint["previous_loss"]
 
-        if os.path.exists(p["pretext_model"]):
+        if start_epoch >= p["epochs"] and os.path.exists(p["pretext_model"]):
             model.load_state_dict(
                 torch.load(p["pretext_model"], map_location="cpu", weights_only=False)
             )
@@ -156,6 +156,7 @@ def main(args):
             )
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
+            logger.log_metrics("Learning rate", lr, epoch + 1)
 
             pretext_best_loss = tmp_loss
             save_dict = {

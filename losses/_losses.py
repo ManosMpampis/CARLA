@@ -113,6 +113,7 @@ class ClassificationLoss(nn.Module):
         consistency_weight=1.0,
         entropy_norm=False,
         entropy_to_all_instances=False,
+        disimilar_negatives=False,
     ):
         super(ClassificationLoss, self).__init__()
         self.softmax = nn.Softmax(dim=1)
@@ -122,6 +123,7 @@ class ClassificationLoss(nn.Module):
         self.consistency_weight = consistency_weight
         self.entropy_norm = entropy_norm
         self.entropy_to_all_instances = entropy_to_all_instances
+        self.disimilar_negatives = disimilar_negatives
 
     def forward(self, anchors, nneighbors, fneighbors):
         """
@@ -163,23 +165,35 @@ class ClassificationLoss(nn.Module):
                 ).squeeze()
             )
 
+        if self.disimilar_negatives:
+            disimilarity_negs = torch.bmm(
+                    negatives_prob.veiw(b, 1, n), negatives_prob.view(b, n, 1)
+                )
+            negsimilarities.append(disimilarity_negs)
+            if self.entropy_to_all_instances:
+                negsimilarities.append(disimilarity_negs)
+
         inconsistency_loss = 0
         for negsimilarity in negsimilarities:
             inconsistency_loss += self.bce(negsimilarity, zeros)
         inconsistency_loss /= len(negsimilarities)
 
+        negatives_prob = torch.mean(negatives_prob, 0)
         # Entropy loss
         entropy_loss = 0
+        negative_entropy = 0
         if self.entropy_to_all_instances:
             anchors_prob = torch.cat([anchors_prob, positives_prob])
-            entropy_loss -= entropy(
-                torch.mean(negatives_prob, 0), input_as_probabilities=True
+            negative_entropy = entropy(
+                negatives_prob, input_as_probabilities=True
             )
 
-        entropy_loss += entropy(
-            torch.mean(anchors_prob, 0), input_as_probabilities=True
+        anchors_prob = torch.mean(anchors_prob, 0)
+        positive_entropy = entropy(
+            anchors_prob, input_as_probabilities=True
         )
 
+        entropy_loss = positive_entropy - negative_entropy
         if self.entropy_norm:
             entropy_loss /= torch.log(torch.tensor(n))  # Normalize to 1
 
@@ -190,12 +204,25 @@ class ClassificationLoss(nn.Module):
             + (self.inconsistency_weight * inconsistency_loss)
         )
 
-        return {
+        achror_margin_per_class = { 
+            f"{i+1}": anchors_prob[i] for i in range(n)
+        }
+        negs_margin_per_class = { 
+            f"{i+1}": negatives_prob[i] for i in range(n)
+        }
+        out = {
             "total_loss": total_loss,
             "consistency_loss": consistency_loss,
             "inconsistency_loss": inconsistency_loss,
             "entropy_loss": entropy_loss,
+            "positive_entropy": positive_entropy,
+            "negative_entropy": negative_entropy,
         }
+        for cls in achror_margin_per_class.keys():
+            out[f"marginal_anchors_cls{cls}"] = achror_margin_per_class[cls]
+            out[f"marginal_negs_cls{cls}"] = negs_margin_per_class[cls]
+            
+        return out
 
 
 class PretextLoss(nn.Module):

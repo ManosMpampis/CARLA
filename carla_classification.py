@@ -109,10 +109,9 @@ def main(args):
         normal_label = checkpoint["normal_label"]
         best_f1 = checkpoint["best_f1"]
 
-        if os.path.exists(p["classification_model"]):
+        if start_epoch >= p["epochs"] and os.path.exists(p["classification_model"]):
             model.load_state_dict(
-                torch.load(p["classification_model"], map_location="cpu"),
-                weights_only=False,
+                torch.load(p["classification_model"], map_location="cpu", weights_only=False),
             )
             model.to(device)
             start_epoch = p["epochs"] + 1  # skip training if model already exists
@@ -152,15 +151,22 @@ def main(args):
         label_counts = torch.bincount(predictions["predictions"])
         normal_label = label_counts.argmax()
 
+        train_metrics = pr_evaluate(
+            predictions, majority_label=normal_label, train=True
+        )
+
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
         eval_metrics = pr_evaluate(
-            predictions, compute_confusion_matrix=False, majority_label=normal_label
+            predictions, majority_label=normal_label
         )
         rep_f1 = eval_metrics["best_f1"]
 
         if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1:
+            print(f"log at epoch: {epoch}/{p["epochs"]}")
+            logger.scalar_summary("", "Learning Rate", lr, epoch)
             logger.metrics_summary("Classification Evaluation", eval_metrics, epoch)
+            logger.metrics_summary("Classification Train", train_metrics, epoch)
             report_str = (
                 f"\nValidation Set Metrics\n"
                 f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"
