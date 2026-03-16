@@ -181,7 +181,7 @@ class ClassificationLoss(nn.Module):
         negatives_prob = torch.mean(negatives_prob, 0)
         # Entropy loss
         entropy_loss = 0
-        negative_entropy = 0
+        negative_entropy = torch.tensor(0)
         if self.entropy_to_all_instances:
             anchors_prob = torch.cat([anchors_prob, positives_prob])
             negative_entropy = entropy(

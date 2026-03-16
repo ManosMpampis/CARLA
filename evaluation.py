@@ -7,6 +7,7 @@ import warnings
 from utils.utils import mkdir_if_missing
 import matplotlib.pyplot as plt
 import argparse
+from torch import load
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
@@ -56,28 +57,48 @@ def add_summary_statistics(res_df):
     sum_best_fp = res_df['best_fp'].sum()
     sum_best_fn = res_df['best_fn'].sum()
 
+    sum_best_tp_tr = res_df['train_best_tp'].sum()
+    sum_best_tn_tr = res_df['train_best_tn'].sum()
+    sum_best_fp_tr = res_df['train_best_fp'].sum()
+    sum_best_fn_tr = res_df['train_best_fn'].sum()
+
     # Calculate precision, recall and f1 score
     precision = sum_best_tp / (sum_best_tp + sum_best_fp) if (sum_best_tp + sum_best_fp) > 0 else 0
     recall = sum_best_tp / (sum_best_tp + sum_best_fn) if (sum_best_tp + sum_best_fn) > 0 else 0
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
+    precision_tr = sum_best_tp_tr / (sum_best_tp_tr + sum_best_fp_tr) if (sum_best_tp_tr + sum_best_fp_tr) > 0 else 0
+    recall_tr = sum_best_tp_tr / (sum_best_tp_tr + sum_best_fn_tr) if (sum_best_tp_tr + sum_best_fn_tr) > 0 else 0
+    f1_score_tr = 2 * (precision_tr * recall_tr) / (precision_tr + recall_tr) if (precision_tr + recall_tr) > 0 else 0
+
     # Calculate the average and std of 'roc' and 'pr'
+    cls_f1_avg = res_df["f1"].mean()
     roc_avg = res_df['roc'].mean()
     pr_avg = res_df['pr'].mean()
     f1_avg = res_df['b_f_1'].mean()
     prec_avg = res_df['best_pre'].mean()
     rec_avg = res_df['best_rec'].mean()
 
+    f1_avg_tr = res_df['train_b_f_1'].mean()
+    prec_avg_tr = res_df['train_best_pre'].mean()
+    rec_avg_tr = res_df['train_best_rec'].mean()
+
+    cls_f1_std = res_df["f1"].std()
     roc_std = res_df['roc'].std()
     pr_std = res_df['pr'].std()
     f1_std = res_df['b_f_1'].std()
     prec_std = res_df['best_pre'].std()
     rec_std = res_df['best_rec'].std()
 
+    f1_std_tr = res_df['train_b_f_1'].std()
+    prec_std_tr = res_df['train_best_pre'].std()
+    rec_std_tr = res_df['train_best_rec'].std()
+
 
     # Append the results to the dataframe
     summary_row = {
         'name': ['sum', 'mean', 'std'],
+        'f1': [0, cls_f1_avg, cls_f1_std],
         'best_tp': [sum_best_tp, 0, 0],
         'best_tn': [sum_best_tn, 0, 0],
         'best_fp': [sum_best_fp, 0, 0],
@@ -85,6 +106,13 @@ def add_summary_statistics(res_df):
         'best_pre': [precision, prec_avg, prec_std],
         'best_rec': [recall, rec_avg, rec_std],
         'b_f_1': [f1_score, f1_avg, f1_std],
+        'train_best_tp': [sum_best_tp_tr, 0, 0],
+        'train_best_tn': [sum_best_tn_tr, 0, 0],
+        'train_best_fp': [sum_best_fp_tr, 0, 0],
+        'train_best_fn': [sum_best_fn_tr, 0, 0],
+        'train_best_pre': [precision_tr, prec_avg_tr, prec_std_tr],
+        'train_best_rec': [recall_tr, rec_avg_tr, rec_std_tr],
+        'train_b_f_1': [f1_score_tr, f1_avg_tr, f1_std_tr],
         'roc': [0, roc_avg, roc_std],
         'pr': [0, pr_avg, pr_std],
     }
@@ -124,6 +152,7 @@ def main(args):
                 'tn': [],
                 'fp': [],
                 'fn': [],
+                'f1': [],
                 'roc': [],
                 'pr': [],
                 'best_tp': [],
@@ -132,7 +161,14 @@ def main(args):
                 'best_fn': [],
                 'best_pre': [],
                 'best_rec': [],
-                'b_f_1': []}
+                'b_f_1': [],
+                'train_best_tp': [],
+                'train_best_tn': [],
+                'train_best_fp': [],
+                'train_best_fn': [],
+                'train_best_pre': [],
+                'train_best_rec': [],
+                'train_b_f_1': []}
 
     # res_df = pd.DataFrame(columns=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 
     #                            'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1']) 
@@ -158,13 +194,14 @@ def main(args):
             print(filename)
             df_train = pd.read_csv(f"results/{ds_name}/{folder}/{filename}/classification{save_dir}/classification_trainprobs.csv")
             df_test = pd.read_csv(f"results/{ds_name}/{folder}/{filename}/classification{save_dir}/classification_testprobs.csv")
-            cl_num = df_train.shape[1] - 1
+            cl_num = df_test.shape[1] - 1
 
             df_train['Class'] = np.where((df_train['Class'] == 0), 0, 1)
             df_train['pred']=df_train[df_train.columns[0:cl_num]].idxmax(axis=1)
 
-            score_col = df_train['pred'].value_counts().idxmax()
-            
+            score_col = load(f"results/{ds_name}/{folder}/{filename}/classification{save_dir}/model.pth.tar")["normal_label"].item()
+            # score_col = df_train['pred'].value_counts().idxmax()
+
             df_test['Class'] = np.where((df_test['Class'] == 0), 0, 1)
             df_test['pred'] = df_test[df_test.columns[0:cl_num]].idxmax(axis=1)
             
@@ -185,7 +222,17 @@ def main(args):
                 recall = tp/(tp+fn)
                 f_1 = 2*pre*recall/(pre+recall)
 
-                scores = 1-df_test[score_col]
+                # Find train scores
+                train_scores = 1-df_train[f"{score_col}"]
+                precision, recall, thresholds = precision_recall_curve(df_train['Class'], train_scores, pos_label=1)
+                res = pd.DataFrame()
+                res['pre'] = precision
+                res['rec'] = recall
+                res['f1'] = 2*res['pre']*res['rec'] / (res['pre']+res['rec'])
+                best_idx = res['f1'].argmax()
+                best_thr_tr = thresholds[best_idx]
+
+                scores = 1-df_test[f"{score_col}"]
                 # Calculate AU-ROC
                 roc_auc = roc_auc_score(df_test['Class'], scores)
                 print('AU-ROC : ', roc_auc)
@@ -231,6 +278,12 @@ def main(args):
                 anomalies = [True if s >= best_thr else False for s in scores]
 
                 best_tn, best_fp, best_fn, best_tp = confusion_matrix(df_test['Class'], anomalies).ravel()
+
+                anomalies = [True if s >= best_thr_tr else False for s in scores]
+                best_tn_tr, best_fp_tr, best_fn_tr, best_tp_tr = confusion_matrix(df_test['Class'], anomalies).ravel()
+                best_pre_tr=best_tp_tr/(best_tp_tr+best_fp_tr)
+                best_recall_tr = best_tp_tr/(best_tp_tr+best_fn_tr)
+                best_f_1_tr = 2*best_pre_tr*best_recall_tr/(best_pre_tr+best_recall_tr)
             except ValueError:
                 pass
             
@@ -239,6 +292,7 @@ def main(args):
             res_dict['tn'].append(tn)
             res_dict['fp'].append(fp)
             res_dict['fn'].append(fn)
+            res_dict['f1'].append(f_1)
             res_dict['roc'].append(roc_auc)
             res_dict['pr'].append(pr_auc)
             res_dict['best_tp'].append(best_tp)
@@ -248,6 +302,13 @@ def main(args):
             res_dict['best_pre'].append(best_pre)
             res_dict['best_rec'].append(best_rec)
             res_dict['b_f_1'].append(best_f1)
+            res_dict['train_best_tp'].append(best_tp_tr)
+            res_dict['train_best_tn'].append(best_tn_tr)
+            res_dict['train_best_fp'].append(best_fp_tr)
+            res_dict['train_best_fn'].append(best_fn_tr)
+            res_dict['train_best_pre'].append(best_pre_tr)
+            res_dict['train_best_rec'].append(best_recall_tr)
+            res_dict['train_b_f_1'].append(best_f_1_tr)
             
             # new_row = pd.Series([filename, tp, tn, fp, fn, roc_auc, pr_auc, best_tp, best_tn, best_fp, best_fn, best_pre, best_rec, best_f1],
             #                         index=['name', 'tp', 'tn', 'fp', 'fn', 'roc', 'pr', 'best_tp', 'best_tn', 'best_fp', 'best_fn', 'best_pre', 'best_rec', 'b_f_1'])

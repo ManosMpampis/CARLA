@@ -204,6 +204,7 @@ def main(args):
 
     tst_dl = get_val_dataloader(p, val_dataset)
     predictions, _ = get_predictions(p, tst_dl, model, True)
+    predictions, _ = get_predictions(p, train_dataset, model, True, True)
     logger.finalize()
 
 

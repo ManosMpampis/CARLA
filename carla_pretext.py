@@ -156,7 +156,7 @@ def main(args):
             )
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
-            logger.log_metrics("Learning rate", lr, epoch + 1)
+            logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
 
             pretext_best_loss = tmp_loss
             save_dict = {
@@ -177,11 +177,11 @@ def main(args):
             pretext_best_loss = tmp_loss
             torch.save(model.state_dict(), p["pretext_model"])
 
-    # Save final model
+    # load final model
     checkpoint = torch.load(
         p["pretext_model"], map_location="cpu", weights_only=False
     )    
-    model.load_state_dict(checkpoint["model"])
+    model.load_state_dict(checkpoint)
     model.to(device)
 
     # Relesase some memory
