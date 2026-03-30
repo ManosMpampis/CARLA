@@ -15,6 +15,7 @@ from utils.common_config import (
     get_val_transformations1,
     adjust_learning_rate,
     inject_sub_anomaly,
+    get_scheduler,
 )
 from utils.evaluate_utils import contrastive_evaluate
 from utils.repository import TSRepository, fill_ts_repository
@@ -87,6 +88,7 @@ def main(args):
 
     # optimizer = get_optimizer(p, model)
     optimizer = torch.optim.Adam(model.parameters(), lr=p["optimizer_kwargs"]["lr"])
+    scheduler = get_scheduler(p, optimizer)
 
     # Checkpoint
     if os.path.exists(p["pretext_checkpoint"]):
@@ -104,8 +106,9 @@ def main(args):
             criterion.prev_ema_loss = checkpoint["prev_ema_loss"]
         if "previous_loss" in checkpoint:
             criterion.previous_loss = checkpoint["previous_loss"]
-
-        if start_epoch >= p["epochs"] and os.path.exists(p["pretext_model"]):
+        if "scheduler" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler"])
+        if start_epoch >= p["epochs"]-1 and os.path.exists(p["pretext_model"]):
             model.load_state_dict(
                 torch.load(p["pretext_model"], map_location="cpu", weights_only=False)
             )
@@ -133,7 +136,8 @@ def main(args):
         logger.log("Epoch %d/%d" % (epoch + 1, p["epochs"]))
         logger.log("-" * 15)
 
-        lr = adjust_learning_rate(p, optimizer, epoch)
+        # lr = adjust_learning_rate(p, optimizer, epoch)
+        lr = optimizer.param_groups[0]["lr"]
         logger.log("Adjusted learning rate to {:.5f}".format(lr))
 
         # logger.log('EPOCH ----> ', epoch)
@@ -162,6 +166,7 @@ def main(args):
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
                 "pretext_best_loss": pretext_best_loss,
                 "last_margin": last_margin,

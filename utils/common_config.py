@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch
 import torchvision.transforms as transforms
+from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 from data.augment import NoiseTransformation, SubAnomaly
 from utils.collate import collate_custom
 
@@ -330,6 +331,32 @@ def get_optimizer(p, model, cluster_head_only=False):
 
     return optimizer
 
+
+def get_scheduler(p, optimizer):
+    end_epoch = p["epochs"]
+    warmup_epochs = p["scheduler_kwargs"].get("lr_warmup_epochs", 0)
+    warmup_start_factor = p["scheduler_kwargs"].get("warmupa_start_factor", 0.1)
+    warmup_end_factor = p["scheduler_kwargs"].get("warmupa_end_factor", 1)
+    warmup = LinearLR(optimizer, start_factor=warmup_start_factor, end_factor=warmup_end_factor, total_iters=warmup_epochs)
+
+    end_epoch -= warmup_epochs
+    if p["scheduler"] == "cosine":
+        eta_min = p["scheduler_kwargs"]["lr_eta_min"]
+        scheduler = CosineAnnealingLR(optimizer, T_max=end_epoch, eta_min=eta_min)
+    elif p["scheduler"] == "cosine_restart":
+        eta_min = p["scheduler_kwargs"]["lr_eta_min"]
+        cycle_period = p["scheduler_kwargs"]["T_period"]
+        cycle_period_mul = p["scheduler_kwargs"].get("T_mul", 1)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=cycle_period, T_mult=cycle_period_mul, eta_min=eta_min)
+    elif p["scheduler"] == "step":
+        scheduler = MultiStepLR(optimizer, milestones=p["scheduler_kwargs"]["lr_decay_epochs"], gamma=p["scheduler_kwargs"]["lr_decay_rate"])
+    elif p["scheduler"] == "constant":
+        scheduler = ConstantLR(optimizer, factor=1, total_iters=end_epoch)
+    elif p["scheduler"] == "linear":
+        scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=end_epoch)
+    else:
+        raise ValueError("Invalid learning rate schedule {}".format(p["scheduler"]))
+    return SequentialLR(optimizer, [warmup, scheduler], milestones=[warmup_epochs])
 
 def adjust_learning_rate(p, optimizer, epoch):
     lr = p["optimizer_kwargs"]["lr"]
