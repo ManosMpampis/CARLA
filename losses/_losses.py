@@ -165,34 +165,50 @@ class ClassificationLoss(nn.Module):
                 ).squeeze()
             )
 
+        diff_neg_sims = torch.tensor(0)
         if self.disimilar_negatives:
-            disimilarity_negs = torch.bmm(
-                    negatives_prob.veiw(b, 1, n), negatives_prob.view(b, n, 1)
-                )
-            negsimilarities.append(disimilarity_negs)
-            if self.entropy_to_all_instances:
-                negsimilarities.append(disimilarity_negs)
+            # Calculate similarity between ALL pairs of negatives in the batch
+            # Shape: [b, b]
+            neg_cross_sim = torch.mm(negatives_prob, negatives_prob.t())
+            
+            # We don't want to penalize a sample's similarity with itself (the diagonal)
+            # Create a mask to select only off-diagonal elements
+            b_size = neg_cross_sim.size(0)
+            mask = ~torch.eye(b_size, device=neg_cross_sim.device).bool()
+            
+            # Extract the similarities between DIFFERENT anomaly samples
+            diff_neg_sims = neg_cross_sim[mask].mean()
 
         inconsistency_loss = 0
         for negsimilarity in negsimilarities:
             inconsistency_loss += self.bce(negsimilarity, zeros)
         inconsistency_loss /= len(negsimilarities)
 
-        negatives_prob = torch.mean(negatives_prob, 0)
         # Entropy loss
-        entropy_loss = 0
+        entropy_loss = torch.tensor(0)
         negative_entropy = torch.tensor(0)
+        negative_per_sample_entropy = torch.tensor(0)
         if self.entropy_to_all_instances:
             anchors_prob = torch.cat([anchors_prob, positives_prob])
             negative_entropy = entropy(
-                negatives_prob, input_as_probabilities=True
+                torch.mean(negatives_prob, 0), input_as_probabilities=True
             )
+            # negative_per_sample_entropy = entropy(
+            #     negatives_prob, input_as_probabilities=True
+            # )
 
+        negs_classification = torch.argmax(negatives_prob, dim=0)
+        negatives_prob = torch.mean(negatives_prob, 0)
+
+        pos_classification = torch.argmax(anchors_prob, dim=0)
         anchors_prob = torch.mean(anchors_prob, 0)
         positive_entropy = entropy(
             anchors_prob, input_as_probabilities=True
         )
-
+        # Entropy shifts from -2.4 to 0. It is already output to -entropy.
+        # Entropy closly to 2.4 mean that the inputs are equally seperated.
+        # Entropy closly to 0 means that inputs are classified to one class only.
+        # Entropy is subtracted from loss. We want to minim positive_entropy and maximize negative entropy.
         entropy_loss = positive_entropy - negative_entropy
         if self.entropy_norm:
             entropy_loss /= torch.log(torch.tensor(n))  # Normalize to 1
@@ -200,15 +216,23 @@ class ClassificationLoss(nn.Module):
         # Total loss
         total_loss = (
             (self.consistency_weight * consistency_loss)
-            - (self.entropy_weight * entropy_loss)
+            + (self.entropy_weight * entropy_loss)
+            + (self.entropy_weight * negative_per_sample_entropy)
+            + (self.entropy_weight * diff_neg_sims)
             + (self.inconsistency_weight * inconsistency_loss)
         )
 
-        achror_margin_per_class = { 
+        anchor_margin_per_class = { 
             f"{i+1}": anchors_prob[i] for i in range(n)
         }
         negs_margin_per_class = { 
             f"{i+1}": negatives_prob[i] for i in range(n)
+        }
+        negs_classified_per_class = {
+            f"{i+1}": negs_classification[i] for i in range(n)
+        }
+        anchor_classified_per_class = {
+            f"{i+1}": pos_classification[i] for i in range(n)
         }
         out = {
             "total_loss": total_loss,
@@ -217,10 +241,14 @@ class ClassificationLoss(nn.Module):
             "entropy_loss": entropy_loss,
             "positive_entropy": positive_entropy,
             "negative_entropy": negative_entropy,
+            "negative_per_sample": negative_per_sample_entropy,
+            "diff_neg_sims": diff_neg_sims,
         }
-        for cls in achror_margin_per_class.keys():
-            out[f"marginal_anchors_cls{cls}"] = achror_margin_per_class[cls]
+        for cls in anchor_margin_per_class.keys():
+            out[f"marginal_anchors_cls{cls}"] = anchor_margin_per_class[cls]
             out[f"marginal_negs_cls{cls}"] = negs_margin_per_class[cls]
+            out[f"classified_negs_cls{cls}"] = negs_classified_per_class[cls]
+            out[f"classified_anchors_cls{cls}"] = anchor_classified_per_class[cls]
             
         return out
 

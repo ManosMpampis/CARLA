@@ -5,6 +5,7 @@ import yaml
 
 from carla_pretext import main as main_pretext
 from carla_classification import main as main_classification
+from carla_classification_new import main as main_classification_new
 from evaluation import main as main_evaluation
 
 env = os.environ.copy()
@@ -321,7 +322,7 @@ print(file_list)
 # main_evaluation(eval_args)
 
 # %%   ###################################################################################
-# index = file_list.index('machine-3-10.txt')
+# index = file_list.index('machine-1-1.txt')
 # version = "final/twoB_threeC_ema_pos_supr_re_weight"
 # for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
 #     # if 'real_' in filename:
@@ -341,7 +342,7 @@ print(file_list)
 #                     "save_dir": f"{config.get('tag_class', None)}"})
 # main_evaluation(eval_args)
 
-# index = file_list.index('machine-3-10.txt')
+# index = file_list.index('machine-1-1.txt')
 # version = "final/twoB_threeC_ema_pos_supr_re_weight"
 # for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
 #     # if 'real_' in filename:
@@ -361,9 +362,9 @@ print(file_list)
 #                     "save_dir": f"{config.get('tag_class', None)}"})
 # main_evaluation(eval_args)
 
-# index = file_list.index('machine-3-2.txt')
+# index = file_list.index('machine-1-1.txt')
 # version = "final/twoB_threeC_ema_pos_supr_re_weight"
-# for filename in file_list[index:index+1]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+# for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
 #     # if 'real_' in filename:
 #     if filename != 'GECCO':
 #         print(filename)
@@ -383,88 +384,88 @@ print(file_list)
 
 index = file_list.index('machine-1-1.txt')
 version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
-for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+for filename in file_list[index:index+1]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:
     if filename != 'GECCO':
         print(filename)
 
         # Run the pretext script
-        pretext_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/pretext/new_loss/smd/final_lr.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_pretext(pretext_args)
+        # pretext_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/pretext/new_loss/smd/final_lr.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_pretext(pretext_args)
 
         # Run the classification script
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/classification_final_entr_norm_lr.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification(classification_args)
+        # classification_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/classification/classification_final_entr_norm_lr.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_classification(classification_args)
 
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}"})
-main_evaluation(eval_args)
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}"})
+# main_evaluation(eval_args)
 
 
 index = file_list.index('machine-1-1.txt')
 version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
-for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+for filename in file_list[index:index+1]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:
     if filename != 'GECCO':
         print(filename)
 
         # Run the classification script
         classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/classification_final_entr_instances_lr.yml",
+                        "config_exp": "configs/classification/classification_final_entr_all_disimilar_neg_lr.yml",
                         "fname": filename,
                         "version": f"{version}"})
-        main_classification(classification_args)
+        main_classification_new(classification_args)
 
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}"})
-main_evaluation(eval_args)
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}"})
+# main_evaluation(eval_args)
 
-index = file_list.index('machine-1-1.txt')
-version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
-for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
-    # if 'real_' in filename:
-    if filename != 'GECCO':
-        print(filename)
+# index = file_list.index('machine-1-1.txt')
+# version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
+# for filename in file_list[index:index+1]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+#     # if 'real_' in filename:
+#     if filename != 'GECCO':
+#         print(filename)
 
-        # Run the classification script
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/classification_final_entr_all_lr.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification(classification_args)
+#         # Run the classification script
+#         classification_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": "configs/classification/classification_final_entr_all_lr.yml",
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_classification_new(classification_args)
 
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}"})
-main_evaluation(eval_args)
+# # with open(classification_args.config_exp, 'r') as stream:
+# #             config = yaml.safe_load(stream)
+# # eval_args = EasyDict({"version": f"{version}",
+# #                     "save_dir": f"{config.get('tag_class', None)}"})
+# # main_evaluation(eval_args)
 
-index = file_list.index('machine-1-1.txt')
-version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
-for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
-    # if 'real_' in filename:
-    if filename != 'GECCO':
-        print(filename)
+# index = file_list.index('machine-1-1.txt')
+# version = "final/twoB_threeC_ema_pos_supr_re_weight_cos_lr"
+# for filename in file_list[index:index+1]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
+#     # if 'real_' in filename:
+#     if filename != 'GECCO':
+#         print(filename)
 
-        # Run the classification script
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/classification_final_entr_all_disimilar_neg.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification(classification_args)
+#         # Run the classification script
+#         classification_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": "configs/classification/classification_final_entr_instances_lr.yml",
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_classification_new(classification_args)
 
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}"})
-main_evaluation(eval_args)
+# # with open(classification_args.config_exp, 'r') as stream:
+# #             config = yaml.safe_load(stream)
+# # eval_args = EasyDict({"version": f"{version}",
+# #                     "save_dir": f"{config.get('tag_class', None)}"})
+# # main_evaluation(eval_args)

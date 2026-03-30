@@ -1,12 +1,12 @@
 # setup
 setup: classification
 
-tag_class: entropy_all_lr
+tag_class: entropy_all_lr_correct_entropy_new2
 
 # Loss
 criterion: classification_new
 criterion_kwargs:
-  entropy_weight: 1.0
+  entropy_weight: 2.0
   inconsistency_weight: 1.3
   consistency_weight: 1.0
   entropy_norm: True
@@ -39,7 +39,7 @@ transformation_kwargs:
 # Hyperparameters
 optimizer: adam
 optimizer_kwargs:
-  lr: 0.01
+  lr: 0.001
   weight_decay: 0.001
 epochs: 1500
 batch_size: 512
