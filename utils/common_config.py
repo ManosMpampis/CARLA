@@ -170,13 +170,21 @@ def get_train_dataset(
     return dataset
 
 
-def get_aug_train_dataset(p, transform, to_neighbors_dataset=False):
-    dataloader = torch.load(p["contrastive_dataset"], weights_only=False)
+def get_aug_train_dataset(p, transform, dataset=None, new=False):
+    if new:
+        from data.ra_dataset import DynamicNeighbors
+        from data.custom_dataset import ContrustiveDataset
+        assert dataset is not None
+        dynamic_dataset = DynamicNeighbors(dataset, p)
+        con_dataset = ContrustiveDataset(dynamic_dataset, transform, p)
+        return dynamic_dataset, con_dataset
+    if dataset is None:
+        dataset = torch.load(p["contrastive_dataset"], weights_only=False).dataset
     from data.custom_dataset import NeighborsDataset
 
     N_indices = np.load(p["topk_neighbors_train_path"])
     F_indices = np.load(p["bottomk_neighbors_train_path"])
-    dataset = NeighborsDataset(dataloader.dataset, transform, N_indices, F_indices, p)
+    dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, p)
 
     return dataset
 

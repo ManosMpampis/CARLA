@@ -274,7 +274,6 @@ def main(args):
                 best_pre = res['pre'][best_idx]
                 best_rec = res['rec'][best_idx]
                 best_thr = thresholds[best_idx]
-                print('Best f1 : ', best_f1, 'best_thr', best_thr)
                 anomalies = [True if s >= best_thr else False for s in scores]
 
                 best_tn, best_fp, best_fn, best_tp = confusion_matrix(df_test['Class'], anomalies).ravel()
@@ -284,6 +283,7 @@ def main(args):
                 best_pre_tr=best_tp_tr/(best_tp_tr+best_fp_tr)
                 best_recall_tr = best_tp_tr/(best_tp_tr+best_fn_tr)
                 best_f_1_tr = 2*best_pre_tr*best_recall_tr/(best_pre_tr+best_recall_tr)
+                print(f'Best f1 : {best_f1} best_thr {best_thr}\nBest f1 in train: {best_f_1_tr} best_thr_train: {best_thr_tr}')
             except ValueError:
                 pass
             

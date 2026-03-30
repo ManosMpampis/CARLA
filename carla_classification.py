@@ -59,8 +59,9 @@ def main(args):
     train_transformations = get_train_transformations(p)
     sanomaly = inject_sub_anomaly(p)
     val_transformations = get_val_transformations1(p)
+    train_dataset_base = torch.load(p["contrastive_dataset"], weights_only=False).dataset
     train_dataset = get_aug_train_dataset(
-        p, train_transformations, to_neighbors_dataset=True
+        p, train_transformations, dataset=train_dataset_base
     )
     train_dataloader = get_train_dataloader(p, train_dataset)
 
