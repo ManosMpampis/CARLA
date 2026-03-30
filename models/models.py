@@ -75,7 +75,7 @@ class ClusteringModel(nn.Module):
         elif forward_pass == "return_all":
             features = self.backbone(x)
             out = {
-                "features": features,
+                "features": features.mean(dim=-1),
                 "output": self.cluster_head(features.mean(dim=-1)),
             }
         else:

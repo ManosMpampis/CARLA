@@ -18,6 +18,13 @@ from data.custom_dataset import NeighborsDataset
 from losses.losses import entropy
 from termcolor import colored
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore", 
+    message="No positive class found in y_true"
+)
+
 
 @torch.no_grad()
 def contrastive_evaluate(
@@ -245,7 +252,7 @@ def pr_evaluate(
     predictions = all_predictions["predictions"].cpu()  # .cuda()
     probs = all_predictions["probabilities"].cpu()  # .cuda()
 
-    cls_targets = np.where((targets == 0), 0, 1)
+    cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)
     anomalies = np.where((predictions == majority_label), 0, 1)
 
     MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels=[1, 0])
@@ -259,9 +266,8 @@ def pr_evaluate(
 
     scores = 1 - np.array(probs)[:, majority_label]
     # labels = np.array(targets).tolist() CUDA
-    labels = np.array(targets.cpu().numpy()).tolist()
-    pos_label = 4 if train else 1
-    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=pos_label)
+    labels = cls_targets.tolist() #np.array(targets.cpu().numpy()).tolist()
+    precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
     try:
         f1_score = 2 * precision * recall / (precision + recall)
         if np.isnan(f1_score).any():
@@ -279,10 +285,7 @@ def pr_evaluate(
     best_precision = precision[best_f1_index]
     best_recall = recall[best_f1_index]
 
-    if train:
-        anomalies = [4 if s >= best_threshold else 0 for s in scores]
-    else:
-        anomalies = [1 if s >= best_threshold else 0 for s in scores]
+    anomalies = [1 if s >= best_threshold else 0 for s in scores]
     best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
     # print(f"Anomalies --> TP: {best_tp} TN: {best_tn} FN: {best_fn} FP: {best_fp}")
     # print(f"Majority label:{majority_label.item()}")
