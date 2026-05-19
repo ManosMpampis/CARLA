@@ -222,3 +222,20 @@ class Logger:
 
     def _do_nothing(self, *args, **kwargs):
         pass
+
+def clean_checkpoint(model_checkpoint, save_path=None, checkpoint=None):
+    change_flag = False
+    keys = list(model_checkpoint.keys())
+    for key in keys:
+        if "residual" in key and not("residual.layers" in key):
+            change_flag = True
+            model_checkpoint[key[:27]+"layers"+key[26:]] = model_checkpoint[key]
+            del model_checkpoint[key]
+    
+    if change_flag and save_path:
+        if checkpoint:
+            checkpoint["model"]=model_checkpoint
+        else:
+            checkpoint=model_checkpoint
+        torch.save(checkpoint, save_path)
+    return model_checkpoint

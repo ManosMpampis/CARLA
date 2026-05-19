@@ -32,14 +32,21 @@ def pretext_train(
             b, w = ts_org.shape
             h = 1
 
-        input_: Tensor = torch.cat(
-            [ts_org, ts_w_augmented, ts_ss_augmented], dim=0
-        ).view(b * 3, h, w)
+        # input_: Tensor = torch.cat(
+        #     [ts_org, ts_w_augmented, ts_ss_augmented], dim=0
+        # ).view(b * 3, h, w)
 
         optimizer.zero_grad()
 
-        output = model(input_)
+        anch_out = model(ts_org.view(b, h, w))
+        nn_out = model(ts_w_augmented.view(b, h, w))
+        model.eval()
+        fn_out = model(ts_ss_augmented.view(b, h, w))
+        model.train()
 
+        output: Tensor = torch.cat(
+            [anch_out, nn_out, fn_out], dim=0
+        )
         losses = criterion(output)
 
         for loss in losses.keys():
@@ -111,12 +118,15 @@ def self_sup_classification_train(
 
             anchors_output = model(anchors_features, forward_pass="head")
             nneighbors_output = model(nneighbors_features, forward_pass="head")
+            model.eval()
             fneighbors_output = model(fneighbors_features, forward_pass="head")
-
+            model.train()
         else:  # Calculate gradient for backprop of complete network
-            anchors_output = model(anchors)
-            nneighbors_output = model(nneighbors)
-            fneighbors_output = model(fneighbors)
+            anchors_output = model(anchors, forward_pass="return_all")
+            nneighbors_output = model(nneighbors, forward_pass="return_all")
+            model.eval()
+            fneighbors_output = model(fneighbors, forward_pass="return_all")
+            model.train()
 
         # Loss for every head
         losses = criterion(anchors_output, nneighbors_output, fneighbors_output)
@@ -133,7 +143,6 @@ def self_sup_classification_train(
 
         losses["total_loss"].backward()
         optimizer.step()
-
         if i % 100 == 0:
             progress.display(i)
 

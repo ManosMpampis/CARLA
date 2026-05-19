@@ -1,7 +1,7 @@
 # setup
 setup: classification
 
-tag_class: entropy_all_disimilar_neg_lr_correct_entropy_new3
+tag_class: classification_as_multiple_classes_re_schedule_data #entropy_all_disimilar_neg_lr_correct_entropy_instance
 
 # Loss
 criterion: classification_new
@@ -12,6 +12,7 @@ criterion_kwargs:
   entropy_norm: False
   entropy_to_all_instances: True
   disimilar_negatives: True
+  classification_loss_flag: True
 
 # Weight update
 update_cluster_head_only: False # Update full network in classification
@@ -23,6 +24,8 @@ res_kwargs:
   in_channels: 38
   mid_channels: [4, 8]
   kernel_sizes: [8, 5, 3]
+  norm_layer_name: instance
+  window_size: 256
 
 # Dataset
 train_db_name: smd
@@ -31,6 +34,7 @@ wsz: 256 #200
 stride: 5
 num_classes: 10
 num_neighbors: 5
+update_data: True
 
 # Transformations
 augmentation_strategy: ts
@@ -42,7 +46,7 @@ optimizer: adam
 optimizer_kwargs:
   lr: 0.001
   weight_decay: 0.001
-epochs: 1500
+epochs: 7000
 batch_size: 512
 num_workers: 0
 
@@ -50,8 +54,8 @@ num_workers: 0
 scheduler: cosine_restart
 scheduler_kwargs:
   lr_warmup_epochs: 100 #20 #100
-  lr_eta_min: 0.00001
-  T_period: 1500 #50 #1500
+  lr_eta_min: 0.0005
+  T_period: 1000 #50 #1500
   T_mul: 2
   lr_decay_epochs: [10, 20]
   lr_decay_rate: 0.01

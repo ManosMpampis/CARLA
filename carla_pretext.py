@@ -20,7 +20,7 @@ from utils.common_config import (
 from utils.evaluate_utils import contrastive_evaluate
 from utils.repository import TSRepository, fill_ts_repository
 from utils.train_utils import pretext_train
-from utils.utils import Logger
+from utils.utils import Logger, clean_checkpoint
 
 import random
 
@@ -96,9 +96,12 @@ def main(args):
         checkpoint = torch.load(
             p["pretext_checkpoint"], map_location="cpu", weights_only=False
         )
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        model.load_state_dict(checkpoint["model"])
+        if "scheduler" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler"])
+        checkpoint_model = clean_checkpoint(checkpoint["model"], p["pretext_checkpoint"], checkpoint)
+        model.load_state_dict(checkpoint_model)
         model.to(device)
+        optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
         pretext_best_loss = checkpoint["pretext_best_loss"]
         criterion.update_margin(checkpoint.get("last_margin", None))
@@ -106,12 +109,11 @@ def main(args):
             criterion.prev_ema_loss = checkpoint["prev_ema_loss"]
         if "previous_loss" in checkpoint:
             criterion.previous_loss = checkpoint["previous_loss"]
-        if "scheduler" in checkpoint:
-            scheduler.load_state_dict(checkpoint["scheduler"])
+        
         if start_epoch >= p["epochs"]-1 and os.path.exists(p["pretext_model"]):
-            model.load_state_dict(
-                torch.load(p["pretext_model"], map_location="cpu", weights_only=False)
-            )
+            checkpoint_model = torch.load(p["pretext_model"], map_location="cpu", weights_only=False)
+            checkpoint_model = clean_checkpoint(checkpoint_model, p["pretext_model"])
+            model.load_state_dict(checkpoint_model)
             model.to(device)
             start_epoch = p["epochs"] + 1  # skip training if model already exists
 
@@ -181,6 +183,7 @@ def main(args):
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
             torch.save(model.state_dict(), p["pretext_model"])
+        scheduler.step()
 
     # load final model
     checkpoint = torch.load(

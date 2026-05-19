@@ -14,7 +14,9 @@ class ResNetBlock(nn.Module):
             self,
             in_channels: int,
             out_channels: int,
-            kernel_sizes: List[int] = [8, 5, 3]
+            kernel_sizes: List[int] = [8, 5, 3],
+            norm_layer_name: str = "batch",
+            window_size: int = 0
     ) -> None:
         super().__init__()
 
@@ -27,7 +29,9 @@ class ResNetBlock(nn.Module):
                 in_channels=channels[i],
                 out_channels=channels[i + 1],
                 kernel_size=kernel_sizes[i],
-                stride=1
+                stride=1,
+                norm_layer_name=norm_layer_name,
+                window_size=window_size,
             ))
             self.layers.add_module(f"Activation {i}", nn.ReLU())
 
@@ -35,18 +39,28 @@ class ResNetBlock(nn.Module):
                 in_channels=channels[-2],
                 out_channels=channels[-1],
                 kernel_size=kernel_sizes[-2],
-                stride=1
+                stride=1,
+                norm_layer_name=norm_layer_name,
+                window_size=window_size,
             ))
         
-        residual = nn.Sequential(*[
-            Conv1dSamePadding(
+        # residual = nn.Sequential(*[
+        #     Conv1dSamePadding(
+        #         in_channels=in_channels,
+        #         out_channels=out_channels,
+        #         kernel_size=1,
+        #         stride=1
+        #     ),
+        #     norm_layer(num_features=out_channels)
+        # ])
+        residual = ConvBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 kernel_size=1,
-                stride=1
-            ),
-            nn.BatchNorm1d(num_features=out_channels)
-        ])
+                stride=1,
+                norm_layer_name=norm_layer_name,
+                window_size=window_size,
+            )
         self.residual = nn.Identity() if in_channels == out_channels else residual
         self.act = nn.ReLU()
     
@@ -71,7 +85,7 @@ class ResNetRepresentation(nn.Module):
         The kernel size of each convolution inside the residual block
     """
 
-    def __init__(self, in_channels: int, mid_channels: List[int] = [4, 8, 8], kernel_sizes: List[int]|List[List[int]] = [8, 5, 3]) -> None:
+    def __init__(self, in_channels: int, mid_channels: List[int] = [4, 8, 8], kernel_sizes: List[int]|List[List[int]] = [8, 5, 3], norm_layer_name: str = "batch", window_size: int = 0) -> None:
         super().__init__()
 
         # for easier saving and loading
@@ -90,7 +104,16 @@ class ResNetRepresentation(nn.Module):
         #     ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
         # ])
 
-        self.layers = nn.Sequential(*[ResNetBlock(in_channels=channels[i], out_channels=channels[i+1]) for i in range(len(mid_channels))])
+        self.layers = nn.Sequential(
+            *[
+                ResNetBlock(
+                    in_channels=channels[i],
+                    out_channels=channels[i+1],
+                    norm_layer_name=norm_layer_name,
+                    window_size=window_size,
+                    ) for i in range(len(mid_channels))
+                ]
+            )
 
         #self.avgpool = nn.AdaptiveAvgPool1d(1)
 

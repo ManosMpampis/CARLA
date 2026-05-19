@@ -138,7 +138,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         res = model(ts.view(bs, h, w), forward_pass="return_all")
         output = res["output"]
         if return_features:
-            features[ptr : ptr + bs] = res["features"].mean(dim=-1)
+            features[ptr : ptr + bs] = res["features"]
             ptr += bs
         predictions.append(torch.argmax(output, dim=1))
         probs.append(F.softmax(output, dim=1))

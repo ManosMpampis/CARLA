@@ -20,7 +20,7 @@ from utils.common_config import (
 )
 from utils.evaluate_utils import get_predictions, pr_evaluate
 from utils.train_utils import self_sup_classification_train
-from utils.utils import Logger
+from utils.utils import Logger, clean_checkpoint
 
 import random
 
@@ -106,7 +106,8 @@ def main(args):
         checkpoint = torch.load(
             p["classification_checkpoint"], map_location="cpu", weights_only=False
         )
-        model.load_state_dict(checkpoint["model"])
+        model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_checkpoint"], checkpoint)
+        model.load_state_dict(model_checkpoint)
         optimizer.load_state_dict(checkpoint["optimizer"])
         if "scheduler" in checkpoint.keys():
             scheduler.load_state_dict(checkpoint["scheduler"])
@@ -119,7 +120,8 @@ def main(args):
 
         if start_epoch >= p["epochs"]-1 and os.path.exists(p["classification_model"]):
             checkpoint = torch.load(p["classification_model"], map_location="cpu", weights_only=False)
-            model.load_state_dict(checkpoint["model"])
+            model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_model"], checkpoint)
+            model.load_state_dict(model_checkpoint)
             model.to(device)
             normal_label = checkpoint["normal_label"]
             start_epoch = p["epochs"] + 1  # skip training if model already exists

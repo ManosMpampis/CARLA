@@ -35,15 +35,21 @@ class Conv1dSamePadding(nn.Conv1d):
 class ConvBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 stride: int) -> None:
+                 stride: int, norm_layer_name: str ="batch", window_size: int = 0) -> None:
         super().__init__()
+        if norm_layer_name == "layer":
+            norm_layer = nn.LayerNorm([out_channels, window_size])
+        elif norm_layer_name == "instance":
+            norm_layer = nn.InstanceNorm1d(num_features=out_channels)
+        else:
+            norm_layer = nn.BatchNorm1d(num_features=out_channels)
 
         self.layers = nn.Sequential(
             Conv1dSamePadding(in_channels=in_channels,
                               out_channels=out_channels,
                               kernel_size=kernel_size,
                               stride=stride),
-            nn.BatchNorm1d(num_features=out_channels),
+            norm_layer,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore

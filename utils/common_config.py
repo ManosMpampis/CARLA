@@ -18,6 +18,10 @@ def get_criterion(p):
         from losses.losses import ClassificationLoss
 
         criterion = ClassificationLoss(**p["criterion_kwargs"])
+    elif p["criterion"] == "classification_e2e":
+        from losses._losses import ClassificationLossE2E
+
+        criterion = ClassificationLossE2E(**p["criterion_kwargs"])
 
     elif p["criterion"] == "tcl":
         from losses.tcl import TCLoss
@@ -68,7 +72,11 @@ def get_model(p, pretrain_path=None):
         from models.models import ClusteringModel
 
         model = ClusteringModel(backbone, p["num_classes"], p["num_heads"])
+    elif p["setup"] in ["classification_e2e"]:
+        from models.models import ClusteringModel
+        from models.models import ClassificationModel
 
+        model = ClassificationModel(ClusteringModel(backbone, p["num_classes"], p["num_heads"]))
     else:
         raise ValueError("Invalid setup {}".format(p["setup"]))
 
@@ -77,7 +85,7 @@ def get_model(p, pretrain_path=None):
         state = torch.load(pretrain_path, map_location="cpu", weights_only=False)
 
         if (
-            p["setup"] == "classification"
+            p["setup"] in ["classification", "classification_e2e"]
         ):  # Weights are supposed to be transfered from contrastive training
             missing = model.load_state_dict(state, strict=False)
             assert (
@@ -170,12 +178,12 @@ def get_train_dataset(
     return dataset
 
 
-def get_aug_train_dataset(p, transform, dataset=None, new=False):
+def get_aug_train_dataset(p, transform, dataset=None, new=False, data_number=None):
     if new:
         from data.ra_dataset import DynamicNeighbors
         from data.custom_dataset import ContrustiveDataset
         assert dataset is not None
-        dynamic_dataset = DynamicNeighbors(dataset, p)
+        dynamic_dataset = DynamicNeighbors(dataset, p, data_number=data_number)
         con_dataset = ContrustiveDataset(dynamic_dataset, transform, p)
         return dynamic_dataset, con_dataset
     if dataset is None:

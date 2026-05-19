@@ -63,6 +63,7 @@ class ClusteringModel(nn.Module):
         self.backbone = backbone["backbone"]
         self.backbone_output_dim = backbone["dim"][-1]
         self.cluster_head = nn.Linear(self.backbone_output_dim, nclusters)
+        self.nclusters = nclusters
 
     def forward(self, x, forward_pass="default"):
         if forward_pass == "default":
@@ -77,6 +78,39 @@ class ClusteringModel(nn.Module):
             out = {
                 "features": features.mean(dim=-1),
                 "output": self.cluster_head(features.mean(dim=-1)),
+            }
+        else:
+            raise ValueError("Invalid forward pass {}".format(forward_pass))
+        return out
+
+class ClassificationModel(nn.Module):
+    def __init__(self, clusteringModel):
+        super(ClassificationModel, self).__init__()
+        self.backbone = clusteringModel.backbone
+        self.cluster_head = clusteringModel.cluster_head
+        self.classification_head = nn.Sequential(
+            nn.ReLU(),
+            nn.Linear(clusteringModel.nclusters, 2)
+        )
+
+    def forward(self, x, forward_pass="default"):
+        if forward_pass == "default":
+            x = self.backbone(x)
+            x = self.cluster_head(x.mean(dim=-1))
+            out = self.classification_head(x)
+        elif forward_pass == "backbone":
+            out = self.backbone(x)
+        elif forward_pass == "cluster":
+            out = self.cluster_head(x.mean(dim=-1))
+        elif forward_pass == "head":
+            out = self.classification_head(x)
+        elif forward_pass == "return_all":
+            features = self.backbone(x)
+            cluster = self.cluster_head(features.mean(dim=-1))
+            out = {
+                "features": features.mean(dim=-1),
+                "cluster": cluster,
+                "output": self.classification_head(cluster),
             }
         else:
             raise ValueError("Invalid forward pass {}".format(forward_pass))

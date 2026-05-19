@@ -20,7 +20,7 @@ from utils.common_config import (
 )
 from utils.evaluate_utils import get_predictions, pr_evaluate
 from utils.train_utils import self_sup_classification_train
-from utils.utils import Logger
+from utils.utils import Logger, clean_checkpoint
 
 import random
 
@@ -75,7 +75,7 @@ def main(args):
     model = model.to(device)
 
     # Find new datase
-    train_dataset_base, con_dataset = get_aug_train_dataset(p, transform=train_transforms, dataset=train_dataset, new=True)
+    train_dataset_base, con_dataset = get_aug_train_dataset(p, transform=train_transforms, dataset=train_dataset, new=True, data_number=None)
 
     train_dataloader = get_train_dataloader(p, con_dataset)
     base_dataloader = get_val_dataloader(p, train_dataset_base)
@@ -98,6 +98,9 @@ def main(args):
     criterion.to(device)
 
     logger.log("\n- Model initialisation")
+    # Initi neighbors with the current model
+    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
+
     # Checkpoint
     if os.path.exists(p["classification_checkpoint"]):
         logger.log(
@@ -108,20 +111,21 @@ def main(args):
         checkpoint = torch.load(
             p["classification_checkpoint"], map_location="cpu", weights_only=False
         )
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
         if "scheduler" in checkpoint.keys():
             scheduler.load_state_dict(checkpoint["scheduler"])
-        else:
-            logger.error("No scheduler was found in checkpoint !!!!!!!")
+        model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_checkpoint"], checkpoint)
+        model.load_state_dict(model_checkpoint)
+        optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
         normal_label = checkpoint["normal_label"]
         best_f1 = checkpoint["best_f1"]
+        best_cls_f1 = checkpoint.get("best_cls_f1", -1 * np.inf)
         train_best_f1 = checkpoint.get("train_best_f1", -1 * np.inf)
 
         if start_epoch >= p["epochs"]-1 and os.path.exists(p["classification_model"]):
             checkpoint = torch.load(p["classification_model"], map_location="cpu", weights_only=False)
-            model.load_state_dict(checkpoint["model"])
+            model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_model"], checkpoint)
+            model.load_state_dict(model_checkpoint)
             model.to(device)
             normal_label = checkpoint["normal_label"]
             start_epoch = p["epochs"] + 1  # skip training if model already exists
@@ -135,10 +139,11 @@ def main(args):
         start_epoch = 0
         normal_label = 0
         best_f1 = -1 * np.inf
+        best_cls_f1 = -1 * np.inf
         train_best_f1 = -1 * np.inf
     
     # Initi neighbors with the current model
-    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
+    # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
     logger.log("\n- Training:")
     for epoch in range(start_epoch, p["epochs"]):
         logger.log("-- Epoch %d/%d" % (epoch + 1, p["epochs"]))
@@ -154,10 +159,10 @@ def main(args):
             p["update_cluster_head_only"],
         )
 
-        predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
+        predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, p["update_data"])
 
         label_counts = torch.bincount(predictions["predictions"])
-        normal_label = label_counts.argmax()
+        normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
 
         train_metrics = pr_evaluate(
             predictions, majority_label=normal_label, train=True
@@ -170,8 +175,9 @@ def main(args):
             predictions, majority_label=normal_label
         )
         rep_f1 = eval_metrics["best_f1"]
+        scheduler.step()
 
-        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1:
+        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or eval_metrics["cls_f1"] >= best_cls_f1:
             print(f"log at epoch: {epoch}/{p["epochs"]}")
             logger.scalar_summary("", "Learning Rate", lr, epoch)
             logger.metrics_summary("Classification Evaluation", eval_metrics, epoch)
@@ -193,10 +199,14 @@ def main(args):
                     "epoch": epoch,
                     "normal_label": normal_label,
                     "best_f1": best_f1,
+                    "best_cls_f1": best_cls_f1,
                     "train_best_f1": train_best_f1,
                 },
                 p["classification_checkpoint"],
             )
+
+        if eval_metrics["cls_f1"] >= best_cls_f1:
+            best_cls_f1 = eval_metrics["cls_f1"]
 
         if rep_f1 >= best_f1:
             best_f1 = rep_f1
@@ -213,9 +223,6 @@ def main(args):
                 {"model": model.state_dict(), "normal_label": normal_label},
                 f"{p["classification_model"][:-8]}_train.pth.tar",
             )
-        
-        scheduler.step()
-
 
     model_checkpoint = torch.load(
         p["classification_model"], map_location="cpu", weights_only=False
@@ -223,13 +230,12 @@ def main(args):
     model.load_state_dict(model_checkpoint["model"])
     normal_label = model_checkpoint["normal_label"]
 
-    tst_dl = get_val_dataloader(p, val_dataset)
-    predictions, _ = get_predictions(p, tst_dl, model, True)
+    predictions, _ = get_predictions(p, val_dataloader, model, True)
     eval_metrics = pr_evaluate(
             predictions, majority_label=normal_label
         )
     
-    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
+    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
     logger.finalize()
 
 

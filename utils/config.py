@@ -46,7 +46,7 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
     cfg['contrastive_dataloader'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
 
 
-    if cfg['setup'] in ['classification']:
+    if cfg['setup'] in ['classification', 'classification_e2e']:
         classification_tag = cfg.get('tag_class', None)
         cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
         classification_dir = os.path.join(base_dir, f'classification{cfg['classification_tag']}')
@@ -61,4 +61,5 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
         cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')
         cfg['classification_testprobs'] = os.path.join(classification_dir, 'classification_testprobs.csv')
 
+    cfg["res_kwargs"]["window_size"] = cfg["wsz"]
     return cfg 

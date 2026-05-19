@@ -44,7 +44,7 @@ class SaveAugmentedDataset(Dataset):
     
 
 class DynamicNeighbors(Dataset):
-    def __init__(self, original_dataset, p):
+    def __init__(self, original_dataset, p, data_number=None):
         super(DynamicNeighbors, self).__init__()
         self.classes = ['Normal', 'Anomaly', 'Noise', 'Point', 'Subseq', 'Subseq2']
         self.dataset = original_dataset
@@ -55,12 +55,18 @@ class DynamicNeighbors(Dataset):
         self.ts_w_augment = self.dataset.ts_w_augment
         self.ts_ss_augment = self.dataset.ts_ss_augment
 
+        if data_number is not None:
+            self.data = self.data[:data_number]
+            self.targets = self.targets[:data_number]
+            self.ts_w_augment = self.ts_w_augment[:data_number]
+            self.ts_ss_augment = self.ts_ss_augment[:data_number]
+            
         self.topk = p["num_neighbors"]
         self.k_furthest_nneighbours = np.zeros((len(self.data), self.topk))
         self.k_nearest_fneighbours = np.zeros((len(self.data), self.topk))
     
     @torch.no_grad()
-    def predict_and_update(self, model, loader, p):
+    def predict_and_update(self, model, loader, p, update=True):
         model.eval()
         predictions = []
         probs = []
@@ -101,16 +107,17 @@ class DynamicNeighbors(Dataset):
             probs.append(F.softmax(output["output"], dim=1))
             targets.append(torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device, non_blocking=True))
 
-        # Compute pairwise distances
-        distances = torch.cdist(data_features, ts_w_augment_features)
-        # Find indices of k furthest near-neighbors for each feature
-        _, furthest_indices = distances.topk(self.topk, largest=True, dim=1)
-        self.k_furthest_nneighbours = furthest_indices[:, :].cpu().numpy()
+        if update:
+            # Compute pairwise distances
+            distances = torch.cdist(data_features, ts_w_augment_features)
+            # Find indices of k furthest near-neighbors for each feature
+            _, furthest_indices = distances.topk(self.topk, largest=True, dim=1)
+            self.k_furthest_nneighbours = furthest_indices[:, :].cpu().numpy()
 
-        distances = torch.cdist(data_features, ts_ss_augment_features)
-        # Find indices of k nearest far-neighbors for each feature
-        _, nearest_indices = distances.topk(self.topk, largest=False, dim=1)
-        self.k_nearest_fneighbours = nearest_indices[:, :].cpu().numpy()
+            distances = torch.cdist(data_features, ts_ss_augment_features)
+            # Find indices of k nearest far-neighbors for each feature
+            _, nearest_indices = distances.topk(self.topk, largest=False, dim=1)
+            self.k_nearest_fneighbours = nearest_indices[:, :].cpu().numpy()
 
         predictions = torch.cat(predictions, dim=0).cpu()
         probs = torch.cat(probs, dim=0).cpu()
