@@ -1,16 +1,15 @@
-from metrics.f1_score_f1_pa import *
-from metrics.fc_score import *
-from metrics.precision_at_k import *
-from metrics.customizable_f1_score import *
-from metrics.AUC import *
-from metrics.Matthews_correlation_coefficient import *
+from sklearn.metrics import precision_recall_curve
+
+from metrics.f1_score_f1_pa import get_adjust_F1PA, get_accuracy_precision_recall_fscore
+from metrics.fc_score import get_events
+from metrics.Matthews_correlation_coefficient import MCC
 from metrics.affiliation.generics import convert_vector_to_events
 from metrics.affiliation.metrics import pr_from_events
 from metrics.vus.models.feature import Window
 from metrics.vus.metrics import get_range_vus_roc
 import numpy as np
 
-def combine_all_evaluation_scores(y_test, pred_labels, anomaly_scores):
+def combine_all_evaluation_scores(y_test, pred_labels):
     events_pred = convert_vector_to_events(y_test) 
     events_gt = convert_vector_to_events(pred_labels)
     Trange = (0, len(y_test))
@@ -19,6 +18,9 @@ def combine_all_evaluation_scores(y_test, pred_labels, anomaly_scores):
     pa_accuracy, pa_precision, pa_recall, pa_f_score = get_adjust_F1PA(y_test, pred_labels)
     MCC_score = MCC(y_test, pred_labels)
     vus_results = get_range_vus_roc(y_test, pred_labels, 100) # default slidingWindow = 100
+
+    accuracy, precision, recall, f_score, f05_score, tp, fp, fn, tn = get_accuracy_precision_recall_fscore(pred_labels, y_test)
+    
     
     score_list_simple = {
                   "pa_accuracy":pa_accuracy, 
@@ -31,10 +33,18 @@ def combine_all_evaluation_scores(y_test, pred_labels, anomaly_scores):
                   "R_AUC_ROC": vus_results["R_AUC_ROC"], 
                   "R_AUC_PR": vus_results["R_AUC_PR"],
                   "VUS_ROC": vus_results["VUS_ROC"],
-                  "VUS_PR": vus_results["VUS_PR"]
+                  "VUS_PR": vus_results["VUS_PR"],
+                  "precision": precision,
+                  "recall": recall,
+                  "f_score": f_score,
+                  "f05_score": f05_score,
+                  "accuracy": accuracy,
+                  "tp": tp,
+                  "fp": fp,
+                  "fn": fn,
+                  "tn": tn
                   }
     
-    # return score_list, score_list_simple
     return score_list_simple
 
 

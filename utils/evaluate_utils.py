@@ -246,15 +246,16 @@ def pr_evaluate(
     all_predictions,
     majority_label=0,
     train=False,
+    train_best_threshold=None,
 ):
 
-    targets = all_predictions["targets"].cpu()  # .cuda()
-    predictions = all_predictions["predictions"].cpu()  # .cuda()
-    probs = all_predictions["probabilities"].cpu()  # .cuda()
+    targets = all_predictions["targets"].cpu()
+    predictions = all_predictions["predictions"].cpu()
+    probs = all_predictions["probabilities"].cpu()
 
+    # Classification metrics
     cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)
     anomalies = np.where((predictions == majority_label), 0, 1)
-
     MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels=[1, 0])
     tn = MCM[0][0, 0]
     tp = MCM[0][1, 1]
@@ -262,53 +263,100 @@ def pr_evaluate(
     fn = MCM[0][1, 0]
     pre = tp / (tp + fp) if (tp + fp) != 0 else 0
     recall = tp / (tp + fn)
-    f_1 = 2 * pre * recall / (pre + recall)
+    f_1 = 2 * pre * recall / (pre + recall) if (pre + recall) != 0 else 0
+    cls_score = combine_all_evaluation_scores(cls_targets, anomalies)
 
+    # Anomaly score metrics
     scores = 1 - np.array(probs)[:, majority_label]
-    # labels = np.array(targets).tolist() CUDA
-    labels = cls_targets.tolist() #np.array(targets.cpu().numpy()).tolist()
+    labels = cls_targets.astype(int)
     precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
-    try:
-        f1_score = 2 * precision * recall / (precision + recall)
-        if np.isnan(f1_score).any():
-            f1_score = np.nan_to_num(f1_score)
-            # print("f1: Nan --> 0")
-    except ZeroDivisionError:
-        f1_score = [0.0]
-        print("f1: 0 --> 0")
+    f1_score = 2 * precision * recall / (precision + recall)
+    if np.isnan(f1_score).any():
+        f1_score = np.nan_to_num(f1_score)
 
     best_f1_index = np.argmax(f1_score)
-
-    rep_f1 = f1_score[best_f1_index]
-
     best_threshold = thresholds[best_f1_index]
-    best_precision = precision[best_f1_index]
-    best_recall = recall[best_f1_index]
 
     anomalies = [1 if s >= best_threshold else 0 for s in scores]
-    best_tn, best_fp, best_fn, best_tp = confusion_matrix(labels, anomalies).ravel()
-    # print(f"Anomalies --> TP: {best_tp} TN: {best_tn} FN: {best_fn} FP: {best_fp}")
-    # print(f"Majority label:{majority_label.item()}")
-    # print(metrics.classification_report(labels, anomalies))
 
-    return {
-        "cls_tp": tp,
-        "cls_tn": tn,
-        "cls_fp": fp,
-        "cls_fn": fn,
-        "cls_pre": best_precision,
-        "cls_rec": best_recall,
-        "cls_f1": f_1,
-        "best_tp": best_tp,
-        "best_tn": best_tn,
-        "best_fp": best_fp,
-        "best_fn": best_fn,
-        "best_th": best_threshold,
-        "best_pre": best_precision,
-        "best_rec": best_recall,
-        "best_f1": rep_f1,
-    }
+    score_best = combine_all_evaluation_scores(labels, anomalies)
 
+    # Anomaly score metrics based on train best threshold
+    score_train_best = {}
+    if not train and (train_best_threshold is not None) and probs.size(1) == 1:
+            anomalies = [1 if s >= train_best_threshold else 0 for s in scores]
+            score_train_best = combine_all_evaluation_scores(labels, anomalies)
+    return cls_score, score_best, score_train_best
+
+# @torch.no_grad()
+# def pr_evaluate(
+#     all_predictions,
+#     majority_label=0,
+#     train=False,
+#     train_best_threshold=None,
+# ):
+
+#     targets = all_predictions["targets"].cpu()  # .cuda()
+#     predictions = all_predictions["predictions"].cpu()  # .cuda()
+#     probs = all_predictions["probabilities"].cpu()  # .cuda()
+
+#     cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)
+#     scores = np.array(probs)
+
+#     tns, tps, fps, fns, thr = confusion_matrix_at_thresholds(cls_targets, probs)
+#     pre = tps / (tps + fps) if (tps + fps) != 0 else 0
+#     recall = tps / (tps + fns)
+    
+#     labels = cls_targets.tolist() #np.array(targets.cpu().numpy()).tolist()
+#     try:
+#         f_1 = 2 * pre * recall / (pre + recall)
+#         if np.isnan(f1_score).any():
+#             f1_score = np.nan_to_num(f1_score)
+#             # print("f1: Nan --> 0")
+#     except ZeroDivisionError:
+#         f1_score = [0.0]
+#         print("f1: 0 --> 0")
+
+#     best_f1_index = np.argmax(f1_score)
+
+#     rep_f1 = f1_score[best_f1_index]
+
+#     best_threshold = thr[best_f1_index]
+#     best_precision = pre[best_f1_index]
+#     best_recall = recall[best_f1_index]
+
+#     best_tn = tns[best_f1_index]
+#     best_tp = tps[best_f1_index]
+#     best_fn = fns[best_f1_index]
+#     best_fp = fps[best_f1_index]
+
+
+#     anomalies = [1 if s >= best_threshold else 0 for s in scores]
+#     out = {
+#         "best_tp": best_tp,
+#         "best_tn": best_tn,
+#         "best_fp": best_fp,
+#         "best_fn": best_fn,
+#         "best_th": best_threshold,
+#         "best_pre": best_precision,
+#         "best_rec": best_recall,
+#         "best_f1": rep_f1,
+#     }
+#     if not train and (train_best_threshold is not None) and probs.size(1) == 1:
+#             anomalies = [1 if s >= train_best_threshold else 0 for s in scores]
+#             tn_train, fp_train, fn_train, tp_train = confusion_matrix(labels, anomalies).ravel()
+#             train_precision = tp_train / (tp_train + fp_train) if (tp_train + fp_train) != 0 else 0
+#             train_recall = tp_train / (tp_train + fn_train)
+#             train_f1 = 2 * train_precision * train_recall / (train_precision + train_recall) if (train_precision + train_recall) != 0 else 0
+#             out["best_train_tp"] = tn_train
+#             out["best_train_fp"] = fp_train
+#             out["best_train_tn"] = tp_train
+#             out["best_train_fn"] = fn_train
+#             out["best_train_th"] = train_best_threshold
+#             out["best_train_pre"] = train_precision
+#             out["best_train_rec"] = train_recall
+#             out["best_train_f1"] = train_f1
+#     return out
 
 def replace_majority_label(flat_preds, majority_label):
     # unique_labels = torch.unique(flat_preds)
