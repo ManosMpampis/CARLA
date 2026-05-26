@@ -165,24 +165,29 @@ def main(args):
         label_counts = torch.bincount(predictions["predictions"])
         normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
 
-        train_metrics = pr_evaluate(
+        cls_train_metrics, train_metrics, _ = pr_evaluate(
             predictions, majority_label=normal_label, train=True
         )
 
         train_rep_f1 = train_metrics["best_f1"]
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
-        eval_metrics = pr_evaluate(
-            predictions, majority_label=normal_label
+        cls_eval_metrics, eval_metrics, eval_best_metrics_with_train_th = pr_evaluate(
+            predictions, majority_label=normal_label, train_best_threshold=train_metrics["best_th"]
         )
         rep_f1 = eval_metrics["best_f1"]
         scheduler.step()
 
-        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or eval_metrics["cls_f1"] >= best_cls_f1:
+        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or eval_metrics["cls_f1"] > best_cls_f1:
             print(f"log at epoch: {epoch}/{p["epochs"]}")
             logger.scalar_summary("", "Learning Rate", lr, epoch)
-            logger.metrics_summary("Classification Evaluation", eval_metrics, epoch)
-            logger.metrics_summary("Classification Train", train_metrics, epoch)
+            logger.metrics_summary("Evaluation cls_eval_metrics Metrics", cls_eval_metrics, epoch)
+            logger.metrics_summary("Evaluation Anomaly Score Metrics", eval_metrics, epoch)
+            logger.metrics_summary("Evaluation Anomaly Score From Training Metrics", eval_best_metrics_with_train_th, epoch)
+
+            logger.metrics_summary("Train Classification Train", cls_train_metrics, epoch)
+            logger.metrics_summary("Train Anomaly Score Metrics", train_metrics, epoch)
+
             report_str = (
                 f"\nValidation Set Metrics\n"
                 f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"
@@ -235,11 +240,8 @@ def main(args):
     normal_label = model_checkpoint["normal_label"]
 
     predictions, _ = get_predictions(p, val_dataloader, model, True)
-    eval_metrics = pr_evaluate(
-            predictions, majority_label=normal_label
-        )
-    
-    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    _, _, _ = pr_evaluate(predictions, majority_label=normal_label)
+    _ = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
     logger.finalize()
 
 
