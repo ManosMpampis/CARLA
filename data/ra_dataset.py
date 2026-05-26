@@ -89,7 +89,7 @@ class DynamicNeighbors(Dataset):
             output = model(ts_org.reshape(b, h, w), forward_pass="return_all") #TODO: output features
             data_features = torch.cat((data_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
-            probs.append(F.softmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(batch["target"].to(device))
 
 
@@ -97,14 +97,14 @@ class DynamicNeighbors(Dataset):
             output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all") #TODO: output features
             ts_w_augment_features = torch.cat((ts_w_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
-            probs.append(F.softmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(torch.LongTensor([2]*ts_w_augment.shape[0]).to(device, non_blocking=True))
 
             ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True) #cuda
             output = model(ts_ss_augment.reshape(b, h, w), forward_pass="return_all")
             ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
-            probs.append(F.softmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device, non_blocking=True))
 
         if update:

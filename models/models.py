@@ -84,13 +84,13 @@ class ClusteringModel(nn.Module):
         return out
 
 class ClassificationModel(nn.Module):
-    def __init__(self, clusteringModel):
+    def __init__(self, clusteringModel, classes=2):
         super(ClassificationModel, self).__init__()
         self.backbone = clusteringModel.backbone
         self.cluster_head = clusteringModel.cluster_head
         self.classification_head = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(clusteringModel.nclusters, 2)
+            nn.Linear(clusteringModel.nclusters, classes)
         )
 
     def forward(self, x, forward_pass="default"):

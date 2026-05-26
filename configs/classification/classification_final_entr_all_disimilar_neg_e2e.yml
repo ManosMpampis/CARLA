@@ -1,7 +1,7 @@
 # setup
 setup: classification_e2e
 
-tag_class: e2e #entropy_all_disimilar_neg_lr_correct_entropy_instance
+tag_class: e2e_one_class #entropy_all_disimilar_neg_lr_correct_entropy_instance
 
 # Loss
 criterion: classification_e2e
@@ -34,6 +34,8 @@ wsz: 256 #200
 stride: 5
 num_classes: 10
 num_neighbors: 5
+num_classes_classificaton: 1
+update_data: True
 
 # Transformations
 augmentation_strategy: ts

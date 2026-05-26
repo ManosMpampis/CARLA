@@ -76,7 +76,7 @@ def get_model(p, pretrain_path=None):
         from models.models import ClusteringModel
         from models.models import ClassificationModel
 
-        model = ClassificationModel(ClusteringModel(backbone, p["num_classes"], p["num_heads"]))
+        model = ClassificationModel(ClusteringModel(backbone, p["num_classes"], p["num_heads"]), p["num_classes_classificaton"])
     else:
         raise ValueError("Invalid setup {}".format(p["setup"]))
 

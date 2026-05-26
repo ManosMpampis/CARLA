@@ -113,6 +113,7 @@ class ClassificationLossE2E(nn.Module):
         entropy_norm=False,
         entropy_to_all_instances=False,
         disimilar_negatives=False,
+        classification_loss_flag=True
     ):
         super(ClassificationLossE2E, self).__init__()
         self.softmax = nn.Softmax(dim=1)
@@ -125,6 +126,7 @@ class ClassificationLossE2E(nn.Module):
         self.entropy_to_all_instances = entropy_to_all_instances
         self.disimilar_negatives = disimilar_negatives
         self.positive_entropy_weight = 1.0
+        self.classification_loss_flag = classification_loss_flag
 
     def forward(self, anchors, nneighbors, fneighbors):
         """
@@ -242,15 +244,17 @@ class ClassificationLossE2E(nn.Module):
         neg_normal_class_probs = fneighbors["output"]
 
         pos_targets = torch.zeros_like(pos_normal_class_probs)
-        pos_targets[:, 0] = 1  # Normal class is class 0
-
         neg_targets = torch.ones_like(neg_normal_class_probs)
-        neg_targets[:, 0] = 0  # Anomalous class is class 1
+
+        if anchors["output"].size(1) != 1:
+            # Multi-class classification
+            pos_targets[:, 0] = 1  # Normal class is class 0
+            neg_targets[:, 0] = 0  # Anomalous classes are all except class 0
         pos_bce_loss = self.bce_with_logits(pos_normal_class_probs, pos_targets)
         neg_bce_loss = self.bce_with_logits(neg_normal_class_probs, neg_targets)
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
 
-        shift_weight = (anchors_prob.std() - negatives_prob.std())*(n/torch.sqrt(n-1)).detach()
+        shift_weight = (anchors_prob.std() - negatives_prob.std())*(n/torch.sqrt(n-1)).detach() * self.classification_loss_flag
         total_loss = (1 - shift_weight) * marginal_total_loss + (shift_weight) * classification_loss
 
         out = {

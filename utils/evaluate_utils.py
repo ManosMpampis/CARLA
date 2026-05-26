@@ -12,6 +12,7 @@ from sklearn.metrics import (
 # from torchmetrics.functional.classification import confusion_matrix
 # from torchmetrics.functional import precision_recall_curve
 
+from metrics.metrics import combine_all_evaluation_scores
 from utils.common_config import get_feature_dimensions_backbone
 from utils.utils import AverageMeter
 from data.custom_dataset import NeighborsDataset
@@ -141,7 +142,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             features[ptr : ptr + bs] = res["features"]
             ptr += bs
         predictions.append(torch.argmax(output, dim=1))
-        probs.append(F.softmax(output, dim=1))
+        probs.append(F.softmax(output, dim=1) if output.size(1) > 1 else F.sigmoid(output))
 
         if include_neighbors:
             nneighbors.append(batch["possible_nneighbors"])
