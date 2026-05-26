@@ -21,6 +21,7 @@ from utils.common_config import (
 from utils.evaluate_utils import get_predictions, pr_evaluate
 from utils.train_utils import self_sup_classification_train
 from utils.utils import Logger, clean_checkpoint
+from utils.ts_figures import make_figures
 
 import random
 
@@ -190,7 +191,10 @@ def main(args):
             )
             logger.log(report_str)
             logger.metrics_summary("Classification Loss", loss_dict, epoch)
-
+            # Function that makes and logs figures to tensorboard
+            # Needs to find a way that the inputs have the whole timeseries
+            # While labels and predictions correspond to one time interval.
+            # make_figures(logger, inputs, labels, predictions, mode="Validation", epoch=epoch)
             torch.save(
                 {
                     "optimizer": optimizer.state_dict(),

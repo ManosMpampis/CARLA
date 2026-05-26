@@ -106,6 +106,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     predictions = []
     probs = []
     targets = []
+    inputs = []
     if return_features:
         ft_dim = get_feature_dimensions_backbone(p)
         features = torch.zeros((len(dataloader.sampler), ft_dim))  # .cuda()
@@ -130,6 +131,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             bs, w = ts.shape
             h = 1
 
+        inputs.append(ts.cpu())
         if isinstance(ts, np.ndarray):
             ts = torch.from_numpy(ts).float()
             targets.append(torch.from_numpy(batch["target"]))
@@ -151,6 +153,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     predictions = torch.cat(predictions, dim=0).cpu()
     probs = torch.cat(probs, dim=0).cpu()
     targets = torch.cat(targets, dim=0)
+    inputs = torch.cat(inputs, dim=0).cpu()
 
     if include_neighbors:
         nneighbors = torch.cat(nneighbors, dim=0)
@@ -164,7 +167,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         }
 
     else:
-        out = {"predictions": predictions, "probabilities": probs, "targets": targets}
+        out = {"predictions": predictions, "probabilities": probs, "targets": targets, "inputs": inputs}
 
     if return_features:
         feat_np = features.numpy()  # save features in csv
