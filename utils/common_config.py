@@ -155,12 +155,30 @@ def get_train_dataset(
             stride=p["stride"],
         )
         mean, std = dataset.get_info()
+    
+    elif p["train_db_name"] == "new_smd":
+        from data.new_SMD import SMD
+
+        dataset = SMD(
+            p["fname"],
+            train=True,
+            transform=transform,
+            sanomaly=sanomaly,
+            mean_data=None,
+            std_data=None,
+            wsz=p["wsz"],
+            stride=p["stride"],
+        )
+        mean, std = dataset.get_info()
     else:
         raise ValueError("Invalid train dataset {}".format(p["train_db_name"]))
 
     # Wrap into other dataset (__getitem__ changes)
     if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
-        from data.custom_dataset import AugmentedDataset
+        if "new" in p["train_db_name"]:
+            from data.new_custom_dataset import AugmentedDataset
+        else:
+            from data.custom_dataset import AugmentedDataset
 
         dataset = AugmentedDataset(dataset)
 
@@ -180,8 +198,11 @@ def get_train_dataset(
 
 def get_aug_train_dataset(p, transform, dataset=None, new=False, data_number=None):
     if new:
-        from data.ra_dataset import DynamicNeighbors
-        from data.custom_dataset import ContrustiveDataset
+        if "new" in p["train_db_name"]:
+            from data.new_custom_dataset import ContrustiveDataset, DynamicNeighbors
+        else:
+            from data.ra_dataset import DynamicNeighbors
+            from data.custom_dataset import ContrustiveDataset
         assert dataset is not None
         dynamic_dataset = DynamicNeighbors(dataset, p, data_number=data_number)
         con_dataset = ContrustiveDataset(dynamic_dataset, transform, p)
