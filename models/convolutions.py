@@ -1,7 +1,36 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-device = torch.device("cuda")
+
+
+def _init_weights(module):
+    """Initialize weights and biases for all supported layer types."""
+    if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Conv3d)):
+        # Kaiming (He) initialization for convolutional layers
+        nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)
+    elif isinstance(module, nn.Linear):
+        # Kaiming initialization for linear layers
+        nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)
+    elif isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+        # Batch norm initialization
+        nn.init.constant_(module.weight, 1)
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)
+    elif isinstance(module, nn.InstanceNorm1d):
+        # Instance norm initialization
+        nn.init.constant_(module.weight, 1)
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)
+    elif isinstance(module, nn.LayerNorm):
+        # Layer norm initialization
+        nn.init.constant_(module.weight, 1)
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)
+
 
 class Conv1dSamePadding(nn.Conv1d):
     """Represents the "Same" padding functionality from Tensorflow.
@@ -51,6 +80,10 @@ class ConvBlock(nn.Module):
                               stride=stride),
             norm_layer,
         )
+        
+        # Initialize all weights and biases in this block
+        for module in self.layers:
+            _init_weights(module)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
 

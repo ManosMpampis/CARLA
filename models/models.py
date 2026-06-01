@@ -1,8 +1,6 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-device = torch.device("cuda")
+from convolutions import _init_weights
 
 
 class MeanLayer(nn.Module):
@@ -50,6 +48,15 @@ class ContrastiveModel(nn.Module):
             self.contrastive_head = nn.Identity()
         else:
             raise ValueError("Invalid head {}".format(head))
+        
+        # Initialize all weights and biases in the contrastive head
+        self._init_head_weights()
+    
+    def _init_head_weights(self):
+        """Initialize weights for linear layers in the head."""
+        for module in self.contrastive_head.modules():
+            if isinstance(module, nn.Linear):
+                _init_weights(module)
 
     def forward(self, x):
         features = self.backbone(x)
@@ -64,6 +71,9 @@ class ClusteringModel(nn.Module):
         self.backbone_output_dim = backbone["dim"][-1]
         self.cluster_head = nn.Linear(self.backbone_output_dim, nclusters)
         self.nclusters = nclusters
+        
+        # Initialize the cluster head weights and biases
+        _init_weights(self.cluster_head)
 
     def forward(self, x, forward_pass="default"):
         if forward_pass == "default":
@@ -92,6 +102,11 @@ class ClassificationModel(nn.Module):
             nn.ReLU(),
             nn.Linear(clusteringModel.nclusters, classes)
         )
+        
+        # Initialize the classification head weights and biases
+        for module in self.classification_head.modules():
+            if isinstance(module, nn.Linear):
+                _init_weights(module)
 
     def forward(self, x, forward_pass="default"):
         if forward_pass == "default":

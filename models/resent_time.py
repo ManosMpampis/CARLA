@@ -3,9 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 from typing import List
 
-from models.convolutions import ConvBlock, Conv1dSamePadding
-
-device = torch.device("cuda")
+from models.convolutions import ConvBlock, _init_weights
 
 
 class ResNetBlock(nn.Module):
@@ -63,6 +61,16 @@ class ResNetBlock(nn.Module):
             )
         self.residual = nn.Identity() if in_channels == out_channels else residual
         self.act = nn.ReLU()
+        
+        # Initialize all weights and biases in this block
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights for all layers in this block."""
+        for module in self.modules():
+            if isinstance(module, (nn.Conv1d, nn.Linear, nn.BatchNorm1d, 
+                                  nn.InstanceNorm1d, nn.LayerNorm)):
+                _init_weights(module)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         input = x
@@ -116,6 +124,16 @@ class ResNetRepresentation(nn.Module):
             )
 
         #self.avgpool = nn.AdaptiveAvgPool1d(1)
+        
+        # Initialize all weights and biases in this representation
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights for all layers in this representation."""
+        for module in self.modules():
+            if isinstance(module, (nn.Conv1d, nn.Linear, nn.BatchNorm1d, 
+                                  nn.InstanceNorm1d, nn.LayerNorm)):
+                _init_weights(module)
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
