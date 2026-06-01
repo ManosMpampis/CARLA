@@ -64,11 +64,10 @@ class AugmentedDataset(Dataset):
                 ts_w_augment = self.augmentation_transform(ts_org)
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
-            # original and near data are already normalized because original dataset is normalized.
-            self.ts_org[index] = ts_org #self.scaler.transform(ts_org)
-            self.ts_w_augment[index] = ts_w_augment #self.scaler.transform(ts_w_augment)
-            # Augmented dataset is derived from normalized data but not normalized itself. Do we need to normalize it with the same scaler? #TODO: check this
-            self.ts_ss_augment[index] = ts_ss_augment #self.scaler.transform(ts_ss_augment)
+            # During inference we do not know what inputs are anomalies and how they derived. So we normalize everything the same way.
+            self.ts_org[index] = self.scaler.transform(ts_org)
+            self.ts_w_augment[index] = self.scaler.transform(ts_w_augment)
+            self.ts_ss_augment[index] = self.scaler.transform(ts_ss_augment)
             self.targets[index] = ts_trg
             self.meta[index] = item["meta"]
 

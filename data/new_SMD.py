@@ -55,7 +55,7 @@ class SMD(Original_dataset):
 
         if self.train:
             self.scaler.fit(self.data)
-            self.data = self.scaler.transform(self.data)
+            # self.data = self.scaler.transform(self.data)
 
             labels = np.zeros(self.data.shape[0])
         else:
