@@ -80,6 +80,9 @@ class DynamicNeighbors(Dataset):
 
         for i, batch in enumerate(loader): 
             ts_org = batch['ts_org'].to(device, non_blocking=True)
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+
             if ts_org.ndim == 3:
                 b, w, h = ts_org.shape
             else:
@@ -92,15 +95,12 @@ class DynamicNeighbors(Dataset):
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(batch["target"].to(device))
 
-
-            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
             output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all") #TODO: output features
             ts_w_augment_features = torch.cat((ts_w_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(torch.LongTensor([2]*ts_w_augment.shape[0]).to(device, non_blocking=True))
-
-            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True) #cuda
+            
             output = model(ts_ss_augment.reshape(b, h, w), forward_pass="return_all")
             ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))

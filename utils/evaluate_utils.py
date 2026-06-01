@@ -38,17 +38,17 @@ def contrastive_evaluate(
     all_meta = []
     for batch in dataloader:
         ts_org = batch["ts_org"].to(device, non_blocking=True)
-        b, w, h = ts_org.shape
-        target = batch["target"].to(device, non_blocking=True)
-        target_str = [str(l) for l in target.tolist()]
-
-        vertices_org = model(ts_org.view(b, h, w)).cpu()
-
         ts_w_augment = batch["ts_w_augment"].to(device, non_blocking=True)
+        ts_ss_augment = batch["ts_ss_augment"].to(device, non_blocking=True)
+        target = batch["target"].to(device, non_blocking=True)
+
+        b, w, h = ts_org.shape
+        target_str = [str(l) for l in target.tolist()]
+        vertices_org = model(ts_org.view(b, h, w)).cpu()
+       
         target_w_str = [str(l * 2) for l in torch.ones_like(target).tolist()]
         vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
-
-        ts_ss_augment = batch["ts_ss_augment"].to(device, non_blocking=True)
+        
         target_ss = torch.ones_like(target)
         target_ss_str = [str(l) for l in target_ss.tolist()]
         vertices_ss = model(ts_ss_augment.view(b, h, w)).cpu()

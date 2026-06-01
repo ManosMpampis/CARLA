@@ -48,19 +48,19 @@ class AugmentedDataset(Dataset):
 
     def create_pairs(self):
         mmean, sstd = self.dataset.get_info()
-        mmean = torch.tensor(mmean, dtype=torch.float32).to(device)
-        sstd = torch.tensor(sstd, dtype=torch.float32).to(device)
+        mmean = torch.tensor(mmean, dtype=torch.float32)
+        sstd = torch.tensor(sstd, dtype=torch.float32)
         for index in range(len(self.dataset)):
             item = self.dataset.__getitem__(index)
-            ts_org = item["ts_org"].clone().detach().to(device)
-            ts_trg = item["target"].clone().detach().to(device)
+            ts_org = item["ts_org"].clone().detach()
+            ts_trg = item["target"].clone().detach()
 
             # Get random neighbor from windows before time step T
             if index > 10:
                 rand_nei = np.random.randint(index - 10, index)
                 sample_nei = self.dataset.__getitem__(rand_nei)
                 # ts_w_augment = sample_nei['ts_org']
-                ts_w_augment = sample_nei["ts_org"].clone().detach().to(device)
+                ts_w_augment = sample_nei["ts_org"].clone().detach()
             else:
                 ts_w_augment = self.augmentation_transform(ts_org)
 
@@ -117,7 +117,7 @@ class NeighborsDataset(Dataset):
             self.neighbor_transform = transform
 
         dataset.transform = None
-        all_data = dataset.data.to(device)
+        all_data = dataset.data
         self.dataset = dataset
 
         NN_indices = (
@@ -131,8 +131,8 @@ class NeighborsDataset(Dataset):
             self.FN_indices = FN_indices[:, : -p["num_neighbors"]]
         # assert( int(self.indices.shape[0]/4) == len(self.dataset) )
 
-        self.dataset.data = dataset.data.to(device)
-        self.dataset.targets = dataset.targets.to(device)
+        self.dataset.data = dataset.data
+        self.dataset.targets = dataset.targets
         num_samples = self.dataset.data.shape[0]
         NN_index = np.array(
             [np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)]

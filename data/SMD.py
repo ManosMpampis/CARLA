@@ -94,13 +94,11 @@ class SMD(Dataset):
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
         # ts_org = self.data[index]
-        ts_org = torch.from_numpy(self.data[index]).float().to(device)  # cuda
+        ts_org = torch.from_numpy(self.data[index]).float()
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long).to(
-                device
-            )
+            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
             class_name = self.classes[target]
         else:
             target = 0
