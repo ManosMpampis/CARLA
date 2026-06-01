@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.metrics import precision_recall_curve, roc_curve, auc, roc_auc_score, precision_score, recall_score, \
-    accuracy_score, fbeta_score, average_precision_score
+    accuracy_score, fbeta_score, average_precision_score, confusion_matrix
 
 
 # function: calculate the point-adjust f-scores(whether top k)
@@ -26,6 +26,7 @@ def get_point_adjust_scores(y_test, pred_labels, true_events, thereshold_k=0, wh
 
 def get_adjust_F1PA(pred, gt):
     anomaly_state = False
+    latency = 0
     for i in range(len(gt)):
         if gt[i] == 1 and pred[i] == 1 and not anomaly_state:
             anomaly_state = True
@@ -35,6 +36,7 @@ def get_adjust_F1PA(pred, gt):
                 else:
                     if pred[j] == 0:
                         pred[j] = 1
+                        latency += 1
             for j in range(i, len(gt)):
                 if gt[j] == 0:
                     break
@@ -52,7 +54,7 @@ def get_adjust_F1PA(pred, gt):
     accuracy = accuracy_score(gt, pred)
     precision, recall, f_score, support = precision_recall_fscore_support(gt, pred,
                                                                           average='binary')
-    return accuracy, precision, recall, f_score
+    return accuracy, precision, recall, f_score, latency/sum(gt)
 
 
 # calculate the point-adjusted f-score
@@ -82,11 +84,20 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
     # precision, recall, f_score, _ = prf(y_true, y_pred, average='binary', warn_for=())
     precision = precision_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred)
-    f_score = (2 * precision * recall) / (precision + recall)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     if precision == 0 and recall == 0:
         f05_score = 0
+        f_score = 0
     else:
+        f_score = (2 * precision * recall) / (precision + recall)
         f05_score = fbeta_score(y_true, y_pred, average='binary', beta=0.5)
-    return accuracy, precision, recall, f_score, f05_score
+    return accuracy, precision, recall, f_score, f05_score, tp, fp, fn, tn
 
+def event_f1(labels, events_gt, preds):
+    tp = np.sum([preds[start:end+1].any() for start, end in events_gt])
+    fn = len(events_gt) - tp
+    rec_e = tp / (tp + fn)
+    prec_t = precision_score(labels, preds)
+    event_f1_score = 2 * rec_e * prec_t / (rec_e + prec_t) if (rec_e + prec_t) > 0 else 0
+    return event_f1_score
 
