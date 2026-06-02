@@ -269,6 +269,31 @@ def get_val_dataset(
             stride=p["stride"],
         )
 
+    elif p["train_db_name"] == "new_smd":
+        from data.new_SMD import SMD
+
+        dataset = SMD(
+            p["fname"],
+            train=True,
+            transform=transform,
+            sanomaly=sanomaly,
+            mean_data=mean_data,
+            std_data=std_data,
+            wsz=p["wsz"],
+            stride=p["stride"],
+        )
+    elif p["train_db_name"] == "new_psm":
+        from data.new_PSM import PSM
+
+        dataset = PSM(
+            train=True,
+            transform=transform,
+            sanomaly=sanomaly,
+            mean_data=mean_data,
+            std_data=std_data,
+            wsz=p["wsz"],
+            stride=p["stride"],
+        )
     else:
         raise ValueError("Invalid validation dataset {}".format(p["val_db_name"]))
 

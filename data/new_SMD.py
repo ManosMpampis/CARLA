@@ -21,7 +21,7 @@ class SMD(Original_dataset):
         stride=5,
     ):
 
-        super(Original_dataset, self).__init__(
+        super().__init__(
             root=root,
             train=train,
             transform=transform,

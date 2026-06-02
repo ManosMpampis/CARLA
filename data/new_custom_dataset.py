@@ -61,7 +61,7 @@ class AugmentedDataset(Dataset):
                 sample_nei = self.dataset.__getitem__(rand_nei)
                 ts_w_augment = sample_nei["ts_org"].clone().detach()
             else:
-                ts_w_augment = self.augmentation_transform(ts_org)
+                ts_w_augment = self.augmentation_transform(ts_org).cpu()
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
             # During inference we do not know what inputs are anomalies and how they derived. So we normalize everything the same way.

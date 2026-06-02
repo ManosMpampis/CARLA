@@ -23,7 +23,7 @@ class Original_dataset(Dataset):
         stride=5,
     ):
 
-        super(Original_dataset, self).__init__()
+        super().__init__()
         self.root = root
         self.transform = transform
         self.sanomaly = sanomaly
@@ -74,7 +74,7 @@ class Original_dataset(Dataset):
         self.targets = np.concatenate((self.targets, new_ds.targets), axis=0)
 
     def __len__(self):
-        return len(self.data)
+        return (self.data.shape[0] - self.wsz) // self.stride + 1
 
     def extra_repr(self):
         return "Split: {}".format("Train" if self.train is True else "Test")
