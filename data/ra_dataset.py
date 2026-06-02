@@ -89,13 +89,13 @@ class DynamicNeighbors(Dataset):
                 b, w = ts_org.shape
                 h = 1
 
-            output = model(ts_org.reshape(b, h, w), forward_pass="return_all") #TODO: output features
+            output = model(ts_org.reshape(b, h, w), forward_pass="return_all")
             data_features = torch.cat((data_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(batch["target"].to(device))
 
-            output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all") #TODO: output features
+            output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all")
             ts_w_augment_features = torch.cat((ts_w_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))

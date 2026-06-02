@@ -170,6 +170,19 @@ def get_train_dataset(
             stride=p["stride"],
         )
         mean, std = dataset.get_info()
+    elif p["train_db_name"] == "new_psm":
+        from data.new_PSM import PSM
+
+        dataset = PSM(
+            train=True,
+            transform=transform,
+            sanomaly=sanomaly,
+            mean_data=None,
+            std_data=None,
+            wsz=p["wsz"],
+            stride=p["stride"],
+        )
+        mean, std = dataset.get_info()
     else:
         raise ValueError("Invalid train dataset {}".format(p["train_db_name"]))
 

@@ -15,7 +15,6 @@ class Original_dataset(Dataset):
 
     def __init__(
         self,
-        fname,
         root="",
         train=True,
         transform=None,
