@@ -9,27 +9,28 @@ def _init_weights(module):
         # Kaiming (He) initialization for convolutional layers
         nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
         if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
+            nn.init.zeros_(module.bias)
     elif isinstance(module, nn.Linear):
         # Kaiming initialization for linear layers
         nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
         if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
-    elif isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.InstanceNorm1d, nn.LayerNorm)):
         # Batch norm initialization
-        nn.init.constant_(module.weight, 1)
+        nn.init.ones_(module.weight)
         if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
+            nn.init.zeros_(module.bias)
     elif isinstance(module, nn.InstanceNorm1d):
         # Instance norm initialization
-        nn.init.constant_(module.weight, 1)
+        nn.init.ones_(module.weight)
         if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
+            nn.init.zeros_(module.bias)
     elif isinstance(module, nn.LayerNorm):
         # Layer norm initialization
-        nn.init.constant_(module.weight, 1)
+        module.weight=torch.ones(module.num_features)
+        nn.init.ones_(module.weight)
         if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
+            nn.init.zeros_(module.bias)
 
 
 class Conv1dSamePadding(nn.Conv1d):
@@ -67,11 +68,13 @@ class ConvBlock(nn.Module):
                  stride: int, norm_layer_name: str ="batch", window_size: int = 0) -> None:
         super().__init__()
         if norm_layer_name == "layer":
-            norm_layer = nn.LayerNorm([out_channels, window_size])
+            norm_layer = nn.LayerNorm([out_channels, window_size], elementwise_affine=True, bias=True)
         elif norm_layer_name == "instance":
-            norm_layer = nn.InstanceNorm1d(num_features=out_channels)
+            norm_layer = nn.InstanceNorm1d(num_features=out_channels, affine=True, bias=True)
+        elif norm_layer_name in ["none", "no"]:
+            norm_layer = nn.Identity()
         else:
-            norm_layer = nn.BatchNorm1d(num_features=out_channels)
+            norm_layer = nn.BatchNorm1d(num_features=out_channels, affine=True, bias=True)
 
         self.layers = nn.Sequential(
             Conv1dSamePadding(in_channels=in_channels,

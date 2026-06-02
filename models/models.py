@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from convolutions import _init_weights
+from .convolutions import _init_weights
 
 
 class MeanLayer(nn.Module):
