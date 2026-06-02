@@ -4,7 +4,6 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import pandas as pd
-from tqdm import tqdm as tqdm
 import time
 from sklearn.preprocessing import MinMaxScaler
 import random
@@ -35,7 +34,7 @@ def compute_anomaly_acc_lag(methods_scores,label,slidingWindow,methods_keys):
     
     lag_range = list(range(-slidingWindow//4,slidingWindow//4,5))
     methods_acc = {}
-    for i,methods_score in enumerate(tqdm(methods_keys)):
+    for i,methods_score in enumerate(methods_keys):
         dict_acc = {
             'R_AUC_ROC':      [],
             'AUC_ROC':        [],
@@ -53,7 +52,7 @@ def compute_anomaly_acc_lag(methods_scores,label,slidingWindow,methods_keys):
             'Rrecall':        [],
             'RF':             []}
         
-        for lag in tqdm(lag_range):
+        for lag in lag_range:
             new_label = generate_new_label(label,lag)
             
             grader = metricor()  
@@ -99,7 +98,7 @@ def compute_anomaly_acc_percentage(methods_scores,label,slidingWindow,methods_ke
         list_pos.append((pos_b,pos_a))
     methods_acc = {}
     print(list_pos)
-    for i,methods_score in enumerate(tqdm(methods_keys)):
+    for i,methods_score in enumerate(methods_keys):
         dict_acc = {
             'R_AUC_ROC':      [],
             'AUC_ROC':        [],
@@ -117,7 +116,7 @@ def compute_anomaly_acc_percentage(methods_scores,label,slidingWindow,methods_ke
             'Rrecall':        [],
             'RF':             []}
         
-        for end_pos in tqdm(list_pos):
+        for end_pos in list_pos:
             new_label = label[end_pos[0]:end_pos[1]]
             new_score = np.array(methods_scores[methods_score])[end_pos[0]:end_pos[1]]
             grader = metricor()  
@@ -151,7 +150,7 @@ def compute_anomaly_acc_noise(methods_scores,label,slidingWindow,methods_keys):
     
     lag_range = list(range(-slidingWindow//2,slidingWindow//2,10))
     methods_acc = {}
-    for i,methods_score in enumerate(tqdm(methods_keys)):
+    for i,methods_score in enumerate(methods_keys):
         dict_acc = {
             'R_AUC_ROC':      [],
             'AUC_ROC':        [],
@@ -169,7 +168,7 @@ def compute_anomaly_acc_noise(methods_scores,label,slidingWindow,methods_keys):
             'Rrecall':        [],
             'RF':             []}
         
-        for lag in tqdm(lag_range):
+        for lag in lag_range:
             new_label = label
             
             grader = metricor()  
@@ -212,7 +211,7 @@ def compute_anomaly_acc_pairwise(methods_scores,label,slidingWindow,method1,meth
     method_key = [method1]
     if method2 is not None:
         method_key = [method1,method2]
-    for i,methods_score in enumerate(tqdm(method_key)):
+    for i,methods_score in enumerate(method_key):
         dict_acc = {
             'R_AUC_ROC':      [],
             'AUC_ROC':        [],
@@ -230,7 +229,7 @@ def compute_anomaly_acc_pairwise(methods_scores,label,slidingWindow,method1,meth
             'Rrecall':        [],
             'RF':             []}
         
-        for lag in tqdm(range(60)):
+        for lag in range(60):
             new_lag = random.randint(-slidingWindow//4,slidingWindow//4)
             new_label = generate_new_label(label,new_lag)
             
@@ -330,14 +329,3 @@ def generate_curve(label,score,slidingWindow):
     Z_ap = np.repeat(window_3d, len(tpr_3d[0])-1)
     
     return Y, Z, X, X_ap, W, Z_ap,avg_auc_3d, avg_ap_3d
-
-def box_plot(data, edge_color, fill_color):
-    bp = ax.boxplot(data, patch_artist=True)
-    
-    for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
-        plt.setp(bp[element], color=edge_color)
-
-    for patch in bp['boxes']:
-        patch.set(facecolor=fill_color)       
-        
-    return bp
