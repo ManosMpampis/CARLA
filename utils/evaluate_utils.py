@@ -6,15 +6,11 @@ from sklearn.cluster import MiniBatchKMeans
 from sklearn import metrics
 from sklearn.metrics import (
     precision_recall_curve,
-    confusion_matrix,
-    multilabel_confusion_matrix,
+    # confusion_matrix,
+    # multilabel_confusion_matrix,
 )
-# from torchmetrics.functional.classification import confusion_matrix
-# from torchmetrics.functional import precision_recall_curve
-
-from metrics.metrics import combine_all_evaluation_scores
+from metrics.metrics import evaluate, combine_all_evaluation_scores
 from utils.common_config import get_feature_dimensions_backbone
-from utils.utils import AverageMeter
 from data.custom_dataset import NeighborsDataset
 from losses.losses import entropy
 from termcolor import colored
@@ -103,10 +99,14 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     # Make predictions on a dataset with neighbors
     global features, nneighbors, fneighbors
     model.eval()
+    device = next(model.parameters()).device
     predictions = []
     probs = []
     targets = []
     inputs = []
+    start_idxs = []
+    end_idxs = []
+
     if return_features:
         ft_dim = get_feature_dimensions_backbone(p)
         features = torch.zeros((len(dataloader.sampler), ft_dim))  # .cuda()
@@ -124,6 +124,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     ptr = 0
     for batch in dataloader:
         ts = batch[key_]
+        meta = batch["meta"]
         # ts = torch.unsqueeze(ts, dim=1)
         if ts.ndim == 3:
             bs, w, h = ts.shape
@@ -131,20 +132,22 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             bs, w = ts.shape
             h = 1
 
-        inputs.append(ts.cpu())
+        
         if isinstance(ts, np.ndarray):
             ts = torch.from_numpy(ts).float()
             targets.append(torch.from_numpy(batch["target"]))
         else:
             targets.append(batch["target"])
-
-        res = model(ts.view(bs, h, w), forward_pass="return_all")
+        inputs.append(ts.cpu())
+        res = model(ts.view(bs, h, w).to(device), forward_pass="return_all")
         output = res["output"]
         if return_features:
             features[ptr : ptr + bs] = res["features"]
             ptr += bs
         predictions.append(torch.argmax(output, dim=1))
         probs.append(F.softmax(output, dim=1) if output.size(1) > 1 else F.sigmoid(output))
+        start_idxs.append(meta["start_idx"])
+        end_idxs.append(meta["end_idx"])
 
         if include_neighbors:
             nneighbors.append(batch["possible_nneighbors"])
@@ -153,21 +156,23 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
     predictions = torch.cat(predictions, dim=0).cpu()
     probs = torch.cat(probs, dim=0).cpu()
     targets = torch.cat(targets, dim=0)
-    inputs = torch.cat(inputs, dim=0).cpu()
-
-    if include_neighbors:
-        nneighbors = torch.cat(nneighbors, dim=0)
-        fneighbors = torch.cat(fneighbors, dim=0)
-        out = {
+    inputs = torch.cat(inputs, dim=0)
+    start_idxs = torch.cat(start_idxs, dim=0)
+    end_idxs = torch.cat(end_idxs, dim=0) 
+    out = {
             "predictions": predictions,
             "probabilities": probs,
             "targets": targets,
-            "neighbors": nneighbors,
-            "fneighbors": fneighbors,
+            "inputs": inputs,
+            "start_idxs": start_idxs,
+            "end_idxs": end_idxs,
         }
-
-    else:
-        out = {"predictions": predictions, "probabilities": probs, "targets": targets, "inputs": inputs}
+    
+    if include_neighbors:
+        nneighbors = torch.cat(nneighbors, dim=0)
+        fneighbors = torch.cat(fneighbors, dim=0)
+        out["neighbors"] = nneighbors
+        out["fneighbors"] = fneighbors
 
     if return_features:
         feat_np = features.numpy()  # save features in csv
@@ -244,6 +249,37 @@ def classification_evaluate(predictions):
     }
     return {"classification": output}
 
+@torch.no_grad()
+def pr_evaluate_timeseries(
+    logger,
+    all_predictions,
+    train_best_threshold,
+    majority_label,
+    gt,
+    inputs,
+    tag,
+    epoch=-1,
+    ch=None
+):
+
+    probs = all_predictions["probabilities"]
+    predictions = all_predictions["predictions"]
+    start = all_predictions["start_idxs"]
+    end = all_predictions["end_idxs"]
+
+    # Classification metrics
+    targets = (gt == 0).astype(int)
+    predictions = (predictions == majority_label).astype(int)
+    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}cls_prediction", ch=ch, threshold=0.5, det_threshold=1, pre_classify=False, make_figures=True)
+
+    # Anomaly score metrics
+    scores = 1 - np.array(probs)[:, majority_label]
+    # Find best threshold based on F1 score
+    score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_best", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=True)
+
+    # Anomaly score metrics based on train best threshold
+    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_train_best", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True)
+    return cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds
 
 @torch.no_grad()
 def pr_evaluate(
@@ -253,22 +289,15 @@ def pr_evaluate(
     train_best_threshold=None,
 ):
 
-    targets = all_predictions["targets"].cpu()
-    predictions = all_predictions["predictions"].cpu()
-    probs = all_predictions["probabilities"].cpu()
+    targets = all_predictions["targets"]
+    predictions = all_predictions["predictions"]
+    probs = all_predictions["probabilities"]
 
     # Classification metrics
     cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)
     anomalies = np.where((predictions == majority_label), 0, 1)
-    MCM = multilabel_confusion_matrix(cls_targets, anomalies, labels=[1, 0])
-    tn = MCM[0][0, 0]
-    tp = MCM[0][1, 1]
-    fp = MCM[0][0, 1]
-    fn = MCM[0][1, 0]
-    pre = tp / (tp + fp) if (tp + fp) != 0 else 0
-    recall = tp / (tp + fn)
-    f_1 = 2 * pre * recall / (pre + recall) if (pre + recall) != 0 else 0
-    cls_score = combine_all_evaluation_scores(cls_targets, anomalies)
+
+    cls_score = combine_all_evaluation_scores(anomalies, cls_targets)
 
     # Anomaly score metrics
     scores = 1 - np.array(probs)[:, majority_label]
@@ -280,18 +309,17 @@ def pr_evaluate(
 
     best_f1_index = np.argmax(f1_score)
     best_threshold = thresholds[best_f1_index]
-
-    anomalies = [1 if s >= best_threshold else 0 for s in scores]
-
-    score_best = combine_all_evaluation_scores(labels, anomalies)
+    anomalies = np.where((scores >= best_threshold), 1, 0)
+    score_best = combine_all_evaluation_scores(anomalies, labels)
 
     # Anomaly score metrics based on train best threshold
     score_train_best = {}
     if not train and (train_best_threshold is not None) and probs.size(1) == 1:
-            anomalies = [1 if s >= train_best_threshold else 0 for s in scores]
-            score_train_best = combine_all_evaluation_scores(labels, anomalies)
+            anomalies = np.where((scores >= train_best_threshold), 1, 0)
+            score_train_best = combine_all_evaluation_scores(anomalies, labels)
     return cls_score, score_best, score_train_best
 
+# %% 
 # @torch.no_grad()
 # def pr_evaluate(
 #     all_predictions,
@@ -361,7 +389,7 @@ def pr_evaluate(
 #             out["best_train_rec"] = train_recall
 #             out["best_train_f1"] = train_f1
 #     return out
-
+# %% 
 def replace_majority_label(flat_preds, majority_label):
     # unique_labels = torch.unique(flat_preds)
     new_pred = torch.where(flat_preds == majority_label, 0, 1)

@@ -6,9 +6,6 @@ from metrics.affiliation.generics import convert_vector_to_events
 from metrics.affiliation.metrics import pr_from_events
 from metrics.vus.metrics import get_range_vus_roc
 import numpy as np
-import os
-import sys
-import pandas as pd
 import matplotlib
 matplotlib.use('agg',force=True)
 import matplotlib.pyplot as plt
@@ -66,7 +63,7 @@ def combine_all_evaluation_scores(pred_labels, y_test, window_size: int = 100):
 
     return score_list
 
-def evaluate(epoch, energy, input, gt, start, end, tag, ch=None, threshold=None, det_threshold=1, pre_classify=True, make_figures=False):
+def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, threshold=None, det_threshold=1, pre_classify=True, make_figures=False):
     """Evaluate model and make images.
     Model need to output propabilities for each time step along with how these propabilites are maped to the whole time series.
     Also each detection is added only to the last checking window.
@@ -125,23 +122,13 @@ def evaluate(epoch, energy, input, gt, start, end, tag, ch=None, threshold=None,
     acc_prob = acc_prob[:, 0] # flatten to shape (N,)
     gt = gt[:, 0] # flatten to shape (N,)
     if make_figures:
-        figures(inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}Energy", epoch=epoch)
+        figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch)
     
     acc_prob = (acc_prob >= det_threshold).astype(int) if pre_classify else (acc_prob > threshold).astype(int) #TODO maybe divide by the window length and keep it as float
     
     eval_scores = combine_all_evaluation_scores(acc_prob, gt)
-    matrix = [epoch+1]
-    for key, value in eval_scores.items():
-        matrix.append(value)
-        print('{0:21} : {1:0.4f}'.format(key, value))
-    if not os.path.exists(f'{sys.stdout.experiment_name}/{tag}results.csv'):
-        df = pd.DataFrame(columns=["Epoch"] + list(eval_scores.keys()))
-        df.to_csv(f'{sys.stdout.experiment_name}/{tag}results.csv', index=False)
-    df = pd.read_csv(f'{sys.stdout.experiment_name}/{tag}results.csv')
-    df.loc[len(df)] = pd.Series(matrix, index=df.columns)
-    df.to_csv(f'{sys.stdout.experiment_name}/{tag}results.csv', index=False)
     if make_figures:
-        figures(inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}Energy", epoch=epoch, pa="_pa")
+        figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch, pa="_pa")
 
     return eval_scores, threshold
 
@@ -187,21 +174,11 @@ def evaluate_all_thresholds(energy, input, gt, start, end, tag="final", ch=None,
         figures(inputs=input, labels=gt, predictions=curr_preds, mode=f"{tag}Energy", epoch=identification)
     
         eval_scores = combine_all_evaluation_scores(curr_preds, gt)
-        matrix = [identification]
-        for key, value in eval_scores.items():
-            matrix.append(value)
-            print('{0:21} : {1:0.4f}'.format(key, value))
-        if not os.path.exists(f'{sys.stdout.experiment_name}/{tag}results.csv'):
-            df = pd.DataFrame(columns=["Threshold predictions"] + list(eval_scores.keys()))
-            df.to_csv(f'{sys.stdout.experiment_name}/{tag}results.csv', index=False)
-        df = pd.read_csv(f'{sys.stdout.experiment_name}/{tag}results.csv')
-        df.loc[len(df)] = pd.Series(matrix, index=df.columns)
-        df.to_csv(f'{sys.stdout.experiment_name}/{tag}results.csv', index=False)
         figures(inputs=input, labels=gt, predictions=curr_preds, mode=f"{tag}Energy", epoch=identification, pa="_pa")
 
     return eval_scores, threshold
 
-def figures(inputs, labels, predictions, mode="Combined", epoch=0, pa=""):
+def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""):
     """
     inputs: np.ndarray of shape (N, 38)
     labels: np.ndarray of shape (N,)
@@ -258,7 +235,7 @@ def figures(inputs, labels, predictions, mode="Combined", epoch=0, pa=""):
         ax.set_ylabel("Value")
         ax.legend(loc="upper right")
 
-        sys.stdout.add_figure(f"{mode}/feature{pa}", fig, step=epoch)
+        logger.add_figure(f"{mode}/feature{pa}", fig, step=epoch)
         plt.close(fig)
     return
 

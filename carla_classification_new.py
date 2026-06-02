@@ -18,10 +18,9 @@ from utils.common_config import (
     adjust_learning_rate,
     inject_sub_anomaly,
 )
-from utils.evaluate_utils import get_predictions, pr_evaluate
+from utils.evaluate_utils import get_predictions, pr_evaluate, pr_evaluate_timeseries
 from utils.train_utils import self_sup_classification_train
 from utils.utils import Logger, clean_checkpoint
-from utils.ts_figures import make_figures
 
 import random
 
@@ -239,9 +238,61 @@ def main(args):
     model.load_state_dict(model_checkpoint["model"])
     normal_label = model_checkpoint["normal_label"]
 
+    # Evaluate on the train set and find the best threshold for the train set to evaluate on the test set with the same threshold
+    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    label_counts = torch.bincount(predictions["predictions"])
+    normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
+    cls_train_metrics, train_metrics, _ = pr_evaluate(
+            predictions, majority_label=normal_label, train=True
+    )
+
     predictions, _ = get_predictions(p, val_dataloader, model, True)
-    _, _, _ = pr_evaluate(predictions, majority_label=normal_label)
-    _ = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    end = predictions["end_idxs"].numpy()
+    start = predictions["start_idxs"].numpy()
+    labels = predictions["targets"].numpy()
+    test_inputs = predictions["inputs"].numpy()
+    ts_len = end[-1]
+    
+    # predictions = {
+    #     "predictions": predictions,
+    #     "probabilities": probs,
+    #     "targets": targets,
+    #     "inputs": inputs,
+    #     "start_idxs": start_idxs,
+    #     "end_idxs": end_idxs,
+    # }
+
+    # Evaluate on every entry as different input
+    _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=train_metrics["best_th"])
+
+    # System evaluation: create a timeseries of predictions and labels and evaluate with the same metrics as the other methods
+    gt = np.zeros((ts_len, 1))
+    inputs = np.zeros((ts_len, test_inputs[0].shape[-1]))
+    for s, e, l, i in zip(start, end, labels, test_inputs):
+        gt[s:e] = l.reshape(-1,1)
+        inputs[s:e] = i
+
+    cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds = pr_evaluate_timeseries(
+        logger,
+        predictions,
+        train_metrics["best_th"],
+        normal_label,
+        gt,
+        inputs,
+        tag="Final Timeseries_",
+        epoch=-2
+    )
+    report_str = (
+                f"\nValidation Set Metrics\n"
+                f"Anomalies Classification --> Majority Label: {normal_label}/Best Detections Threshold:{best_detections_thresholds}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_score.items())}"
+                f"Anomalies Best F1 --> Best Threshold: {threshold_best}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in score_best.items())}"
+                f"Anomalies Train Best F1 --> Threshold: {train_metrics["best_th"]}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
+            )
+    logger.log(report_str)
+    
     logger.finalize()
 
 
