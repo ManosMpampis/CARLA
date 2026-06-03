@@ -62,7 +62,7 @@ class AugmentedDataset(Dataset):
                 # ts_w_augment = sample_nei['ts_org']
                 ts_w_augment = sample_nei["ts_org"].clone().detach()
             else:
-                ts_w_augment = self.augmentation_transform(ts_org)
+                ts_w_augment = self.augmentation_transform(ts_org).to("cpu")
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
             sstd = torch.where(

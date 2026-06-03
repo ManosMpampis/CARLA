@@ -40,7 +40,7 @@ def combine_all_evaluation_scores(pred_labels, y_test, window_size: int = 100):
                   "accuracy": accuracy,
                   "precision": precision,
                   "recall": recall,
-                  "f_score": f_score,
+                  "f1_score": f_score,
                   "f05_score": f05_score,
                   "tp": tp,
                   "fp": fp,
@@ -57,7 +57,7 @@ def combine_all_evaluation_scores(pred_labels, y_test, window_size: int = 100):
                   "pa_accuracy": pa_accuracy,
                   "pa_precision": pa_precision,
                   "pa_recall": pa_recall,
-                  "pa_f_score": pa_f_score,
+                  "pa_f1_score": pa_f_score,
                   "pa_latency": latency
     }
 

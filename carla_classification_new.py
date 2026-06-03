@@ -121,6 +121,7 @@ def main(args):
         best_f1 = checkpoint["best_f1"]
         best_cls_f1 = checkpoint.get("best_cls_f1", -1 * np.inf)
         train_best_f1 = checkpoint.get("train_best_f1", -1 * np.inf)
+        best_train_th_eval_f1 = checkpoint.get("best_train_th_eval_f1", -1 * np.inf)
 
         if start_epoch >= p["epochs"]-1 and os.path.exists(p["classification_model"]):
             checkpoint = torch.load(p["classification_model"], map_location="cpu", weights_only=False)
@@ -141,6 +142,7 @@ def main(args):
         best_f1 = -1 * np.inf
         best_cls_f1 = -1 * np.inf
         train_best_f1 = -1 * np.inf
+        best_train_th_eval_f1 = -1 * np.inf
     
     # Initi neighbors with the current model
     # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
@@ -164,35 +166,39 @@ def main(args):
         label_counts = torch.bincount(predictions["predictions"])
         normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
 
-        cls_train_metrics, train_metrics, _ = pr_evaluate(
+        cls_train_metrics, best_train_metrics, _, best_train_th = pr_evaluate(
             predictions, majority_label=normal_label, train=True
         )
 
-        train_rep_f1 = train_metrics["best_f1"]
+        train_rep_f1 = best_train_metrics["f1_score"]
         predictions = get_predictions(p, val_dataloader, model, False, False)
 
-        cls_eval_metrics, eval_metrics, eval_best_metrics_with_train_th = pr_evaluate(
-            predictions, majority_label=normal_label, train_best_threshold=train_metrics["best_th"]
+        cls_eval_metrics, best_eval_metrics, eval_best_metrics_with_train_th, _ = pr_evaluate(
+            predictions, majority_label=normal_label, train_best_threshold=best_train_th
         )
-        rep_f1 = eval_metrics["best_f1"]
+        rep_f1 = best_eval_metrics["f1_score"]
         scheduler.step()
 
-        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or eval_metrics["cls_f1"] > best_cls_f1:
+        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or cls_eval_metrics["f1_score"] > best_cls_f1 or eval_best_metrics_with_train_th["f1_score"] > best_train_th_eval_f1:
             print(f"log at epoch: {epoch}/{p["epochs"]}")
             logger.scalar_summary("", "Learning Rate", lr, epoch)
             logger.metrics_summary("Evaluation cls_eval_metrics Metrics", cls_eval_metrics, epoch)
-            logger.metrics_summary("Evaluation Anomaly Score Metrics", eval_metrics, epoch)
+            logger.metrics_summary("Evaluation Anomaly Score Metrics", best_eval_metrics, epoch)
             logger.metrics_summary("Evaluation Anomaly Score From Training Metrics", eval_best_metrics_with_train_th, epoch)
 
             logger.metrics_summary("Train Classification Train", cls_train_metrics, epoch)
-            logger.metrics_summary("Train Anomaly Score Metrics", train_metrics, epoch)
+            logger.metrics_summary("Train Anomaly Score Metrics", best_train_metrics, epoch)
 
             report_str = (
                 f"\nValidation Set Metrics\n"
-                f"Anomalies Classification --> TP: {eval_metrics['cls_tp']}, TN: {eval_metrics['cls_tn']}, FN: {eval_metrics['cls_fn']}, FP: {eval_metrics['cls_fp']}\n"
-                f"Anomalies Best F1 --> TP: {eval_metrics['best_tp']}, TN: {eval_metrics['best_tn']}, FN: {eval_metrics['best_fn']}, FP: {eval_metrics['best_fp']}\n"
-                f"Majority label: {normal_label}"
+                f"Anomalies Classification --> Majority Label: {normal_label}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_eval_metrics.items())}"
+                f"Anomalies Best F1 --> Best Threshold: {best_train_th}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in best_eval_metrics.items())}"
+                f"Anomalies Train Best F1 --> Threshold: {best_train_th}\n"
+                f"{'\n'.join(f'{key}:{value}\n' for key, value in eval_best_metrics_with_train_th.items())}"
             )
+
             logger.log(report_str)
             logger.metrics_summary("Classification Loss", loss_dict, epoch)
             # Function that makes and logs figures to tensorboard
@@ -209,12 +215,18 @@ def main(args):
                     "best_f1": best_f1,
                     "best_cls_f1": best_cls_f1,
                     "train_best_f1": train_best_f1,
+                    "best_train_th_eval_f1": best_train_th_eval_f1,
+                    "best_train_threshold": best_train_th
                 },
                 p["classification_checkpoint"],
             )
 
-        if eval_metrics["cls_f1"] >= best_cls_f1:
-            best_cls_f1 = eval_metrics["cls_f1"]
+        if cls_eval_metrics["f1_score"] >= best_cls_f1:
+            best_cls_f1 = cls_eval_metrics["f1_score"]
+            torch.save(
+                {"model": model.state_dict(), "normal_label": normal_label},
+                f"{p["classification_model"][:-8]}_cls.pth.tar",
+            )
 
         if rep_f1 >= best_f1:
             best_f1 = rep_f1
@@ -231,6 +243,14 @@ def main(args):
                 {"model": model.state_dict(), "normal_label": normal_label},
                 f"{p["classification_model"][:-8]}_train.pth.tar",
             )
+        
+        if eval_best_metrics_with_train_th["f1_score"] >= best_train_th_eval_f1:
+            best_train_th_eval_f1 = eval_best_metrics_with_train_th["f1_score"]
+            # logger.log('New Checkpoint ...')
+            torch.save(
+                {"model": model.state_dict(), "normal_label": normal_label},
+                f"{p["classification_model"][:-8]}_train.pth.tar",
+            )
 
     model_checkpoint = torch.load(
         p["classification_model"], map_location="cpu", weights_only=False
@@ -241,8 +261,8 @@ def main(args):
     # Evaluate on the train set and find the best threshold for the train set to evaluate on the test set with the same threshold
     predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
     label_counts = torch.bincount(predictions["predictions"])
-    normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
-    cls_train_metrics, train_metrics, _ = pr_evaluate(
+    normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax().item()
+    cls_train_metrics, best_train_metrics, _, best_train_th = pr_evaluate(
             predictions, majority_label=normal_label, train=True
     )
 
@@ -252,18 +272,9 @@ def main(args):
     labels = predictions["targets"].numpy()
     test_inputs = predictions["inputs"].numpy()
     ts_len = end[-1]
-    
-    # predictions = {
-    #     "predictions": predictions,
-    #     "probabilities": probs,
-    #     "targets": targets,
-    #     "inputs": inputs,
-    #     "start_idxs": start_idxs,
-    #     "end_idxs": end_idxs,
-    # }
 
     # Evaluate on every entry as different input
-    _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=train_metrics["best_th"])
+    _, _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=best_train_th)
 
     # System evaluation: create a timeseries of predictions and labels and evaluate with the same metrics as the other methods
     gt = np.zeros((ts_len, 1))
@@ -275,7 +286,7 @@ def main(args):
     cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds = pr_evaluate_timeseries(
         logger,
         predictions,
-        train_metrics["best_th"],
+        best_train_th,
         normal_label,
         gt,
         inputs,
@@ -288,7 +299,7 @@ def main(args):
                 f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_score.items())}"
                 f"Anomalies Best F1 --> Best Threshold: {threshold_best}\n"
                 f"{'\n'.join(f'{key}:{value}\n' for key, value in score_best.items())}"
-                f"Anomalies Train Best F1 --> Threshold: {train_metrics["best_th"]}\n"
+                f"Anomalies Train Best F1 --> Threshold: {best_train_th}\n"
                 f"{'\n'.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
             )
     logger.log(report_str)

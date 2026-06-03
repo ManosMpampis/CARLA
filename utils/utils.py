@@ -1,7 +1,7 @@
 import os
 import logging
 import errno
-
+import numpy as np
 import torch
 
 def mkdir_if_missing(directory):
@@ -222,6 +222,13 @@ class Logger:
 
     def _do_nothing(self, *args, **kwargs):
         pass
+
+def find_target(arrays):
+    result = []
+    for arr in arrays:
+        non_zero = arr[arr != 0]
+        result.append(non_zero[0] if len(non_zero) > 0 else 0)
+    return np.array(result).astype(int)
 
 def clean_checkpoint(model_checkpoint, save_path=None, checkpoint=None):
     change_flag = False

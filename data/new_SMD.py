@@ -34,12 +34,12 @@ class SMD(Original_dataset):
             self.base_folder += "train"
         else:
             self.base_folder += "test"
-            self.targets = pd.read_csv(os.path.join(self.root, "test_label", fname))
-            self.targets = np.asarray(self.targets)
+            self.targets = np.loadtxt(os.path.join(self.root, "test_label", fname)).astype(int)
+            # self.targets = np.asarray(self.targets).astype(int)
 
         file_path = os.path.join(self.root, self.base_folder, fname)
         self.data = pd.read_csv(file_path)
-        self.data = np.asarray(self.data)
+        self.data = np.asarray(self.data).astype(np.float32)
 
         if np.any(sum(np.isnan(self.data)) != 0):
             print("Data contains NaN which replaced with zero")
@@ -50,7 +50,7 @@ class SMD(Original_dataset):
             # we do not scale the data just yet in order to do it in the Augmented data class.
             # self.data = self.scaler.transform(self.data)
 
-            self.targets = np.zeros(self.data.shape[0])
+            self.targets = np.zeros(self.data.shape[0]).astype(int)
         else:
             self.scaler.mean_ = mean_data
             self.scaler.scale_ = std_data

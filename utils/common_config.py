@@ -274,7 +274,7 @@ def get_val_dataset(
 
         dataset = SMD(
             p["fname"],
-            train=True,
+            train=False,
             transform=transform,
             sanomaly=sanomaly,
             mean_data=mean_data,
@@ -286,7 +286,7 @@ def get_val_dataset(
         from data.new_PSM import PSM
 
         dataset = PSM(
-            train=True,
+            train=False,
             transform=transform,
             sanomaly=sanomaly,
             mean_data=mean_data,

@@ -41,15 +41,15 @@ class Original_dataset(Dataset):
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
         idx = index * self.stride
-        ts_org = torch.from_numpy(self.data[idx : idx + self.wsz]).float()
+        ts_org = self.data[idx : idx + self.wsz]
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[idx], dtype=torch.long)
-            class_name = self.classes[target]
+            target = self.targets[idx: idx + self.wsz]
+            class_name = [self.classes[t] for t in target]
         else:
-            target = torch.zeros(ts_org.shape[0], dtype=torch.long)
-            class_name = ""
+            target = np.zeros(ts_org.shape[0]).astype(int)
+            class_name = [self.classes[t] for t in target]
 
         ts_size = (ts_org.shape[0], ts_org.shape[1])
 

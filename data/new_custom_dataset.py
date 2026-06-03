@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 from torch.nn import functional as F
 import pandas as pd
 
+from utils.utils import find_target
+
 device = torch.device("cuda")
 
 """ 
@@ -19,16 +21,16 @@ class AugmentedDataset(Dataset):
             {} for _ in range(len(dataset))
         ]  # Initialized with empty dictionaries
         self.ts_org = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.targets = [
-            torch.empty(dataset.targets[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.targets[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.ts_w_augment = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.ts_ss_augment = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.meta = [
             {} for _ in range(len(dataset))
@@ -52,16 +54,16 @@ class AugmentedDataset(Dataset):
     def create_pairs(self):
         for index in range(len(self.dataset)):
             item = self.dataset.__getitem__(index)
-            ts_org = item["ts_org"].clone().detach()
-            ts_trg = item["target"].clone().detach()
+            ts_org = item["ts_org"]
+            ts_trg = item["target"]
 
             # Get random neighbor from windows before time step T
             if index > 10:
                 rand_nei = np.random.randint(index - 10, index)
                 sample_nei = self.dataset.__getitem__(rand_nei)
-                ts_w_augment = sample_nei["ts_org"].clone().detach()
+                ts_w_augment = sample_nei["ts_org"]
             else:
-                ts_w_augment = self.augmentation_transform(ts_org).cpu()
+                ts_w_augment = self.augmentation_transform(ts_org)
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
             # During inference we do not know what inputs are anomalies and how they derived. So we normalize everything the same way.
@@ -129,10 +131,10 @@ class DynamicNeighbors(Dataset):
         ts_ss_augment_features = torch.tensor([]).to(device)
 
         for i, batch in enumerate(loader): 
-            ts_org = batch['ts_org'].to(device, non_blocking=True)
-            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
-            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
-
+            ts_org = torch.from_numpy(batch['ts_org']).to(device, non_blocking=True)
+            ts_w_augment = torch.from_numpy(batch['ts_w_augment']).to(device, non_blocking=True)
+            ts_ss_augment = torch.from_numpy(batch['ts_ss_augment']).to(device, non_blocking=True)
+            ts_label = torch.from_numpy(batch["target"])
             if ts_org.ndim == 3:
                 b, w, h = ts_org.shape
             else:
@@ -143,19 +145,19 @@ class DynamicNeighbors(Dataset):
             data_features = torch.cat((data_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
-            targets.append(batch["target"].to(device))
+            targets.append(ts_label)
 
             output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all")
             ts_w_augment_features = torch.cat((ts_w_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
-            targets.append(torch.LongTensor([2]*ts_w_augment.shape[0]).to(device, non_blocking=True))
+            targets.append(torch.ones_like(ts_label)*2)
             
             output = model(ts_ss_augment.reshape(b, h, w), forward_pass="return_all")
             ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"]), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
-            targets.append(torch.LongTensor([4]*ts_ss_augment.shape[0]).to(device, non_blocking=True))
+            targets.append(torch.ones_like(ts_label)*4)
 
         if update:
             # Compute pairwise distances
@@ -176,7 +178,9 @@ class DynamicNeighbors(Dataset):
         prob_np = np.array(probs)
         phdr = [str(x) for x in range(prob_np.shape[1])] + ["Class"]
         # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
-        prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T))
+        final_targets = find_target(targets)
+        prob_np = np.hstack((prob_np, final_targets[np.newaxis].T))
+        
         prob_df = pd.DataFrame(prob_np, columns=phdr)
         prob_df.to_csv(
                 p["classification_trainprobs"], index=False, header=True, sep=","

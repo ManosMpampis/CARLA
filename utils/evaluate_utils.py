@@ -14,6 +14,7 @@ from utils.common_config import get_feature_dimensions_backbone
 from data.custom_dataset import NeighborsDataset
 from losses.losses import entropy
 from termcolor import colored
+from utils.utils import find_target
 
 import warnings
 
@@ -134,11 +135,14 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
 
         
         if isinstance(ts, np.ndarray):
-            ts = torch.from_numpy(ts).float()
-            targets.append(torch.from_numpy(batch["target"]))
+            ts = torch.from_numpy(ts).contiguous().float()
+            target = torch.from_numpy(batch["target"])
         else:
-            targets.append(batch["target"])
+            target = batch["target"]
+        
+        targets.append(target)
         inputs.append(ts.cpu())
+
         res = model(ts.view(bs, h, w).to(device), forward_pass="return_all")
         output = res["output"]
         if return_features:
@@ -178,14 +182,15 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         feat_np = features.numpy()  # save features in csv
         fhdr = [str(x) for x in range(feat_np.shape[1])] + ["Class"]
         # feat_np = np.hstack((feat_np, np.array(targets)[np.newaxis].T)) CUDA
-        feat_np = np.hstack((feat_np, np.array(targets.cpu().numpy())[np.newaxis].T))
+        final_targets = find_target(targets)
+        feat_np = np.hstack((feat_np, final_targets[np.newaxis].T))
 
         feat_df = pd.DataFrame(feat_np, columns=fhdr)
 
         prob_np = np.array(out["probabilities"])
         phdr = [str(x) for x in range(prob_np.shape[1])] + ["Class"]
         # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
-        prob_np = np.hstack((prob_np, np.array(targets.cpu().numpy())[np.newaxis].T))
+        prob_np = np.hstack((prob_np, final_targets[np.newaxis].T))
         prob_df = pd.DataFrame(prob_np, columns=phdr)
 
         if is_training:
@@ -264,21 +269,23 @@ def pr_evaluate_timeseries(
 
     probs = all_predictions["probabilities"]
     predictions = all_predictions["predictions"]
-    start = all_predictions["start_idxs"]
-    end = all_predictions["end_idxs"]
+    start = all_predictions["start_idxs"].numpy().astype(int)
+    end = all_predictions["end_idxs"].numpy().astype(int)
 
     # Classification metrics
     targets = (gt == 0).astype(int)
-    predictions = (predictions == majority_label).astype(int)
-    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}cls_prediction", ch=ch, threshold=0.5, det_threshold=1, pre_classify=False, make_figures=True)
+    predictions = (predictions == majority_label).numpy().astype(int)
+    predictions = np.repeat(predictions[:, np.newaxis], (end[0]-start[0]), axis=-1)
+    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}cls_prediction_", ch=ch, threshold=0.5, det_threshold=1, pre_classify=False, make_figures=True)
 
     # Anomaly score metrics
     scores = 1 - np.array(probs)[:, majority_label]
+    scores = np.repeat(scores[:, np.newaxis], (end[0]-start[0]), axis=-1)
     # Find best threshold based on F1 score
-    score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_best", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=True)
+    score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_best_", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=True)
 
     # Anomaly score metrics based on train best threshold
-    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_train_best", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True)
+    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_train_best_", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True)
     return cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds
 
 @torch.no_grad()
@@ -289,7 +296,7 @@ def pr_evaluate(
     train_best_threshold=None,
 ):
 
-    targets = all_predictions["targets"]
+    targets = find_target(all_predictions["targets"])
     predictions = all_predictions["predictions"]
     probs = all_predictions["probabilities"]
 
@@ -314,10 +321,10 @@ def pr_evaluate(
 
     # Anomaly score metrics based on train best threshold
     score_train_best = {}
-    if not train and (train_best_threshold is not None) and probs.size(1) == 1:
+    if not train and (train_best_threshold is not None):# and probs.size(1) == 1:
             anomalies = np.where((scores >= train_best_threshold), 1, 0)
             score_train_best = combine_all_evaluation_scores(anomalies, labels)
-    return cls_score, score_best, score_train_best
+    return cls_score, score_best, score_train_best, best_threshold
 
 # %% 
 # @torch.no_grad()

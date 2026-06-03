@@ -25,7 +25,12 @@ def collate_custom(batch):
         return batch
 
     elif isinstance(batch[0], collections.abc.Mapping):
-        batch_modified = {key: collate_custom([d[key] for d in batch]) for key in batch[0] if key.find('idx') < 0}
+        # batch_modified = {}
+        # for key in batch[0]:
+        #     if key.find('idx') <0:
+        #         new_batch = [d[key] for d in batch]
+        #         batch_modified[key] = collate_custom(new_batch)
+        batch_modified = {key: collate_custom([d[key] for d in batch]) for key in batch[0]}
         return batch_modified
 
     elif isinstance(batch[0], collections.abc.Sequence):
