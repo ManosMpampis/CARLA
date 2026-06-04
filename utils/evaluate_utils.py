@@ -273,10 +273,10 @@ def pr_evaluate_timeseries(
     end = all_predictions["end_idxs"].numpy().astype(int)
 
     # Classification metrics
-    targets = (gt == 0).astype(int)
-    predictions = (predictions == majority_label).numpy().astype(int)
+    targets = (gt != 0).astype(int)
+    predictions = (predictions != majority_label).numpy().astype(int)
     predictions = np.repeat(predictions[:, np.newaxis], (end[0]-start[0]), axis=-1)
-    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}cls_prediction_", ch=ch, threshold=0.5, det_threshold=1, pre_classify=False, make_figures=True)
+    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}cls_prediction_", ch=ch, threshold=None, det_threshold=None, pre_classify=False, make_figures=True)
 
     # Anomaly score metrics
     scores = 1 - np.array(probs)[:, majority_label]
@@ -285,7 +285,7 @@ def pr_evaluate_timeseries(
     score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_best_", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=True)
 
     # Anomaly score metrics based on train best threshold
-    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_train_best_", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True)
+    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}anomaly_train_best_", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True, make_extras=False)
     return cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds
 
 @torch.no_grad()
