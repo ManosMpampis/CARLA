@@ -274,10 +274,10 @@ def main(args):
     ts_len = end[-1]
 
     # Evaluate on every entry as different input
-    _, _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=best_train_th)
+    # _, _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=best_train_th)
 
     # System evaluation: create a timeseries of predictions and labels and evaluate with the same metrics as the other methods
-    gt = np.zeros((ts_len, 1))
+    gt = np.zeros((ts_len, 1)).astype(int)
     inputs = np.zeros((ts_len, test_inputs[0].shape[-1]))
     for s, e, l, i in zip(start, end, labels, test_inputs):
         gt[s:e] = l.reshape(-1,1)
