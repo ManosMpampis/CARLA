@@ -83,11 +83,11 @@ class ConvBlock(nn.Module):
                               stride=stride),
             norm_layer,
         )
-        
+        self.dout = nn.Dropout(0.2)
         # Initialize all weights and biases in this block
         for module in self.layers:
             _init_weights(module)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
 
-        return self.layers(x)
+        return self.dout(self.layers(x))
