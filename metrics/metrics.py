@@ -1,5 +1,5 @@
 from sklearn.metrics import precision_recall_curve
-
+from sklearn.preprocessing import StandardScaler, Normalizer
 from metrics.f1_score_f1_pa import get_adjust_F1PA, get_accuracy_precision_recall_fscore, event_f1
 from metrics.Matthews_correlation_coefficient import MCC
 from metrics.affiliation.generics import convert_vector_to_events
@@ -63,7 +63,7 @@ def combine_all_evaluation_scores(pred_labels, y_test, window_size: int = 100):
 
     return score_list
 
-def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, threshold=None, det_threshold=1, pre_classify=True, make_figures=False):
+def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, threshold=None, det_threshold=1, pre_classify=True, make_figures=False, make_extras=True):
     """Evaluate model and make images.
     Model need to output propabilities for each time step along with how these propabilites are maped to the whole time series.
     Also each detection is added only to the last checking window.
@@ -92,7 +92,7 @@ def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, thresho
         acc_prob = np.zeros((end[-1] - start[0], 1)) #, pred.shape[-1])) check if shape.size >=3 then shape[-1]
         for e, a in zip(end, energy):
             acc_prob[e-ch:e] += a.reshape(-1,1)[-ch:]
-        acc_prob /= (ch/(start[1] - start[0]))
+        acc_prob /= (ch/((start[1] - start[0]-1)))
         precision, recall, thresholds = precision_recall_curve(gt, acc_prob, pos_label=1)
         f1_score = (2 * precision * recall) / (precision + recall)
         if np.isnan(f1_score).any():
@@ -105,7 +105,7 @@ def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, thresho
     acc_prob = np.zeros((end[-1] - start[0], 1)) #check if shape.size >=3 then shape[-1]
     for e, a in zip(end, pred):
         acc_prob[e-ch:e] += a.reshape(-1,1)[-ch:]
-    acc_prob /= (ch/start[1] - start[0])
+    acc_prob /= (ch/((start[1] - start[0])-1))
 
     if ((threshold is None) and (not pre_classify)) or (pre_classify and det_threshold is None):
         precision, recall, thresholds = precision_recall_curve(gt, acc_prob, pos_label=1)
@@ -121,11 +121,26 @@ def evaluate(logger, epoch, energy, input, gt, start, end, tag, ch=None, thresho
     assert acc_prob.shape[1] == gt.shape[1] == 1, "predictions and gt should have shape (N, 1), Multi-dimensional predictions and gt are not supported yet."
     acc_prob = acc_prob[:, 0] # flatten to shape (N,)
     gt = gt[:, 0] # flatten to shape (N,)
-    if make_figures:
-        figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch)
+    if make_figures and make_extras:
+        figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch, standarized=True)
     
+    if make_figures and make_extras:
+        if thresholds.shape[0]<=50:
+            for i, th in enumerate(thresholds):
+                probs_th = (acc_prob >= th).astype(int)
+                figures(logger, inputs=input, labels=gt, predictions=probs_th, mode=f"{tag}", epoch=i, pa="th_eval")
+        else:
+            step = thresholds.shape[0]//50
+            for i in range(50):
+                th = thresholds[step*i]
+                probs_th = (acc_prob >= th).astype(int)
+                figures(logger, inputs=input, labels=gt, predictions=probs_th, mode=f"{tag}", epoch=i, pa="th_eval")
+
     acc_prob = (acc_prob >= det_threshold).astype(int) if pre_classify else (acc_prob > threshold).astype(int) #TODO maybe divide by the window length and keep it as float
     
+    if make_figures:
+        figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch, pa="_after_th")
+
     eval_scores = combine_all_evaluation_scores(acc_prob, gt)
     if make_figures:
         figures(logger, inputs=input, labels=gt, predictions=acc_prob, mode=f"{tag}", epoch=epoch, pa="_pa")
@@ -178,7 +193,7 @@ def evaluate_all_thresholds(energy, input, gt, start, end, tag="final", ch=None,
 
     return eval_scores, threshold
 
-def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""):
+def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa="", standarized=False):
     """
     inputs: np.ndarray of shape (N, 38)
     labels: np.ndarray of shape (N,)
@@ -186,6 +201,9 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
     mode: str, either "Train" or "Combined"
     epoch: int
     """
+    if standarized:
+        scaler = Normalizer()
+    # preds = scaler.fit_transform(predictions) if standarized else predictions
     n_samples, n_features = inputs.shape
     x = np.arange(n_samples)
 
@@ -195,7 +213,7 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
         fig, ax = plt.subplots(figsize=(12, 6))
 
         y = inputs[:, i]
-        ax.plot(x, y, color="black", linewidth=1, label=f"feature {i}")
+        ax.plot(x, y, color="black", linewidth=1, label=f"feature")
 
         # Shade where labels == 1
         ax.fill_between(
@@ -206,7 +224,7 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
             color="red",
             alpha=0.2,
             step="mid",
-            label="label=1",
+            label="label",
         )
 
         pred_unique = np.unique(predictions)
@@ -224,11 +242,11 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
         
         # Create 2D grid for pcolormesh gradient
         y_edges = np.linspace((y.max()-y.min()-1)/2, y.max()+1, 2)
-        x_edges = np.concatenate([[x[0]], (x[:-1] + x[1:]) / 2, [x[-1]]])
+        x_edges = np.concatenate([x, [x[-1]+1]])
         X, Y = np.meshgrid(x_edges, y_edges)
             
-        ax.pcolormesh(X, Y, normalized[np.newaxis, :], cmap="Blues",
-                        alpha=1, shading="flat", vmin=0, vmax=1)
+        ax.pcolormesh(X, Y, normalized[np.newaxis, :], cmap="Purples",
+                        alpha=0.9, shading="flat", vmin=normalized.min(), vmax=normalized.max())
 
         ax.set_title(f"Feature {i}")
         ax.set_xlabel("Sample")

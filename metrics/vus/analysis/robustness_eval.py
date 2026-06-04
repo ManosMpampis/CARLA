@@ -17,6 +17,7 @@ if module_path not in sys.path:
 
 from metrics.vus.utils.slidingWindows import find_length
 from metrics.vus.utils.metrics import metricor
+from metrics.vus.utils.metrics_torch import metricor_t
 
 from metrics.vus.models.distance import Fourier
 from metrics.vus.models.feature import Window
@@ -329,3 +330,22 @@ def generate_curve(label,score,slidingWindow):
     Z_ap = np.repeat(window_3d, len(tpr_3d[0])-1)
     
     return Y, Z, X, X_ap, W, Z_ap,avg_auc_3d, avg_ap_3d
+
+def generate_curve_t(label, score, slidingWindow, device=None):
+    tpr_3d, fpr_3d, prec_3d, window_3d, avg_auc_3d, avg_ap_3d = (
+        metricor_t().RangeAUC_volume(
+            labels_original=label,
+            score=score,
+            windowSize=1 * slidingWindow,
+            device=device,
+        )
+    )
+
+    X = np.array(tpr_3d).reshape(1, -1).ravel()
+    X_ap = np.array(tpr_3d)[:, :-1].reshape(1, -1).ravel()
+    Y = np.array(fpr_3d).reshape(1, -1).ravel()
+    W = np.array(prec_3d).reshape(1, -1).ravel()
+    Z = np.repeat(window_3d, len(tpr_3d[0]))
+    Z_ap = np.repeat(window_3d, len(tpr_3d[0]) - 1)
+
+    return Y, Z, X, X_ap, W, Z_ap, avg_auc_3d, avg_ap_3d

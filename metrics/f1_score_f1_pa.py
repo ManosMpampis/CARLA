@@ -53,7 +53,7 @@ def get_adjust_F1PA(pred, gt):
 
     accuracy = accuracy_score(gt, pred)
     precision, recall, f_score, support = precision_recall_fscore_support(gt, pred,
-                                                                          average='binary')
+                                                                          average='binary', zero_division=0.0)
     return accuracy, precision, recall, f_score, latency/sum(gt)
 
 
@@ -82,10 +82,10 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
     accuracy = accuracy_score(y_true, y_pred)
     # warn_for=() avoids log warnings for any result being zero
     # precision, recall, f_score, _ = prf(y_true, y_pred, average='binary', warn_for=())
-    precision = precision_score(y_true, y_pred)
-    recall = recall_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0.0)
+    recall = recall_score(y_true, y_pred, zero_division=0.0)
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-    if precision == 0 and recall == 0:
+    if (precision + recall) == 0:
         f05_score = 0
         f_score = 0
     else:
@@ -96,8 +96,8 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
 def event_f1(labels, events_gt, preds):
     tp = np.sum([preds[start:end+1].any() for start, end in events_gt])
     fn = len(events_gt) - tp
-    rec_e = tp / (tp + fn)
-    prec_t = precision_score(labels, preds)
+    rec_e = tp / (tp + fn) if (tp + fn) > 0 else 0
+    prec_t = precision_score(labels, preds, zero_division=0.0)
     event_f1_score = 2 * rec_e * prec_t / (rec_e + prec_t) if (rec_e + prec_t) > 0 else 0
     return event_f1_score
 
