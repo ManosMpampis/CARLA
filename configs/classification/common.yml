@@ -1,7 +1,7 @@
 # setup
 setup: classification
 
-tag_class: common
+tag_class: common_no_drop
 
 # Loss
 criterion: classification_new
@@ -46,7 +46,7 @@ optimizer: adam
 optimizer_kwargs:
   lr: 0.001
   weight_decay: 0.001
-epochs: 7000
+epochs: 1000
 batch_size: 512
 num_workers: 0
 

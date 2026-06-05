@@ -1,3 +1,6 @@
+# μεγαλύτερο μοντέλο για να δω εάν θα κάνει μεγαλύτερο overfitting
+# dropout
+
 # setup
 setup: classification
 

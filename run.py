@@ -432,23 +432,23 @@ for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]: 
                         "version": f"{version}"})
         main_classification_new(classification_args)
 
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/common_re_schedule_data.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification_new(classification_args)
+        # classification_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/classification/common_re_schedule_data.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_classification_new(classification_args)
 
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/mult_classification.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification_new(classification_args)
+        # classification_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/classification/mult_classification.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_classification_new(classification_args)
 
-        classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/mult_classification_re_schedule_data.yml",
-                        "fname": filename,
-                        "version": f"{version}"})
-        main_classification_new(classification_args)
+        # classification_args = EasyDict({"config_env": "configs/env.yml",
+        #                 "config_exp": "configs/classification/mult_classification_re_schedule_data.yml",
+        #                 "fname": filename,
+        #                 "version": f"{version}"})
+        # main_classification_new(classification_args)
 
         # Run the classification script
         # classification_args = EasyDict({"config_env": "configs/env.yml",
