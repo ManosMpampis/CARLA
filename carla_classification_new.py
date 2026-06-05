@@ -1,5 +1,6 @@
 import argparse
 import os
+import csv
 import torch
 import numpy as np
 from utils.config import create_config
@@ -251,12 +252,22 @@ def main(args):
                 {"model": model.state_dict(), "normal_label": normal_label},
                 f"{p["classification_model"][:-8]}_train.pth.tar",
             )
-
+    
     model_checkpoint = torch.load(
         p["classification_model"], map_location="cpu", weights_only=False
     )
     model.load_state_dict(model_checkpoint["model"])
-    normal_label = model_checkpoint["normal_label"]
+
+    model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag="")
+    model_checkpoint = torch.load(
+        f"{p["classification_model"][:-8]}_cls.pth.tar", map_location="cpu", weights_only=False
+    )
+    model.load_state_dict(model_checkpoint["model"])
+    model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag="cls")
+
+    logger.finalize()
+
+def model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag):
 
     # Evaluate on the train set and find the best threshold for the train set to evaluate on the test set with the same threshold
     predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
@@ -266,6 +277,16 @@ def main(args):
             predictions, majority_label=normal_label, train=True
     )
 
+    with open(p[f"{tag}eval_train_csl"], "w", newline="") as f:
+        w = csv.DictWriter(f, cls_train_metrics.keys())
+        w.writeheader()
+        w.writerow(cls_train_metrics)
+    
+    with open(p[f"{tag}eval_train_best"], "w", newline="") as f:
+        w = csv.DictWriter(f, best_train_metrics.keys())
+        w.writeheader()
+        w.writerow(best_train_metrics)
+    
     predictions, _ = get_predictions(p, val_dataloader, model, True)
     end = predictions["end_idxs"].numpy()
     start = predictions["start_idxs"].numpy()
@@ -274,8 +295,22 @@ def main(args):
     ts_len = end[-1]
 
     # Evaluate on every entry as different input
-    # _, _, _, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=best_train_th)
-
+    cls_eval_metrics, best_eval_metrics, best_train_eval_metrics, _ = pr_evaluate(predictions, majority_label=normal_label, train_best_threshold=best_train_th)
+    with open(p[f"{tag}eval_test_cls"], "w", newline="") as f:
+        w = csv.DictWriter(f, cls_eval_metrics.keys())
+        w.writeheader()
+        w.writerow(cls_eval_metrics)
+    
+    with open(p[f"{tag}eval_test_best"], "w", newline="") as f:
+        w = csv.DictWriter(f, best_eval_metrics.keys())
+        w.writeheader()
+        w.writerow(best_eval_metrics)
+    
+    with open(p[f"{tag}eval_test_train_th"], "w", newline="") as f:
+        w = csv.DictWriter(f, best_train_eval_metrics.keys())
+        w.writeheader()
+        w.writerow(best_train_eval_metrics)
+    
     # System evaluation: create a timeseries of predictions and labels and evaluate with the same metrics as the other methods
     gt = np.zeros((ts_len, 1)).astype(int)
     inputs = np.zeros((ts_len, test_inputs[0].shape[-1]))
@@ -290,11 +325,27 @@ def main(args):
         normal_label,
         gt,
         inputs,
-        tag="Final Timeseries_",
+        tag=f"{tag} Final Timeseries_",
         epoch=-2
     )
+    
+    with open(p[f"{tag}eval_tstest_cls"], "w", newline="") as f:
+        w = csv.DictWriter(f, cls_score.keys())
+        w.writeheader()
+        w.writerow(cls_score)
+
+    with open(p[f"{tag}eval_tstest_best"], "w", newline="") as f:
+        w = csv.DictWriter(f, score_best.keys())
+        w.writeheader()
+        w.writerow(score_best)
+    
+    with open(p[f"{tag}eval_tstest_trainth"], "w", newline="") as f:
+        w = csv.DictWriter(f, score_train_best.keys())
+        w.writeheader()
+        w.writerow(score_train_best)
+    
     report_str = (
-                f"\nValidation Set Metrics\n"
+                f"\nValidation Set Metrics {tag}\n"
                 f"Anomalies Classification --> Majority Label: {normal_label}/Best Detections Threshold:{best_detections_thresholds}\n"
                 f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_score.items())}"
                 f"Anomalies Best F1 --> Best Threshold: {threshold_best}\n"
@@ -303,8 +354,6 @@ def main(args):
                 f"{'\n'.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
             )
     logger.log(report_str)
-    
-    logger.finalize()
 
 
 if __name__ == "__main__":

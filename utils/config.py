@@ -60,6 +60,26 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
         cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')
         cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')
         cfg['classification_testprobs'] = os.path.join(classification_dir, 'classification_testprobs.csv')
+        # Evaluation paths
+        mkdir(os.path.join(classification_dir, 'best'))
+        cfg['eval_train_csl'] = os.path.join(classification_dir, 'best', 'eval_train_cls.csv')
+        cfg['eval_train_best'] = os.path.join(classification_dir, 'best', 'eval_train_best.csv')
+        cfg['eval_test_cls'] = os.path.join(classification_dir, 'best', 'eval_test_cls.csv')
+        cfg['eval_test_best'] = os.path.join(classification_dir, 'best', 'eval_test_best.csv')
+        cfg['eval_test_train_th'] = os.path.join(classification_dir, 'best', 'eval_test_train_th.csv')
+        cfg['eval_tstest_cls'] = os.path.join(classification_dir, 'best', 'eval_timeseries_cls.csv')
+        cfg['eval_tstest_best'] = os.path.join(classification_dir, 'best', 'eval_timeseries_best.csv')
+        cfg['eval_tstest_trainth'] = os.path.join(classification_dir, 'best', 'eval_timeseries_train_th.csv')
+        mkdir(os.path.join(classification_dir, 'cls'))
+        cfg['clseval_train_csl'] = os.path.join(classification_dir, 'cls', 'eval_train_cls.csv')
+        cfg['clseval_train_best'] = os.path.join(classification_dir, 'cls', 'eval_train_best.csv')
+        cfg['clseval_test_cls'] = os.path.join(classification_dir, 'cls', 'eval_test_cls.csv')
+        cfg['clseval_test_best'] = os.path.join(classification_dir, 'cls', 'eval_test_best.csv')
+        cfg['clseval_test_train_th'] = os.path.join(classification_dir, 'cls', 'eval_test_train_th.csv')
+        cfg['clseval_tstest_cls'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_cls.csv')
+        cfg['clseval_tstest_best'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_best.csv')
+        cfg['clseval_tstest_trainth'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_train_th.csv')
+        
 
     cfg["res_kwargs"]["window_size"] = cfg["wsz"]
     return cfg 
