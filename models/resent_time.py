@@ -14,7 +14,8 @@ class ResNetBlock(nn.Module):
             out_channels: int,
             kernel_sizes: List[int] = [8, 5, 3],
             norm_layer_name: str = "batch",
-            window_size: int = 0
+            window_size: int = 0,
+            dropout: bool = True,
     ) -> None:
         super().__init__()
 
@@ -30,6 +31,7 @@ class ResNetBlock(nn.Module):
                 stride=1,
                 norm_layer_name=norm_layer_name,
                 window_size=window_size,
+                dropout=dropout,
             ))
             self.layers.add_module(f"Activation {i}", nn.ReLU())
 
@@ -40,6 +42,7 @@ class ResNetBlock(nn.Module):
                 stride=1,
                 norm_layer_name=norm_layer_name,
                 window_size=window_size,
+                dropout=dropout,
             ))
         
         # residual = nn.Sequential(*[
@@ -58,6 +61,7 @@ class ResNetBlock(nn.Module):
                 stride=1,
                 norm_layer_name=norm_layer_name,
                 window_size=window_size,
+                dropout=dropout,
             )
         self.residual = nn.Identity() if in_channels == out_channels else residual
         self.act = nn.ReLU()
@@ -93,7 +97,7 @@ class ResNetRepresentation(nn.Module):
         The kernel size of each convolution inside the residual block
     """
 
-    def __init__(self, in_channels: int, mid_channels: List[int] = [4, 8, 8], kernel_sizes: List[int]|List[List[int]] = [8, 5, 3], norm_layer_name: str = "batch", window_size: int = 0) -> None:
+    def __init__(self, in_channels: int, mid_channels: List[int] = [4, 8, 8], kernel_sizes: List[int]|List[List[int]] = [8, 5, 3], norm_layer_name: str = "batch", window_size: int = 0, dropout: bool = True) -> None:
         super().__init__()
 
         # for easier saving and loading
@@ -119,6 +123,7 @@ class ResNetRepresentation(nn.Module):
                     out_channels=channels[i+1],
                     norm_layer_name=norm_layer_name,
                     window_size=window_size,
+                    dropout=dropout,
                     ) for i in range(len(mid_channels))
                 ]
             )

@@ -65,7 +65,7 @@ class Conv1dSamePadding(nn.Conv1d):
 class ConvBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 stride: int, norm_layer_name: str ="batch", window_size: int = 0) -> None:
+                 stride: int, norm_layer_name: str ="batch", window_size: int = 0, dropout: bool = True) -> None:
         super().__init__()
         if norm_layer_name == "layer":
             norm_layer = nn.LayerNorm([out_channels, window_size], elementwise_affine=True, bias=True)
@@ -83,7 +83,7 @@ class ConvBlock(nn.Module):
                               stride=stride),
             norm_layer,
         )
-        self.dout = nn.Identity() #nn.Dropout(0.2)
+        self.dout = nn.Dropout(0.2) if dropout else nn.Identity()
         # Initialize all weights and biases in this block
         for module in self.layers:
             _init_weights(module)
