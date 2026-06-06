@@ -185,76 +185,76 @@ def main(args):
             torch.save(model.state_dict(), p["pretext_model"])
         scheduler.step()
 
-    # load final model
-    checkpoint = torch.load(
-        p["pretext_model"], map_location="cpu", weights_only=False
-    )    
-    model.load_state_dict(checkpoint)
-    model.to(device)
+    # # load final model
+    # checkpoint = torch.load(
+    #     p["pretext_model"], map_location="cpu", weights_only=False
+    # )    
+    # model.load_state_dict(checkpoint)
+    # model.to(device)
 
-    # Relesase some memory
-    del train_dataloader
-    # Mine the topk nearest neighbors at the very end (Train)
-    # These will be served as input to the classification loss.
-    logger.log(
-        "Fill TS Repository for mining the nearest/furthest neighbors (train) ..."
-    )
-    ts_repository_aug = TSRepository(
-        len_train * 2, p["model_kwargs"], p["res_kwargs"]
-    )  # need size of repository == 1+num_of_anomalies
-    fill_ts_repository(
-        p,
-        base_dataloader,
-        model,
-        ts_repository_base,
-        real_aug=True,
-        ts_repository_aug=ts_repository_aug,
-    )
-    del base_dataloader, train_dataset
-    # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
-    out_pre = np.column_stack(
-        (
-            ts_repository_base.features.cpu().numpy(),
-            ts_repository_base.targets.cpu().numpy(),
-        )
-    )
+    # # Relesase some memory
+    # del train_dataloader
+    # # Mine the topk nearest neighbors at the very end (Train)
+    # # These will be served as input to the classification loss.
+    # logger.log(
+    #     "Fill TS Repository for mining the nearest/furthest neighbors (train) ..."
+    # )
+    # ts_repository_aug = TSRepository(
+    #     len_train * 2, p["model_kwargs"], p["res_kwargs"]
+    # )  # need size of repository == 1+num_of_anomalies
+    # fill_ts_repository(
+    #     p,
+    #     base_dataloader,
+    #     model,
+    #     ts_repository_base,
+    #     real_aug=True,
+    #     ts_repository_aug=ts_repository_aug,
+    # )
+    # del base_dataloader, train_dataset
+    # # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
+    # out_pre = np.column_stack(
+    #     (
+    #         ts_repository_base.features.cpu().numpy(),
+    #         ts_repository_base.targets.cpu().numpy(),
+    #     )
+    # )
 
-    np.save(p["pretext_features_train_path"], out_pre)
-    topk = 10
-    logger.log("Mine the nearest neighbors (Top-%d)" % (topk))
-    kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)
-    np.save(p["topk_neighbors_train_path"], knearest)
-    np.save(p["bottomk_neighbors_train_path"], kfurtherst)
-    del ts_repository_aug, kfurtherst, knearest
+    # np.save(p["pretext_features_train_path"], out_pre)
+    # topk = 10
+    # logger.log("Mine the nearest neighbors (Top-%d)" % (topk))
+    # kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)
+    # np.save(p["topk_neighbors_train_path"], knearest)
+    # np.save(p["bottomk_neighbors_train_path"], kfurtherst)
+    # del ts_repository_aug, kfurtherst, knearest
 
-    # Mine the topk nearest neighbors at the very end (Val)
-    # These will be used for validation.
-    logger.log("Fill TS Repository for mining the nearest/furthest neighbors (val) ...")
+    # # Mine the topk nearest neighbors at the very end (Val)
+    # # These will be used for validation.
+    # logger.log("Fill TS Repository for mining the nearest/furthest neighbors (val) ...")
 
-    fill_ts_repository(
-        p,
-        val_dataloader,
-        model,
-        ts_repository_val,
-        real_aug=False,
-        ts_repository_aug=None,
-    )
-    # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
-    del val_dataloader, val_dataset, model
-    out_pre = np.column_stack(
-        (
-            ts_repository_val.features.cpu().numpy(),
-            ts_repository_val.targets.cpu().numpy(),
-        )
-    )
+    # fill_ts_repository(
+    #     p,
+    #     val_dataloader,
+    #     model,
+    #     ts_repository_val,
+    #     real_aug=False,
+    #     ts_repository_aug=None,
+    # )
+    # # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
+    # del val_dataloader, val_dataset, model
+    # out_pre = np.column_stack(
+    #     (
+    #         ts_repository_val.features.cpu().numpy(),
+    #         ts_repository_val.targets.cpu().numpy(),
+    #     )
+    # )
 
-    np.save(p["pretext_features_test_path"], out_pre)
-    topk = 10
-    logger.log("Mine the nearest and furthest neighbors (Top-%d)" % (topk))
-    kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)
+    # np.save(p["pretext_features_test_path"], out_pre)
+    # topk = 10
+    # logger.log("Mine the nearest and furthest neighbors (Top-%d)" % (topk))
+    # kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)
 
-    np.save(p["topk_neighbors_val_path"], knearest)
-    np.save(p["bottomk_neighbors_val_path"], kfurtherst)
+    # np.save(p["topk_neighbors_val_path"], knearest)
+    # np.save(p["bottomk_neighbors_val_path"], kfurtherst)
     logger.finalize()
 
 
