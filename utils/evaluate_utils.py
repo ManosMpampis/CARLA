@@ -41,14 +41,14 @@ def contrastive_evaluate(
 
         b, w, h = ts_org.shape
         target_str = [str(l) for l in target.tolist()]
-        vertices_org = model(ts_org.view(b, h, w)).cpu()
+        vertices_org = model(ts_org.reshape(b, h, w)).cpu()
        
         target_w_str = [str(l * 2) for l in torch.ones_like(target).tolist()]
-        vertices_w = model(ts_w_augment.view(b, h, w)).cpu()
+        vertices_w = model(ts_w_augment.reshape(b, h, w)).cpu()
         
         target_ss = torch.ones_like(target)
         target_ss_str = [str(l) for l in target_ss.tolist()]
-        vertices_ss = model(ts_ss_augment.view(b, h, w)).cpu()
+        vertices_ss = model(ts_ss_augment.reshape(b, h, w)).cpu()
 
         all_feats.extend([vertices_org, vertices_w, vertices_ss])
         all_meta.extend([target_str, target_w_str, target_ss_str])
@@ -133,17 +133,12 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
             bs, w = ts.shape
             h = 1
 
-        
-        if isinstance(ts, np.ndarray):
-            ts = torch.from_numpy(ts).contiguous().float()
-            target = torch.from_numpy(batch["target"])
-        else:
-            target = batch["target"]
+        target = batch["target"]
         
         targets.append(target)
         inputs.append(ts.cpu())
 
-        res = model(ts.view(bs, h, w).to(device), forward_pass="return_all")
+        res = model(ts.reshape(bs, h, w).to(device), forward_pass="return_all")
         output = res["output"]
         if return_features:
             features[ptr : ptr + bs] = res["features"]

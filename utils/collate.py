@@ -13,7 +13,7 @@ def collate_custom(batch):
         return torch.stack(batch, 0)
 
     elif isinstance(batch[0], np.ndarray):
-        return np.stack(batch, 0)
+        return torch.from_numpy(np.stack(batch, 0))
 
     elif isinstance(batch[0], int):
         return torch.LongTensor(batch)

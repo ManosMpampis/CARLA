@@ -131,10 +131,10 @@ class DynamicNeighbors(Dataset):
         ts_ss_augment_features = torch.tensor([]).to(device)
 
         for i, batch in enumerate(loader): 
-            ts_org = torch.from_numpy(batch['ts_org']).to(device, non_blocking=True)
-            ts_w_augment = torch.from_numpy(batch['ts_w_augment']).to(device, non_blocking=True)
-            ts_ss_augment = torch.from_numpy(batch['ts_ss_augment']).to(device, non_blocking=True)
-            ts_label = torch.from_numpy(batch["target"])
+            ts_org = batch['ts_org'].to(device, non_blocking=True)
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+            ts_label = batch["target"]
             if ts_org.ndim == 3:
                 b, w, h = ts_org.shape
             else:

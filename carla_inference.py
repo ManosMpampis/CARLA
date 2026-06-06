@@ -47,7 +47,7 @@ class Carla():
             bs, w = ts.shape
             h =1
         
-        res = self.model(ts.view(bs, h, w), forward_pass='return_all')
+        res = self.model(ts.reshape(bs, h, w), forward_pass='return_all')
         output = res['output']
         for i, output_i in enumerate(output):
             predictions[i].append(torch.argmax(output_i, dim=1))

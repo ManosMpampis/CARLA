@@ -38,8 +38,8 @@ def pretext_train(
 
         optimizer.zero_grad()
 
-        anch_out = model(ts_org.view(b, h, w))
-        nn_out = model(ts_w_augmented.view(b, h, w))
+        anch_out = model(ts_org.reshape(b, h, w))
+        nn_out = model(ts_w_augmented.reshape(b, h, w))
         model.eval()
         fn_out = model(ts_ss_augmented.view(b, h, w))
         model.train()
@@ -93,9 +93,9 @@ def self_sup_classification_train(
 
     for i, batch in enumerate(train_loader):
         # Forward pass
-        anchors = torch.from_numpy(batch["anchor"]).to(device, non_blocking=True)
-        nneighbors = torch.from_numpy(batch["NNeighbor"]).to(device, non_blocking=True)
-        fneighbors = torch.from_numpy(batch["FNeighbor"]).to(device, non_blocking=True)
+        anchors = batch["anchor"].to(device, non_blocking=True)
+        nneighbors = batch["NNeighbor"].to(device, non_blocking=True)
+        fneighbors = batch["FNeighbor"].to(device, non_blocking=True)
 
         if anchors.ndim == 3:
             b, w, h = anchors.shape
