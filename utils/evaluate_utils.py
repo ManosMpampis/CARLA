@@ -37,7 +37,7 @@ def contrastive_evaluate(
         ts_org = batch["ts_org"].to(device, non_blocking=True)
         ts_w_augment = batch["ts_w_augment"].to(device, non_blocking=True)
         ts_ss_augment = batch["ts_ss_augment"].to(device, non_blocking=True)
-        target = batch["target"].to(device, non_blocking=True)
+        target = find_target(batch["target"])#.to(device, non_blocking=True)
 
         b, w, h = ts_org.shape
         target_str = [str(l) for l in target.tolist()]
