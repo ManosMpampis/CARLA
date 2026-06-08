@@ -32,9 +32,7 @@ class PSM(Original_dataset):
             self.base_folder += "train"
         else:
             self.base_folder += "test"
-            self.targets = pd.read_csv(os.path.join(self.root, "test_label.csv"))
-            self.targets = self.targets.drop(columns=["timestamp_(min)"])
-            self.targets = np.asarray(self.targets).astype(int)
+            self.targets = np.loadtxt(os.path.join(self.root, "test_label.csv"), skiprows=1,usecols=(1), delimiter=',').astype(int)
 
         file_path = os.path.join(self.root, f"{self.base_folder}.csv")
         self.data = pd.read_csv(file_path)
