@@ -193,11 +193,11 @@ def main(args):
             report_str = (
                 f"\nValidation Set Metrics\n"
                 f"Anomalies Classification --> Majority Label: {normal_label}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_eval_metrics.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in cls_eval_metrics.items())}"
                 f"Anomalies Best F1 --> Best Threshold: {best_train_th}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in best_eval_metrics.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in best_eval_metrics.items())}"
                 f"Anomalies Train Best F1 --> Threshold: {best_train_th}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in eval_best_metrics_with_train_th.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in eval_best_metrics_with_train_th.items())}"
             )
 
             logger.log(report_str)
@@ -347,11 +347,11 @@ def model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataload
     report_str = (
                 f"\nValidation Set Metrics {tag}\n"
                 f"Anomalies Classification --> Majority Label: {normal_label}/Best Detections Threshold:{best_detections_thresholds}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in cls_score.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in cls_score.items())}"
                 f"Anomalies Best F1 --> Best Threshold: {threshold_best}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in score_best.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in score_best.items())}"
                 f"Anomalies Train Best F1 --> Threshold: {best_train_th}\n"
-                f"{'\n'.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
+                f"{''.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
             )
     logger.log(report_str)
 

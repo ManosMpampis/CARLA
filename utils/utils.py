@@ -3,6 +3,105 @@ import logging
 import errno
 import numpy as np
 import torch
+# from ..delete_files import clean_directories
+
+# import os
+import shutil
+from pathlib import Path
+
+
+def get_sorted_directories(base_path: str) -> list[Path]:
+    """Get all subdirectories sorted by their numeric name."""
+    base = Path(base_path)
+    dirs = [d for d in base.iterdir() if d.is_dir()]
+    # Sort by numeric value of directory name
+    return sorted(dirs, key=lambda x: int(x.name))
+
+
+def is_multiple_of_50(name: str) -> bool:
+    """Check if directory name is a multiple of 50."""
+    try:
+        num = int(name)
+        return num % 50 == 0
+    except ValueError:
+        return False
+
+
+def get_last_non_multiple_of_50(dirs: list[Path]) -> Path | None:
+    """Get the last directory that is NOT a multiple of 50."""
+    non_multiples = [d for d in dirs if not is_multiple_of_50(d.name)]
+    return non_multiples[-1] if non_multiples else None
+
+
+def clean_directories(base_path: str, dry_run: bool = True) -> None:
+    """
+    Clean up directories keeping:
+    - First 2 directories
+    - The 0999 directory
+    - The last non-multiple-of-50 directory
+    
+    Args:
+        base_path: Path to the parent directory
+        dry_run: If True, only print what would be deleted without actually deleting
+    """
+    base = Path(base_path)
+    
+    if not base.exists():
+        # print(f"Error: Directory '{base_path}' does not exist.")
+        return
+    
+    dirs = get_sorted_directories(base_path)
+    
+    if not dirs:
+        # print("No directories found.")
+        return
+    
+    # print(f"Found {len(dirs)} directories:\n")
+    # for d in dirs:
+    #     print(f"  {d.name}")
+    # print()
+    
+    # Determine which directories to keep
+    dirs_to_keep = set()
+    
+    # First 3 directories
+    if len(dirs) >= 1:
+        dirs_to_keep.add(dirs.pop(0).name)
+    if len(dirs) >= 2:
+        dirs_to_keep.add(dirs.pop(0).name)
+    if len(dirs) >= 3:
+        dirs_to_keep.add(dirs.pop(0).name)
+    
+    # Directory 0999
+    dirs_to_keep.add(dirs.pop(-1).name)
+    
+    # Last non-multiple of 50
+    last_non_multiple = get_last_non_multiple_of_50(dirs)
+    if last_non_multiple:
+        dirs_to_keep.add(last_non_multiple.name)
+    
+    # Directories to delete
+    dirs_to_delete = [d for d in dirs if d.name not in dirs_to_keep]
+    
+    # print("Directories to KEEP:")
+    # for name in sorted(dirs_to_keep):
+        # print(f"  ✓ {name}")
+    # print()
+    
+    # print("Directories to DELETE:")
+    # for d in dirs_to_delete:
+        # print(f"  ✗ {d.name}")
+    # print()
+    
+    if dry_run:
+        print(f"DRY RUN: {len(dirs_to_delete)} directories would be deleted.")
+        print("Run with dry_run=False to actually delete them.")
+    else:
+        for d in dirs_to_delete:
+            shutil.rmtree(d)
+            # print(f"Deleted: {d.name}")
+        # print(f"\nSuccessfully deleted {len(dirs_to_delete)} directories.")
+
 
 def mkdir_if_missing(directory):
     if directory == None or directory == "None" or directory == "":
@@ -124,6 +223,7 @@ class Logger:
             self.log(
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
+            self.experiment_dir = os.path.join(self.log_dir, "tensorboard")
             self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, "tensorboard"))
         self.init_tensorboard_functions()
             
@@ -205,6 +305,7 @@ class Logger:
         if self.use_tensorboard:
             self.experiment.flush()
             self.experiment.close()
+            clean_directories(self.experiment_dir, dry_run=False)
         
 
     def timer(self, method, *args):
