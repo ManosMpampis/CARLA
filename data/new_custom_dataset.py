@@ -128,7 +128,7 @@ class DynamicNeighbors(Dataset):
         
         data_features = torch.tensor([]).to(device)
         ts_w_augment_features = torch.tensor([]).to(device)
-        ts_ss_augment_features = torch.tensor([]).to(device)
+        ts_ss_augment_features = torch.tensor([])
 
         for i, batch in enumerate(loader): 
             ts_org = batch['ts_org'].to(device, non_blocking=True)
@@ -154,19 +154,23 @@ class DynamicNeighbors(Dataset):
             targets.append(torch.ones_like(ts_label)*2)
             
             output = model(ts_ss_augment.reshape(b, h, w), forward_pass="return_all")
-            ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"]), dim=0)
+            ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"].to("cpu")), dim=0)
             predictions.append(torch.argmax(output["output"], dim=1))
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(torch.ones_like(ts_label)*4)
 
         if update:
             # Compute pairwise distances
-            distances = torch.cdist(data_features, ts_w_augment_features)
+            distances = torch.cdist(data_features, ts_w_augment_features).to("cpu")
+            del ts_w_augment_features
+
             # Find indices of k furthest near-neighbors for each feature
             _, furthest_indices = distances.topk(self.topk, largest=True, dim=1)
             self.k_furthest_nneighbours = furthest_indices[:, :].cpu().numpy()
 
-            distances = torch.cdist(data_features, ts_ss_augment_features)
+            distances = torch.cdist(data_features, ts_ss_augment_features.to(device)).to("cpu")
+            del ts_ss_augment_features
+
             # Find indices of k nearest far-neighbors for each feature
             _, nearest_indices = distances.topk(self.topk, largest=False, dim=1)
             self.k_nearest_fneighbours = nearest_indices[:, :].cpu().numpy()
