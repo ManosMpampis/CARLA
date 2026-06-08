@@ -134,6 +134,7 @@ def main(args):
 
     # Training
     pretext_best_loss = np.inf
+    eval_every_n_epoch = 200
     for epoch in range(start_epoch, p["epochs"]):
         logger.log("Epoch %d/%d" % (epoch + 1, p["epochs"]))
         logger.log("-" * 15)
@@ -150,8 +151,8 @@ def main(args):
         tmp_loss = loss_dict["loss"]
 
         if (
-            epoch % 200 == 0
-            or epoch == p["epochs"] - 1
+            (epoch+1) % eval_every_n_epoch == 0
+            or (epoch+1) == p["epochs"]
             or tmp_loss <= pretext_best_loss
         ):
             logger.metrics_summary("Pretext Loss", loss_dict, epoch + 1)
@@ -164,13 +165,12 @@ def main(args):
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
             logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
 
-            pretext_best_loss = tmp_loss
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
-                "pretext_best_loss": pretext_best_loss,
+                "pretext_best_loss": tmp_loss,
                 "last_margin": last_margin,
             }
             if hasattr(criterion, "prev_ema_loss"):
@@ -255,7 +255,7 @@ def main(args):
 
     # np.save(p["topk_neighbors_val_path"], knearest)
     # np.save(p["bottomk_neighbors_val_path"], kfurtherst)
-    logger.finalize()
+    logger.finalize(eval_every_n_epoch)
 
 
 if __name__ == "__main__":

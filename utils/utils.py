@@ -18,49 +18,47 @@ def get_sorted_directories(base_path: str) -> list[Path]:
     return sorted(dirs, key=lambda x: int(x.name))
 
 
-def is_multiple_of_50(name: str) -> bool:
-    """Check if directory name is a multiple of 50."""
+def is_multiple_of_eval_epoch(name: str, eval_epoch: int = 50) -> bool:
+    """Check if directory name is a multiple of evaluation."""
     try:
         num = int(name)
-        return num % 50 == 0
+        return num % eval_epoch == 0
     except ValueError:
         return False
 
 
-def get_last_non_multiple_of_50(dirs: list[Path]) -> Path | None:
-    """Get the last directory that is NOT a multiple of 50."""
-    non_multiples = [d for d in dirs if not is_multiple_of_50(d.name)]
+def get_last_non_multiple_of_eval_epoch(dirs: list[Path], eval_epoch = 50) -> Path | None:
+    """Get the last directory that is NOT a multiple of evaluation."""
+    non_multiples = [d for d in dirs if not is_multiple_of_eval_epoch(d.name, eval_epoch)]
     return non_multiples[-1] if non_multiples else None
 
 
-def clean_directories(base_path: str, dry_run: bool = True) -> None:
+def clean_directories(base_path: str, dry_run: bool = True, eval_every_n_epoch: int = 50) -> None:
     import re
     """
     Clean up directories keeping:
     - First 2 directories
-    - The 0999 directory
-    - The last non-multiple-of-50 directory
+    - The Last directory
+    - The last non-multiple-of-eval directory
+    - The directory of the epoch in the checkpoint
     
     Args:
         base_path: Path to the parent directory
         dry_run: If True, only print what would be deleted without actually deleting
     """
+    epoch = torch.load(f"{base_path[:-13]}/checkpoint.pth.tar")["epoch"]
     base = Path(base_path)
     
     if not base.exists():
-        # print(f"Error: Directory '{base_path}' does not exist.")
+
         return
     
     dirs = get_sorted_directories(base_path)
     
     if not dirs:
-        # print("No directories found.")
+
         return
     
-    # print(f"Found {len(dirs)} directories:\n")
-    # for d in dirs:
-    #     print(f"  {d.name}")
-    # print()
     
     # Determine which directories to keep
     dirs_to_keep = set()
@@ -77,22 +75,15 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
     dirs_to_keep.add(dirs.pop(-1).name)
     
     # Last non-multiple of 50
-    last_non_multiple = get_last_non_multiple_of_50(dirs)
+    last_non_multiple = get_last_non_multiple_of_eval_epoch(dirs, eval_every_n_epoch)
     if last_non_multiple:
         dirs_to_keep.add(last_non_multiple.name)
-    
+    # Directory of the checkpoint epoch
+    padding_length = next((len(d) for d in dirs_to_keep if d and d.isdigit()), None)
+    dirs_to_keep.add(str(epoch).zfill(padding_length))
     # Directories to delete
     dirs_to_delete = [d for d in dirs if d.name not in dirs_to_keep]
     
-    # print("Directories to KEEP:")
-    # for name in sorted(dirs_to_keep):
-        # print(f"  ✓ {name}")
-    # print()
-    
-    # print("Directories to DELETE:")
-    # for d in dirs_to_delete:
-        # print(f"  ✗ {d.name}")
-    # print()
     
     if dry_run:
         print(f"DRY RUN: {len(dirs_to_delete)} directories would be deleted.")
@@ -100,8 +91,6 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
     else:
         for d in dirs_to_delete:
             shutil.rmtree(d)
-            # print(f"Deleted: {d.name}")
-        # print(f"\nSuccessfully deleted {len(dirs_to_delete)} directories.")
             try:
                 embeddings_file_path = f"{base_path}/projector_config.pbtxt"
                 with open(embeddings_file_path, 'r') as f:
@@ -347,7 +336,7 @@ class Logger:
     def _add_graph(self, model, input_to_model):
         self.experiment.add_graph(model, input_to_model, False, False)
 
-    def finalize(self):
+    def finalize(self, eval_every_n_epoch: int = 50):
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
@@ -355,7 +344,7 @@ class Logger:
         if self.use_tensorboard:
             self.experiment.flush()
             self.experiment.close()
-            clean_directories(self.experiment_dir, dry_run=False)
+            clean_directories(self.experiment_dir, dry_run=False, eval_every_n_epoch=eval_every_n_epoch)
         
 
     def timer(self, method, *args):
