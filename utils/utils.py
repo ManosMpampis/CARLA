@@ -34,6 +34,7 @@ def get_last_non_multiple_of_50(dirs: list[Path]) -> Path | None:
 
 
 def clean_directories(base_path: str, dry_run: bool = True) -> None:
+    import re
     """
     Clean up directories keeping:
     - First 2 directories
@@ -101,7 +102,56 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
             shutil.rmtree(d)
             # print(f"Deleted: {d.name}")
         # print(f"\nSuccessfully deleted {len(dirs_to_delete)} directories.")
+            try:
+                embeddings_file_path = f"{base_path}/projector_config.pbtxt"
+                with open(embeddings_file_path, 'r') as f:
+                    lines = f.readlines()
+            except FileNotFoundError:
+                print(f"✗ Error: Embeddings file not found at '{embeddings_file_path}'")
+                return
 
+            output_lines = []
+            current_block = []
+            in_block = False
+            keep_block = False
+            removed_count = 0
+
+            for line in lines:
+                stripped_line = line.strip()
+                
+                # Detect start of an embeddings block
+                if stripped_line.startswith('embeddings {'):
+                    in_block = True
+                    keep_block = False
+                    current_block = [line]
+                    continue
+                
+                if in_block:
+                    current_block.append(line)
+                    
+                    # Check if this block references a directory we're deleting
+                    if 'tensor_name:' in line and 'Cluster:' in line:
+                        match = re.search(r'tensor_name:\s*"Cluster:(\d+)"', line)
+                        if match:
+                            cluster_num = match.group(1)
+                            if cluster_num in dirs_to_keep:
+                                keep_block = True
+                                removed_count += 1
+                    
+                    # Detect end of an embeddings block
+                    if stripped_line == '}':
+                        in_block = False
+                        if keep_block:
+                            output_lines.extend(current_block)
+                        current_block = []
+                
+                else:
+                    # Preserve lines that are not part of embeddings blocks
+                    output_lines.append(line)
+
+            # Write the filtered content back to the file
+            with open(embeddings_file_path, 'w') as f:
+                f.writelines(output_lines)
 
 def mkdir_if_missing(directory):
     if directory == None or directory == "None" or directory == "":

@@ -28,6 +28,7 @@ def get_last_non_multiple_of_50(dirs: list[Path]) -> Path | None:
 
 
 def clean_directories(base_path: str, dry_run: bool = True) -> None:
+    import re
     """
     Clean up directories keeping:
     - First 2 directories
@@ -41,19 +42,19 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
     base = Path(base_path)
     
     if not base.exists():
-        print(f"Error: Directory '{base_path}' does not exist.")
+        # print(f"Error: Directory '{base_path}' does not exist.")
         return
     
     dirs = get_sorted_directories(base_path)
     
     if not dirs:
-        print("No directories found.")
+        # print("No directories found.")
         return
     
-    print(f"Found {len(dirs)} directories:\n")
-    for d in dirs:
-        print(f"  {d.name}")
-    print()
+    # print(f"Found {len(dirs)} directories:\n")
+    # for d in dirs:
+    #     print(f"  {d.name}")
+    # print()
     
     # Determine which directories to keep
     dirs_to_keep = set()
@@ -77,15 +78,15 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
     # Directories to delete
     dirs_to_delete = [d for d in dirs if d.name not in dirs_to_keep]
     
-    print("Directories to KEEP:")
-    for name in sorted(dirs_to_keep):
-        print(f"  ✓ {name}")
-    print()
+    # print("Directories to KEEP:")
+    # for name in sorted(dirs_to_keep):
+        # print(f"  ✓ {name}")
+    # print()
     
-    print("Directories to DELETE:")
-    for d in dirs_to_delete:
-        print(f"  ✗ {d.name}")
-    print()
+    # print("Directories to DELETE:")
+    # for d in dirs_to_delete:
+        # print(f"  ✗ {d.name}")
+    # print()
     
     if dry_run:
         print(f"DRY RUN: {len(dirs_to_delete)} directories would be deleted.")
@@ -93,8 +94,58 @@ def clean_directories(base_path: str, dry_run: bool = True) -> None:
     else:
         for d in dirs_to_delete:
             shutil.rmtree(d)
-            print(f"Deleted: {d.name}")
-        print(f"\nSuccessfully deleted {len(dirs_to_delete)} directories.")
+            # print(f"Deleted: {d.name}")
+        # print(f"\nSuccessfully deleted {len(dirs_to_delete)} directories.")
+            try:
+                embeddings_file_path = f"{base_path}/projector_config.pbtxt"
+                with open(embeddings_file_path, 'r') as f:
+                    lines = f.readlines()
+            except FileNotFoundError:
+                print(f"✗ Error: Embeddings file not found at '{embeddings_file_path}'")
+                return
+
+            output_lines = []
+            current_block = []
+            in_block = False
+            keep_block = False
+            removed_count = 0
+
+            for line in lines:
+                stripped_line = line.strip()
+                
+                # Detect start of an embeddings block
+                if stripped_line.startswith('embeddings {'):
+                    in_block = True
+                    keep_block = False
+                    current_block = [line]
+                    continue
+                
+                if in_block:
+                    current_block.append(line)
+                    
+                    # Check if this block references a directory we're deleting
+                    if 'tensor_name:' in line and 'Cluster:' in line:
+                        match = re.search(r'tensor_name:\s*"Cluster:(\d+)"', line)
+                        if match:
+                            cluster_num = match.group(1)
+                            if cluster_num in dirs_to_keep:
+                                keep_block = True
+                                removed_count += 1
+                    
+                    # Detect end of an embeddings block
+                    if stripped_line == '}':
+                        in_block = False
+                        if keep_block:
+                            output_lines.extend(current_block)
+                        current_block = []
+                
+                else:
+                    # Preserve lines that are not part of embeddings blocks
+                    output_lines.append(line)
+
+            # Write the filtered content back to the file
+            with open(embeddings_file_path, 'w') as f:
+                f.writelines(output_lines)
 
 
 if __name__ == "__main__":
