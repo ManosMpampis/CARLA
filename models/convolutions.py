@@ -49,19 +49,6 @@ class Conv1dSamePadding(nn.Conv1d):
                         padding=padding, dilation=dilation, groups=self.groups)
         return output
 
-
-# def conv1d_same_padding(input, weight, bias, stride, dilation, groups):
-#     # stride and dilation are expected to be tuples.
-#     kernel, dilation, stride = weight.size()[2], dilation[0], stride[0]
-#     l_out = l_in = input.size()[2]
-#     padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-#     input = F.pad(input, [0, padding % 2])
-#     padding = (padding // 2,)
-#     output = F.conv1d(input=input, weight=weight, bias=bias, stride=stride,
-#                     padding=padding,
-#                     dilation=dilation, groups=groups)
-#     return output
-
 class ConvBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,

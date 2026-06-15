@@ -1,9 +1,4 @@
-import random
 import numpy as np
-import torch
-
-device = torch.device("cuda")
-
 
 class NoiseTransformation(object):
     def __init__(self, sigma):
@@ -91,7 +86,6 @@ class SubAnomaly(object):
 
         if shapelet_factor:
             anomalous_subsequence = window[start_index] + (np.random.rand(len(anomalous_subsequence)) * 0.1).reshape(-1, 1)
-            # anomalous_subsequence = window[start_index] + (torch.rand_like(window[start_index]) * 0.1)  #cuda use!
 
         window[start_index:end_index] = anomalous_subsequence
 
@@ -102,12 +96,6 @@ class SubAnomaly(object):
         Adding sub anomaly with user-defined portion
         """
         anomalous_window = X.copy()
-        
-        # anomaly_seasonal = window.copy()
-        # anomaly_trend = window.copy()
-        # anomaly_global = window.copy()
-        # anomaly_contextual = window.copy()
-        # anomaly_shapelet = window.copy()
 
         min_len = int(anomalous_window.shape[0] * 0.1)
         max_len = int(anomalous_window.shape[0] * 0.9)
@@ -115,8 +103,8 @@ class SubAnomaly(object):
         start_index = np.random.randint(0, len(anomalous_window) - subsequence_length)
         if (anomalous_window.ndim > 1):
             num_features = anomalous_window.shape[1]
-            num_dims = np.random.randint(int(num_features/10), int(num_features/2)) #(int(num_features/5), int(num_features/2))
-            for k in range(num_dims):
+            num_dims = np.random.randint(int(num_features/10), int(num_features/2))
+            for _ in range(num_dims):
                 i = np.random.randint(0, num_features)
                 temp_win = anomalous_window[:, i].reshape((anomalous_window.shape[0], 1))
                 anomaly_type = np.random.randint(0, 4)
@@ -194,16 +182,6 @@ class SubAnomaly(object):
                                                         shapelet_factor=True,
                                                         subsequence_length=subsequence_length,
                                                         start_index = start_index)
-
-        # anomalies = [
-        #     anomaly_seasonal,
-        #     anomaly_trend,
-        #     anomaly_global,
-        #     anomaly_contextual,
-        #     anomaly_shapelet
-        # ]
-
-        # anomalous_window = random.choice(anomalies)
 
         return anomalous_window
 

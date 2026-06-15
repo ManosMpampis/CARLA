@@ -1,5 +1,4 @@
 import os
-import math
 import numpy as np
 import torch
 import torchvision.transforms as transforms
@@ -121,9 +120,6 @@ def get_train_dataset(
     sanomaly,
     to_augmented_dataset=False,
     to_neighbors_dataset=False,
-    split=None,
-    data=None,
-    label=None,
 ):
     # Base dataset
     mean, std = 0, 0
@@ -238,8 +234,6 @@ def get_val_dataset(
     to_neighbors_dataset=False,
     mean_data=None,
     std_data=None,
-    data=None,
-    label=None,
 ):
     # Base dataset
     if p["val_db_name"] == "smd":
@@ -356,7 +350,6 @@ def get_train_transformations(p):
         return transforms.Compose(
             [
                 NoiseTransformation(p["transformation_kwargs"]["noise_sigma"]),
-                # Crop(p['transformation_kwargs']['crop_size'])
             ]
         )
 
@@ -390,8 +383,6 @@ def get_optimizer(p, model, cluster_head_only=False):
             else:
                 param.requires_grad = False
         params = list(filter(lambda p: p.requires_grad, model.parameters()))
-        assert len(params) == 2 * p["num_heads"]
-
     else:
         params = model.parameters()
 
@@ -432,56 +423,3 @@ def get_scheduler(p, optimizer):
     else:
         raise ValueError("Invalid learning rate schedule {}".format(p["scheduler"]))
     return SequentialLR(optimizer, [warmup, scheduler], milestones=[warmup_epochs])
-
-def adjust_learning_rate(p, optimizer, epoch):
-    lr = p["optimizer_kwargs"]["lr"]
-    warmup_epochs = p["scheduler_kwargs"].get("lr_warmup_epochs", 0)
-    if epoch < warmup_epochs:
-        lr = lr * (epoch / warmup_epochs)
-    else:
-        epoch -= warmup_epochs
-        if p["scheduler"] == "cosine":
-            eta_min = p["scheduler_kwargs"]["lr_eta_min"]
-            lr = (
-                eta_min
-                + (lr - eta_min) * (1 + math.cos(math.pi * epoch / p["epochs"])) / 2
-            )
-        elif p["scheduler"] == "cosine_restart":
-            eta_min = p["scheduler_kwargs"]["lr_eta_min"]
-            cycle_period = p["scheduler_kwargs"]["T_period"]
-            cycle_period_mul = p["scheduler_kwargs"].get("T_mul", 1)
-
-            cycle = 0
-            if epoch < cycle_period:
-                cycle = 0
-            else:
-                epoch -= cycle_period
-                cycle = 1
-                cycle_period *= cycle_period_mul
-                while True:
-                    if epoch > cycle_period:
-                        epoch -= cycle_period
-                        cycle += 1
-                        cycle_period *= cycle_period_mul
-                    else:
-                        break
-
-            lr = (
-                eta_min
-                + (lr - eta_min) * (1 + math.cos(math.pi * epoch / cycle_period)) / 2
-            )
-        elif p["scheduler"] == "step":
-            steps = np.sum(epoch > np.array(p["scheduler_kwargs"]["lr_decay_epochs"]))
-            if steps > 0:
-                lr = lr * (p["scheduler_kwargs"]["lr_decay_rate"] ** steps)
-        elif p["scheduler"] == "constant":
-            lr = lr
-        elif p["scheduler"] == "linear":
-            lr = lr * (1 - epoch / p["epochs"])
-        else:
-            raise ValueError("Invalid learning rate schedule {}".format(p["scheduler"]))
-
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
-
-    return lr

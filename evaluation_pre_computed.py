@@ -54,7 +54,7 @@ def main(args):
         "eval_train_cls"
         ]
 
-    version = "instance_norm/small_eps_re_weight_initialization"#args.version
+    version = "layer_norm/small_eps_re_weight_initialization"#args.version
     save_dir = "_common"#args.save_dir
     ds_name = "new_smd"#args.get('dataset', 'new_smd')
 

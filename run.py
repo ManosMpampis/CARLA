@@ -411,26 +411,43 @@ print(file_list)
 #         main_pretext(pretext_args)
 
 
-index = file_list.index('machine-1-1.txt')
-version = "instance_norm/small_eps_re_weight_initialization"
+index = file_list.index('machine-1-8.txt')
+version_batch = "batch_norm/small_eps_re_weight_initialization"
+version_layer = "layer_norm/small_eps_re_weight_initialization"
 for filename in file_list[index:]: #['machine-1-2.txt']: #file_list: #[index:]:  #['GECCO']: #['machine-2-4.txt']:
     # if 'real_' in filename:
-    if filename != 'GECCO':
+    if filename != 'machine-1-8.txt':
         print(filename)
 
         # Run the pretext script
-        # pretext_args = EasyDict({"config_env": "configs/env.yml",
-        #                 "config_exp": "configs/pretext/new_loss/smd/final_lr_instance.yml",
-        #                 "fname": filename,
-        #                 "version": f"{version}"})
-        # main_pretext(pretext_args)
+        pretext_args = EasyDict({"config_env": "configs/env.yml",
+                        "config_exp": "configs/pretext/new_loss/smd/final_lr.yml",
+                        "fname": filename,
+                        "version": f"{version_batch}"})
+        main_pretext(pretext_args)
 
         # Run the classification script
         classification_args = EasyDict({"config_env": "configs/env.yml",
-                        "config_exp": "configs/classification/common.yml",
+                        "config_exp": "configs/classification/batch_common.yml",
                         "fname": filename,
-                        "version": f"{version}"})
+                        "version": f"{version_batch}"})
         main_classification_new(classification_args)
+
+        # Run the pretext script
+        pretext_args = EasyDict({"config_env": "configs/env.yml",
+                        "config_exp": "configs/pretext/new_loss/smd/final_lr_layer.yml",
+                        "fname": filename,
+                        "version": f"{version_layer}"})
+        main_pretext(pretext_args)
+
+        # Run the classification script
+    classification_args = EasyDict({"config_env": "configs/env.yml",
+                    "config_exp": "configs/classification/layer_common.yml",
+                    "fname": filename,
+                    "version": f"{version_layer}"})
+    main_classification_new(classification_args)
+
+
 
         # classification_args = EasyDict({"config_env": "configs/env.yml",
         #                 "config_exp": "configs/classification/common_re_schedule_data.yml",

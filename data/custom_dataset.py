@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-device = torch.device("cuda")
 
 """ 
     AugmentedDataset
@@ -125,11 +124,10 @@ class NeighborsDataset(Dataset):
         )  # Nearest neighbor indices (np.array  [len(dataset) x k])
         FN_indices = (
             F_indices.copy()
-        )  # Nearest neighbor indices (np.array  [len(dataset) x k])
+        )  # Furthest neighbor indices (np.array  [len(dataset) x k])
         if p["num_neighbors"] is not None:
             self.NN_indices = NN_indices[:, : p["num_neighbors"]]
             self.FN_indices = FN_indices[:, : -p["num_neighbors"]]
-        # assert( int(self.indices.shape[0]/4) == len(self.dataset) )
 
         self.dataset.data = dataset.data
         self.dataset.targets = dataset.targets
@@ -153,14 +151,8 @@ class NeighborsDataset(Dataset):
         output = {}
         anchor = self.dataset.__getitem__(index)
 
-        # NN_index = np.random.choice(self.N_indices[index], 1)[0]
         NNeighbor = self.NNeighbor.__getitem__(index)
-        # FN_index = np.random.choice(self.F_indices[index], 1)[0]
         FNeighbor = self.FNeighbor.__getitem__(index)
-
-        # anchor['ts_org'] = self.anchor_transform(anchor['ts_org'])
-        # NNeighbor['ts_org'] = self.neighbor_transform(NNeighbor['ts_org'])
-        # FNeighbor['ts_org'] = self.neighbor_transform(FNeighbor['ts_org'])
 
         output["anchor"] = anchor["ts_org"]
         output["NNeighbor"] = NNeighbor
@@ -192,10 +184,6 @@ class ContrustiveDataset(Dataset):
             self.neighbor_transform = transform
 
         self.dataset = dataset
-        
-        # self.dataset.k_furthest_nneighbours # furthest near-neighbor indices (np.array  [len(dataset) x k])
-        # self.dataset.k_nearest_fneighbours # Nearest further-neighbor indices (np.array  [len(dataset) x k])
-
 
         self.NNeighbor = self.dataset.ts_w_augment
         self.FNeighbor = self.dataset.ts_ss_augment

@@ -45,15 +45,6 @@ class ResNetBlock(nn.Module):
                 dropout=dropout,
             ))
         
-        # residual = nn.Sequential(*[
-        #     Conv1dSamePadding(
-        #         in_channels=in_channels,
-        #         out_channels=out_channels,
-        #         kernel_size=1,
-        #         stride=1
-        #     ),
-        #     norm_layer(num_features=out_channels)
-        # ])
         residual = ConvBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
@@ -110,12 +101,6 @@ class ResNetRepresentation(nn.Module):
 
         channels = [in_channels] + mid_channels
 
-        # self.layers = nn.Sequential(*[
-        #     ResNetBlock(in_channels=in_channels, out_channels=mid_channels),
-        #     ResNetBlock(in_channels=mid_channels, out_channels=mid_channels * 2),
-        #     ResNetBlock(in_channels=mid_channels * 2, out_channels=mid_channels * 2),
-        # ])
-
         self.layers = nn.Sequential(
             *[
                 ResNetBlock(
@@ -127,8 +112,6 @@ class ResNetRepresentation(nn.Module):
                     ) for i in range(len(mid_channels))
                 ]
             )
-
-        #self.avgpool = nn.AdaptiveAvgPool1d(1)
         
         # Initialize all weights and biases in this representation
         self._init_weights()
@@ -142,7 +125,6 @@ class ResNetRepresentation(nn.Module):
 
     def forward(self, x: torch.Tensor):
         z = self.layers(x)
-        # z = z.mean(dim=-1)
         return z
 
 def resnet_ts(**kwargs):

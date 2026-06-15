@@ -197,7 +197,7 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 class Logger:
-    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log'):
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', delete_files=False):
 
         self.verbose = verbose
         self.use_tensorboard = use_tensorboard
@@ -206,6 +206,7 @@ class Logger:
         self._version = version
         self.log_dir = os.path.join(file_path)
         self.file_name = file_name
+        self.delete_files = delete_files
         self._init_logger()
 
     @property
@@ -344,9 +345,9 @@ class Logger:
         if self.use_tensorboard:
             self.experiment.flush()
             self.experiment.close()
-            clean_directories(self.experiment_dir, dry_run=False, eval_every_n_epoch=eval_every_n_epoch)
+            if self.delete_files:
+                clean_directories(self.experiment_dir, dry_run=False, eval_every_n_epoch=eval_every_n_epoch)
         
-
     def timer(self, method, *args):
         torch.cuda.synchronize()
         start_time = time.time()

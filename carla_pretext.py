@@ -13,12 +13,11 @@ from utils.common_config import (
     get_val_dataloader,
     get_train_transformations,
     get_val_transformations1,
-    adjust_learning_rate,
     inject_sub_anomaly,
     get_scheduler,
+    get_optimizer,
 )
 from utils.evaluate_utils import contrastive_evaluate
-from utils.repository import TSRepository, fill_ts_repository
 from utils.train_utils import pretext_train
 from utils.utils import Logger, clean_checkpoint
 
@@ -36,13 +35,12 @@ def set_seed(seed):
 
 set_seed(4)
 
-device = torch.device("cuda")
 
-
-def main(args):
-    p = create_config(args.config_env, args.config_exp, args.fname, args.version)
+def main(args, update_dictionary={}):
+    p = create_config(args.config_env, args.config_exp, args.fname, args.version, update_dictionary=update_dictionary)
+    device = torch.device("cuda:0" if (torch.cuda.is_available() and p.get("device", "cuda")) else "cpu")
     logger = Logger(
-        p["version"], verbose=2, file_path=p["pretext_dir"], use_tensorboard=True
+        p["version"], verbose=2, file_path=p["pretext_dir"], use_tensorboard=True, delete_files=True
     )
     logger.log("CARLA Pretext stage --> ")
 
@@ -60,7 +58,6 @@ def main(args):
     train_dataset = get_train_dataset(
         p, train_transforms, sanomaly, to_augmented_dataset=True
     )
-    len_train = len(train_dataset)
 
     val_dataset = get_val_dataset(
         p, val_transforms, sanomaly, False, train_dataset.mean, train_dataset.std
@@ -68,7 +65,6 @@ def main(args):
 
     train_dataloader = get_train_dataloader(p, train_dataset)
     val_dataloader = get_val_dataloader(p, val_dataset)
-    base_dataloader = get_val_dataloader(p, train_dataset)
 
     logger.log(
         "Dataset contains {}/{} train/val samples".format(
@@ -76,18 +72,11 @@ def main(args):
         )
     )
 
-    ts_repository_base = TSRepository(len_train, p["model_kwargs"], p["res_kwargs"])
-    ts_repository_base.to(device)
-    ts_repository_val = TSRepository(
-        len(val_dataset), p["model_kwargs"], p["res_kwargs"]
-    )
-    ts_repository_val.to(device)
-
     criterion = get_criterion(p)
     criterion = criterion.to(device)
 
-    # optimizer = get_optimizer(p, model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=p["optimizer_kwargs"]["lr"])
+    optimizer = get_optimizer(p, model)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=p["optimizer_kwargs"]["lr"])
     scheduler = get_scheduler(p, optimizer)
 
     # Checkpoint
@@ -96,11 +85,11 @@ def main(args):
         checkpoint = torch.load(
             p["pretext_checkpoint"], map_location="cpu", weights_only=False
         )
-        if "scheduler" in checkpoint:
-            scheduler.load_state_dict(checkpoint["scheduler"])
         checkpoint_model = clean_checkpoint(checkpoint["model"], p["pretext_checkpoint"], checkpoint)
         model.load_state_dict(checkpoint_model)
         model.to(device)
+        if "scheduler" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
         pretext_best_loss = checkpoint["pretext_best_loss"]
@@ -161,8 +150,19 @@ def main(args):
                 model,
                 output_metrics=p.get("evaluation_extra_metrics", False),
             )
+            
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
+
+            feats, metadata, evaluation_metrics = contrastive_evaluate(
+                train_dataloader,
+                model,
+                output_metrics=p.get("evaluation_extra_metrics", False),
+            )
+            
+            logger.add_embedding("Cluster_eval", feats, metadata, epoch + 1)
+            logger.metrics_summary("Pretext Evaluation_eval", evaluation_metrics, epoch + 1)
+
             logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
 
             save_dict = {
@@ -185,76 +185,6 @@ def main(args):
             torch.save(model.state_dict(), p["pretext_model"])
         scheduler.step()
 
-    # # load final model
-    # checkpoint = torch.load(
-    #     p["pretext_model"], map_location="cpu", weights_only=False
-    # )    
-    # model.load_state_dict(checkpoint)
-    # model.to(device)
-
-    # # Relesase some memory
-    # del train_dataloader
-    # # Mine the topk nearest neighbors at the very end (Train)
-    # # These will be served as input to the classification loss.
-    # logger.log(
-    #     "Fill TS Repository for mining the nearest/furthest neighbors (train) ..."
-    # )
-    # ts_repository_aug = TSRepository(
-    #     len_train * 2, p["model_kwargs"], p["res_kwargs"]
-    # )  # need size of repository == 1+num_of_anomalies
-    # fill_ts_repository(
-    #     p,
-    #     base_dataloader,
-    #     model,
-    #     ts_repository_base,
-    #     real_aug=True,
-    #     ts_repository_aug=ts_repository_aug,
-    # )
-    # del base_dataloader, train_dataset
-    # # out_pre = np.column_stack((ts_repository_base.features, ts_repository_base.targets))
-    # out_pre = np.column_stack(
-    #     (
-    #         ts_repository_base.features.cpu().numpy(),
-    #         ts_repository_base.targets.cpu().numpy(),
-    #     )
-    # )
-
-    # np.save(p["pretext_features_train_path"], out_pre)
-    # topk = 10
-    # logger.log("Mine the nearest neighbors (Top-%d)" % (topk))
-    # kfurtherst, knearest = ts_repository_aug.furthest_nearest_neighbors(topk)
-    # np.save(p["topk_neighbors_train_path"], knearest)
-    # np.save(p["bottomk_neighbors_train_path"], kfurtherst)
-    # del ts_repository_aug, kfurtherst, knearest
-
-    # # Mine the topk nearest neighbors at the very end (Val)
-    # # These will be used for validation.
-    # logger.log("Fill TS Repository for mining the nearest/furthest neighbors (val) ...")
-
-    # fill_ts_repository(
-    #     p,
-    #     val_dataloader,
-    #     model,
-    #     ts_repository_val,
-    #     real_aug=False,
-    #     ts_repository_aug=None,
-    # )
-    # # out_pre = np.column_stack((ts_repository_val.features, ts_repository_val.targets))
-    # del val_dataloader, val_dataset, model
-    # out_pre = np.column_stack(
-    #     (
-    #         ts_repository_val.features.cpu().numpy(),
-    #         ts_repository_val.targets.cpu().numpy(),
-    #     )
-    # )
-
-    # np.save(p["pretext_features_test_path"], out_pre)
-    # topk = 10
-    # logger.log("Mine the nearest and furthest neighbors (Top-%d)" % (topk))
-    # kfurtherst, knearest = ts_repository_val.furthest_nearest_neighbors(topk)
-
-    # np.save(p["topk_neighbors_val_path"], knearest)
-    # np.save(p["bottomk_neighbors_val_path"], kfurtherst)
     logger.finalize(eval_every_n_epoch)
 
 

@@ -4,10 +4,6 @@ import pandas as pd
 from torch.utils.data import Dataset
 from utils.mypath import MyPath
 
-import torch
-
-device = torch.device("cuda")
-
 
 class SMD(Dataset):
     base_folder = ""
@@ -67,8 +63,8 @@ class SMD(Dataset):
         #     range_val = (std_data - mean_data) + 1e-20
         #     temp = (temp - mean_data) / range_val
 
-        self.targets = np.asarray(labels)
-        self.data = np.asarray(temp)
+        self.targets = np.asarray(labels).astype(int)
+        self.data = np.asarray(temp).astype(np.float32)
         self.data, self.targets = self.convert_to_windows(wsz, stride)
 
     def convert_to_windows(self, w_size, stride):
@@ -93,12 +89,11 @@ class SMD(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        # ts_org = self.data[index]
-        ts_org = torch.from_numpy(self.data[index]).float()
+        ts_org = self.data[index]
 
         if len(self.targets) > 0:
             # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
+            target = self.targets[index].astype(int)
             class_name = self.classes[target]
         else:
             target = 0

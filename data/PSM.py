@@ -3,9 +3,6 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 from utils.mypath import MyPath
-import torch
-
-device = torch.device("cuda")
 
 
 class PSM(Dataset):
@@ -61,8 +58,8 @@ class PSM(Dataset):
             self.std[self.std == 0.0] = 1.0
             temp = (temp - self.mean) / self.std
 
-        self.targets = np.asarray(labels)
-        self.data = np.asarray(temp)
+        self.targets = np.asarray(labels).astype(int)
+        self.data = np.asarray(temp).astype(np.float32)
         self.data, self.targets = self.convert_to_windows(wsz, stride)
 
     def convert_to_windows(self, w_size, stride):
@@ -87,12 +84,10 @@ class PSM(Dataset):
         Returns:
             dict: {'ts': ts, 'target': index of target class, 'meta': dict}
         """
-        # ts_org = self.data[index]
-        ts_org = torch.from_numpy(self.data[index]).float()# cuda
+        ts_org = self.data[index]
 
         if len(self.targets) > 0:
-            # target = self.targets[index].astype(int)
-            target = torch.tensor(self.targets[index].astype(int), dtype=torch.long)
+            target = self.targets[index]
             class_name = self.classes[target]
         else:
             target = 0

@@ -16,7 +16,6 @@ from utils.common_config import (
     get_scheduler,
     get_model,
     get_criterion,
-    adjust_learning_rate,
     inject_sub_anomaly,
 )
 from utils.evaluate_utils import get_predictions, pr_evaluate, pr_evaluate_timeseries
@@ -37,12 +36,10 @@ def set_seed(seed):
 
 set_seed(4)
 
-device = torch.device("cuda")
 
-
-def main(args):
-    global best_f1
-    p = create_config(args.config_env, args.config_exp, args.fname, args.version)
+def main(args, update_dictionary={}):
+    p = create_config(args.config_env, args.config_exp, args.fname, args.version, update_dictionary=update_dictionary)
+    device = torch.device("cuda:0" if torch.cuda.is_available() and p.get("device", "cuda") else "cpu")
     logger = Logger(
         p["version"], verbose=2, file_path=p["classification_dir"], use_tensorboard=True
     )
@@ -112,10 +109,11 @@ def main(args):
         checkpoint = torch.load(
             p["classification_checkpoint"], map_location="cpu", weights_only=False
         )
-        if "scheduler" in checkpoint.keys():
-            scheduler.load_state_dict(checkpoint["scheduler"])
         model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_checkpoint"], checkpoint)
         model.load_state_dict(model_checkpoint)
+        model.to(device)
+        if "scheduler" in checkpoint.keys():
+            scheduler.load_state_dict(checkpoint["scheduler"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
         normal_label = checkpoint["normal_label"]
@@ -160,6 +158,7 @@ def main(args):
             epoch,
             logger,
             p["update_cluster_head_only"],
+            device=device
         )
 
         predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, p["update_data"])

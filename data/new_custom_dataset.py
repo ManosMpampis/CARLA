@@ -6,8 +6,6 @@ import pandas as pd
 
 from utils.utils import find_target
 
-device = torch.device("cuda")
-
 """ 
     AugmentedDataset
     Returns a ts together with an augmentation.

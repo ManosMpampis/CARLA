@@ -1,13 +1,6 @@
-import os
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
-from utils.mypath import MyPath
-
-import torch
-
-device = torch.device("cuda")
 
 
 class Original_dataset(Dataset):

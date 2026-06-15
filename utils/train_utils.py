@@ -3,8 +3,6 @@ from torch import Tensor
 
 from utils.utils import AverageMeter, ProgressMeter
 
-device = torch.device("cuda")
-
 
 def pretext_train(
     train_loader, model, criterion, optimizer, epoch, logger, device="cuda"
@@ -77,6 +75,7 @@ def self_sup_classification_train(
     epoch,
     logger,
     update_cluster_head_only=False,
+    device="cuda"
 ):
     """
     Train w/ classification-Loss

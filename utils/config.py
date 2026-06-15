@@ -4,7 +4,7 @@ import yaml
 from easydict import EasyDict
 from utils.utils import mkdir_if_missing as mkdir
 
-def create_config(config_file_env, config_file_exp, fname, version=None):
+def create_config(config_file_env, config_file_exp, fname, version=None, update_dictionary={}):
     # Config for environment path
     with open(config_file_env, 'r') as stream:
         root_dir = yaml.safe_load(stream)['root_dir']
@@ -18,6 +18,9 @@ def create_config(config_file_env, config_file_exp, fname, version=None):
     for k, v in config.items():
         cfg[k] = v
 
+    for k, v in update_dictionary():
+        cfg[k] = v
+    
     # Set paths for pretext task (These directories are needed in every stage)
     version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) if version is None else version
     base_dir = os.path.join(root_dir, f'{cfg['train_db_name']}/{version}/{fname}')
