@@ -46,7 +46,7 @@ def clean_directories(base_path: str, dry_run: bool = True, eval_every_n_epoch: 
         base_path: Path to the parent directory
         dry_run: If True, only print what would be deleted without actually deleting
     """
-    epoch = torch.load(f"{base_path[:-13]}/checkpoint.pth.tar")["epoch"]
+    epoch = torch.load(f"{base_path[:-12]}/checkpoint_best.pth.tar")["epoch"] if os.path.exists(f"{base_path[:-12]}/checkpoint_best.pth.tar") else 0
     base = Path(base_path)
     
     if not base.exists():

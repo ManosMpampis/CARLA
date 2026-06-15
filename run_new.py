@@ -5,6 +5,7 @@ import yaml
 
 from carla_pretext import main as main_pretext
 from carla_classification import main as main_classification
+from carla_classification_new import main as main_classification_new
 from evaluation import main as main_evaluation
 
 env = os.environ.copy()
@@ -968,14 +969,46 @@ filename = "" #os.path.join('datasets/', 'psm/train')
 #                     "dataset": 'psm'})
 # main_evaluation(eval_args)
 
-version = "loss/original_margin_ema_pos_supr_neg_clamp_re_weight"
-# # Run the pretext script
+version_i = "instance/margin_recalcuation"
+version_b = "batch/margin_recalcuation"
+version_l = "layer/margin_recalcuation"
+# Run the pretext script
 # pretext_args = EasyDict({"config_env": "configs/env.yml",
-#                 "config_exp": "configs/pretext/new_loss/psm/margin_ema_and_supr_re_weight_clamp_neg_re_weight/original_margin_ema_pos_supr_neg_clamp_re_weight.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/final_lr_instance.yml",
 #                 "fname": filename,
-#                 "version": f"{version}"})
-# # # main_pretext(pretext_args)
+#                 "version": f"{version_i}"})
+# main_pretext(pretext_args)
 
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/final_lr_layer.yml",
+#                 "fname": filename,
+#                 "version": f"{version_l}"})
+# main_pretext(pretext_args)
+
+# pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/pretext/new_loss/psm/final_lr_batch.yml",
+#                 "fname": filename,
+#                 "version": f"{version_b}"})
+# main_pretext(pretext_args)
+
+# Run the classification script
+classification_args = EasyDict({"config_env": "configs/env.yml",
+                "config_exp": "configs/classification/psm_common.yml",
+                "fname": filename,
+                "version": f"{version_i}"})
+main_classification_new(classification_args)
+
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/psm_layer_common.yml",
+#                 "fname": filename,
+#                 "version": f"{version_l}"})
+# main_classification_new(classification_args)
+
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/psm_batch_common.yml",
+#                 "fname": filename,
+#                 "version": f"{version_b}"})
+# main_classification_new(classification_args)
 # # Run the classification script
 # classification_args = EasyDict({"config_env": "configs/env.yml",
 #                 "config_exp": "configs/classification/new_loss/psm/original.yml",
@@ -1019,15 +1052,15 @@ version = "loss/original_margin_ema_pos_supr_neg_clamp_re_weight"
 # main_evaluation(eval_args)
 
 # Run the classification script
-classification_args = EasyDict({"config_env": "configs/env.yml",
-                "config_exp": "configs/classification/carla_classification_twoB_threeC.yml",
-                "fname": filename,
-                "version": f"{version}"})
+# classification_args = EasyDict({"config_env": "configs/env.yml",
+#                 "config_exp": "configs/classification/carla_classification_twoB_threeC.yml",
+#                 "fname": filename,
+#                 "version": f"{version}"})
 
-main_classification(classification_args)
+# main_classification(classification_args)
 
-with open(classification_args.config_exp, 'r') as stream:
-            config = yaml.safe_load(stream)
-eval_args = EasyDict({"version": f"{version}",
-                    "save_dir": f"{config.get('tag_class', None)}"})
-main_evaluation(eval_args)
+# with open(classification_args.config_exp, 'r') as stream:
+#             config = yaml.safe_load(stream)
+# eval_args = EasyDict({"version": f"{version}",
+#                     "save_dir": f"{config.get('tag_class', None)}"})
+# main_evaluation(eval_args)
