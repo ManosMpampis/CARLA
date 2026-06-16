@@ -201,8 +201,8 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
     mode: str, either "Train" or "Combined"
     epoch: int
     """
-    if standarized:
-        scaler = Normalizer()
+
+
     # preds = scaler.fit_transform(predictions) if standarized else predictions
     n_samples, n_features = inputs.shape
     x = np.arange(n_samples)
@@ -219,7 +219,7 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
         ax.fill_between(
             x,
             y.min()-1,
-            (y.max()-y.min()+1)/2,
+            (y.max()+y.min()+1)/2,
             where=labels[:].astype(bool), #If we have more than one label we can go for label per feature
             color="red",
             alpha=0.2,
@@ -241,7 +241,7 @@ def figures(logger, inputs, labels, predictions, mode="Combined", epoch=0, pa=""
             normalized = predictions.astype(float) / predictions.max()
         
         # Create 2D grid for pcolormesh gradient
-        y_edges = np.linspace((y.max()-y.min()-1)/2, y.max()+1, 2)
+        y_edges = np.linspace((y.max()+y.min()-1)/2, y.max()+1, 2)
         x_edges = np.concatenate([x, [x[-1]+1]])
         X, Y = np.meshgrid(x_edges, y_edges)
             

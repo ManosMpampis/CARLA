@@ -122,7 +122,6 @@ def main(args, update_dictionary={}):
         logger.metrics_summary("Pretext Evaluation", evaluation_metrics, 0)
 
     # Training
-    pretext_best_loss = np.inf
     eval_every_n_epoch = 200
     for epoch in range(start_epoch, p["epochs"]):
         logger.log("Epoch %d/%d" % (epoch + 1, p["epochs"]))
@@ -183,6 +182,19 @@ def main(args, update_dictionary={}):
         if tmp_loss <= pretext_best_loss:
             pretext_best_loss = tmp_loss
             torch.save(model.state_dict(), p["pretext_model"])
+            save_dict = {
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+                "epoch": epoch,
+                "pretext_best_loss": tmp_loss,
+                "last_margin": last_margin,
+            }
+            if hasattr(criterion, "prev_ema_loss"):
+                save_dict["prev_ema_loss"] = criterion.prev_ema_loss
+            if hasattr(criterion, "previous_loss"):
+                save_dict["previous_loss"] = criterion.previous_loss
+            torch.save(save_dict, f"{p["pretext_checkpoint"][:-4]}_best.pth.tar")
         scheduler.step()
 
     logger.finalize(eval_every_n_epoch)
