@@ -142,7 +142,7 @@ def main(args, update_dictionary={}):
         if (
             (epoch+1) % eval_every_n_epoch == 0
             or (epoch+1) == p["epochs"]
-            or tmp_loss <= pretext_best_loss
+            or tmp_loss < pretext_best_loss #TODO: check edge cases, when model fail to only loss=0, the (<=) saves every epoch. Do we want the last non zero loss?
         ):
             logger.metrics_summary("Pretext Loss", loss_dict, epoch + 1)
             feats, metadata, evaluation_metrics = contrastive_evaluate(
@@ -180,7 +180,7 @@ def main(args, update_dictionary={}):
             torch.save(save_dict, p["pretext_checkpoint"])
 
         # Checkpoint
-        if tmp_loss <= pretext_best_loss:
+        if tmp_loss < pretext_best_loss:
             pretext_best_loss = tmp_loss
             torch.save(model.state_dict(), p["pretext_model"])
             save_dict = {
