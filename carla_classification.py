@@ -130,6 +130,7 @@ def main(args, update_dictionary={}):
             model.to(device)
             normal_label = checkpoint["normal_label"]
             start_epoch = p["epochs"] + 1  # skip training if model already exists
+        gradient_monitor = GradientMonitor(model, logger, step=start_epoch)
     else:
         logger.log(
             "-- No checkpoint file at {} -- new model initialised".format(
@@ -142,8 +143,8 @@ def main(args, update_dictionary={}):
         best_cls_f1 = -1 * np.inf
         train_best_f1 = -1 * np.inf
         best_train_th_eval_f1 = -1 * np.inf
+        gradient_monitor = GradientMonitor(model, logger)
     
-    gradient_monitor = GradientMonitor(model, logger)
     # Initi neighbors with the current model
     # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
     logger.log("\n- Training:")
