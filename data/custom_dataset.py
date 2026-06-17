@@ -1,7 +1,10 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torch.nn import functional as F
+import pandas as pd
 
+from utils.utils import find_target
 
 """ 
     AugmentedDataset
@@ -12,24 +15,27 @@ from torch.utils.data import Dataset
 class AugmentedDataset(Dataset):
     def __init__(self, dataset):
         super(AugmentedDataset, self).__init__()
-        self.current_epoch = 0
         self.samples = [
             {} for _ in range(len(dataset))
         ]  # Initialized with empty dictionaries
         self.ts_org = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.targets = [
-            torch.empty(dataset.targets[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.targets[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.ts_w_augment = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
         self.ts_ss_augment = [
-            torch.empty(dataset.data[0].shape) for _ in range(len(dataset))
+            np.empty(dataset.data[0].shape) for _ in range(len(dataset))
+        ]  # Initialized
+        self.meta = [
+            {} for _ in range(len(dataset))
         ]  # Initialized
         transform = dataset.transform
         sanomaly = dataset.sanomaly
+        self.scaler = dataset.scaler
         dataset.transform = None
         self.dataset = dataset
 
@@ -41,43 +47,36 @@ class AugmentedDataset(Dataset):
             self.augmentation_transform = transform
             self.subseq_anomaly = sanomaly
 
-        self.mean = 0
-        self.std = 0
         self.create_pairs()
 
     def create_pairs(self):
-        mmean, sstd = self.dataset.get_info()
-        mmean = torch.tensor(mmean, dtype=torch.float32)
-        sstd = torch.tensor(sstd, dtype=torch.float32)
         for index in range(len(self.dataset)):
             item = self.dataset.__getitem__(index)
-            ts_org = item["ts_org"].clone().detach()
-            ts_trg = item["target"].clone().detach()
+            ts_org = item["ts_org"]
+            ts_trg = item["target"]
 
             # Get random neighbor from windows before time step T
             if index > 10:
                 rand_nei = np.random.randint(index - 10, index)
                 sample_nei = self.dataset.__getitem__(rand_nei)
-                # ts_w_augment = sample_nei['ts_org']
-                ts_w_augment = sample_nei["ts_org"].clone().detach()
+                ts_w_augment = sample_nei["ts_org"]
             else:
-                ts_w_augment = self.augmentation_transform(ts_org).to("cpu")
+                ts_w_augment = self.augmentation_transform(ts_org)
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
-            sstd = torch.where(
-                sstd == 0.0, torch.tensor(1.0, device=sstd.device), sstd
-            )
-
-            self.ts_org[index] = (ts_org - mmean) / sstd
-            self.ts_w_augment[index] = (ts_w_augment - mmean) / sstd
-            self.ts_ss_augment[index] = (ts_ss_augment - mmean) / sstd
+            # During inference we do not know what inputs are anomalies and how they derived. So we normalize everything the same way.
+            self.ts_org[index] = self.scaler.transform(ts_org)
+            self.ts_w_augment[index] = self.scaler.transform(ts_w_augment)
+            self.ts_ss_augment[index] = self.scaler.transform(ts_ss_augment)
             self.targets[index] = ts_trg
-            
+            self.meta[index] = item["meta"]
+
             self.samples[index] = {
-                "ts_org": (ts_org - mmean) / sstd,
-                "ts_w_augment": (ts_w_augment - mmean) / sstd,
-                "ts_ss_augment": (ts_ss_augment - mmean) / sstd,
+                "ts_org": ts_org,
+                "ts_w_augment": ts_w_augment,
+                "ts_ss_augment": ts_ss_augment,
                 "target": ts_trg,
+                "meta": item["meta"],
             }
 
     def __len__(self):
@@ -91,87 +90,133 @@ class AugmentedDataset(Dataset):
             (self.dataset.targets, new_ds.dataset.targets), axis=0
         )
 
-    def set_epoch(self, epoch):
-        self.current_epoch = epoch
-
     def __getitem__(self, index):
         return self.samples[index]
 
+class DynamicNeighbors(Dataset):
+    def __init__(self, original_dataset, p, data_number=None):
+        super(DynamicNeighbors, self).__init__()
+        self.classes = ['Normal', 'Anomaly', 'Noise', 'Point', 'Subseq', 'Subseq2']
+        self.dataset = original_dataset
 
-""" 
-    NeighborsDataset
-    Returns a ts with one of its neighbors.
-"""
+        self.targets = self.dataset.targets
+        self.data = self.dataset.ts_org
 
+        self.ts_w_augment = self.dataset.ts_w_augment
+        self.ts_ss_augment = self.dataset.ts_ss_augment
+        self.meta = self.dataset.meta
+        if data_number is not None:
+            self.data = self.data[:data_number]
+            self.targets = self.targets[:data_number]
+            self.ts_w_augment = self.ts_w_augment[:data_number]
+            self.ts_ss_augment = self.ts_ss_augment[:data_number]
+            
+        self.topk = p["num_neighbors"]
+        self.k_furthest_nneighbours = np.zeros((len(self.data), self.topk))
+        self.k_nearest_fneighbours = np.zeros((len(self.data), self.topk))
+    
+    @torch.no_grad()
+    def predict_and_update(self, model, loader, p, update=True):
+        model.eval()
+        predictions = []
+        probs = []
+        targets = []
 
-class NeighborsDataset(Dataset):
-    def __init__(self, dataset, transform, N_indices, F_indices, p):
-        super(NeighborsDataset, self).__init__()
+        device = next(model.parameters()).device
+        
+        data_features = torch.tensor([]).to(device)
+        ts_w_augment_features = torch.tensor([]).to(device)
+        ts_ss_augment_features = torch.tensor([])
 
-        if isinstance(transform, dict):
-            self.anchor_transform = transform["standard"]
-            self.neighbor_transform = transform["augment"]
-        else:
-            self.anchor_transform = transform
-            self.neighbor_transform = transform
+        for i, batch in enumerate(loader): 
+            ts_org = batch['ts_org'].to(device, non_blocking=True)
+            ts_w_augment = batch['ts_w_augment'].to(device, non_blocking=True)
+            ts_ss_augment = batch['ts_ss_augment'].to(device, non_blocking=True)
+            ts_label = batch["target"]
+            if ts_org.ndim == 3:
+                b, w, h = ts_org.shape
+            else:
+                b, w = ts_org.shape
+                h = 1
 
-        dataset.transform = None
-        all_data = dataset.data
-        self.dataset = dataset
+            output = model(ts_org.reshape(b, h, w), forward_pass="return_all")
+            data_features = torch.cat((data_features, output["features"]), dim=0)
+            predictions.append(torch.argmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
+            targets.append(ts_label)
 
-        NN_indices = (
-            N_indices.copy()
-        )  # Nearest neighbor indices (np.array  [len(dataset) x k])
-        FN_indices = (
-            F_indices.copy()
-        )  # Furthest neighbor indices (np.array  [len(dataset) x k])
-        if p["num_neighbors"] is not None:
-            self.NN_indices = NN_indices[:, : p["num_neighbors"]]
-            self.FN_indices = FN_indices[:, : -p["num_neighbors"]]
+            output = model(ts_w_augment.reshape(b, h, w), forward_pass="return_all")
+            ts_w_augment_features = torch.cat((ts_w_augment_features, output["features"]), dim=0)
+            predictions.append(torch.argmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
+            targets.append(torch.ones_like(ts_label)*2)
+            
+            output = model(ts_ss_augment.reshape(b, h, w), forward_pass="return_all")
+            ts_ss_augment_features = torch.cat((ts_ss_augment_features, output["features"].to("cpu")), dim=0)
+            predictions.append(torch.argmax(output["output"], dim=1))
+            probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
+            targets.append(torch.ones_like(ts_label)*4)
 
-        self.dataset.data = dataset.data
-        self.dataset.targets = dataset.targets
-        num_samples = self.dataset.data.shape[0]
-        NN_index = np.array(
-            [np.random.choice(self.NN_indices[i], 1)[0] for i in range(num_samples)]
+        if update:
+            # Compute pairwise distances
+            distances = torch.cdist(data_features, ts_w_augment_features).to("cpu")
+            del ts_w_augment_features
+
+            # Find indices of k furthest near-neighbors for each feature
+            _, furthest_indices = distances.topk(self.topk, largest=True, dim=1)
+            self.k_furthest_nneighbours = furthest_indices[:, :].cpu().numpy()
+
+            distances = torch.cdist(data_features, ts_ss_augment_features.to(device)).to("cpu")
+            del ts_ss_augment_features
+
+            # Find indices of k nearest far-neighbors for each feature
+            _, nearest_indices = distances.topk(self.topk, largest=False, dim=1)
+            self.k_nearest_fneighbours = nearest_indices[:, :].cpu().numpy()
+
+        predictions = torch.cat(predictions, dim=0).cpu()
+        probs = torch.cat(probs, dim=0).cpu()
+        targets = torch.cat(targets, dim=0)
+
+        prob_np = np.array(probs)
+        phdr = [str(x) for x in range(prob_np.shape[1])] + ["Class"]
+        # prob_np = np.hstack((prob_np, np.array(targets)[np.newaxis].T))
+        final_targets = find_target(targets)
+        prob_np = np.hstack((prob_np, final_targets[np.newaxis].T))
+        
+        prob_df = pd.DataFrame(prob_np, columns=phdr)
+        prob_df.to_csv(
+                p["classification_trainprobs"], index=False, header=True, sep=","
         )
-        FN_index = np.array(
-            [np.random.choice(self.FN_indices[i], 1)[0] for i in range(num_samples)]
-        )
-        self.NNeighbor = all_data[NN_index]
-        self.FNeighbor = all_data[FN_index]
+        
+        return {"predictions": predictions, "probabilities": probs, "targets": targets}
 
-        self.mean = 0
-        self.std = 0
-
-    def __len__(self):
-        return len(self.dataset)
 
     def __getitem__(self, index):
-        output = {}
-        anchor = self.dataset.__getitem__(index)
+        """
+        Args:
+            index (int): Index
+        Returns:
+            dict: {'ts': ts, 'target': index of target class, 'meta': dict}
+        """
+        # dict: {"ts_org": ts, "ts_w_augment": ts_near_neightbor, "ts_ss_augment": ts_far_neightbor, "target": 0 if normal else 1}
+        ts = self.data[index]
+        ts_w_augment = self.ts_w_augment[index]
+        ts_ss_augment = self.ts_ss_augment[index]
+        meta = self.meta[index]
+        if len(self.targets) > 0:
+            target = self.targets[index]
+        else:
+            target = torch.zeros(ts.shape[0], dtype=torch.long)
 
-        NNeighbor = self.NNeighbor.__getitem__(index)
-        FNeighbor = self.FNeighbor.__getitem__(index)
+        return {'ts_org': ts, 'target': target, 'ts_w_augment': ts_w_augment, 'ts_ss_augment': ts_ss_augment, 'meta': meta}
 
-        output["anchor"] = anchor["ts_org"]
-        output["NNeighbor"] = NNeighbor
-        output["FNeighbor"] = FNeighbor
-        output["possible_nneighbors"] = torch.from_numpy(self.NN_indices[index])
-        output["possible_fneighbors"] = torch.from_numpy(self.FN_indices[index])
-        output["target"] = anchor["target"]
+    def get_ts(self, index):
+        ts = self.data[index]
+        return ts
 
-        return output
-
-    def concat_ds(self, new_ds):
-        self.dataset.data = np.concatenate(
-            (self.dataset.data, new_ds.dataset.data), axis=0
-        )
-        self.dataset.targets = np.concatenate(
-            (self.dataset.targets, new_ds.dataset.targets), axis=0
-        )
-
-
+    def __len__(self):
+        return len(self.data)
+    
 class ContrustiveDataset(Dataset):
     def __init__(self, dataset, transform, p):
         super(ContrustiveDataset, self).__init__()
@@ -184,6 +229,9 @@ class ContrustiveDataset(Dataset):
             self.neighbor_transform = transform
 
         self.dataset = dataset
+        
+        # self.dataset.k_furthest_nneighbours # furthest near-neighbor indices (np.array  [len(dataset) x k])
+        # self.dataset.k_nearest_fneighbours # Nearest further-neighbor indices (np.array  [len(dataset) x k])
 
         self.NNeighbor = self.dataset.ts_w_augment
         self.FNeighbor = self.dataset.ts_ss_augment
@@ -195,7 +243,6 @@ class ContrustiveDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, index):
-        output = {}
         anchor = self.dataset.__getitem__(index)
 
         NN_index = np.random.choice(self.dataset.k_furthest_nneighbours[index], 1)[0]
@@ -203,12 +250,7 @@ class ContrustiveDataset(Dataset):
         FN_index = np.random.choice(self.dataset.k_nearest_fneighbours[index], 1)[0]
         FNeighbor = self.FNeighbor.__getitem__(FN_index)
 
-        output["anchor"] = anchor["ts_org"]
-        output["NNeighbor"] = NNeighbor
-        output["FNeighbor"] = FNeighbor
-        output["target"] = anchor["target"]
-
-        return output
+        return {"anchor": anchor["ts_org"], "NNeighbor": NNeighbor, "FNeighbor": FNeighbor, "target": anchor["target"], "meta": anchor["meta"]}
 
     def concat_ds(self, new_ds):
         self.dataset.data = np.concatenate(

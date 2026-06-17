@@ -264,11 +264,12 @@ class Logger:
                 "Using Tensorboard, logs will be saved in {}".format(self.log_dir)
             )
             self.experiment_dir = os.path.join(self.log_dir, "tensorboard")
-            self.experiment = SummaryWriter(log_dir=os.path.join(self.log_dir, "tensorboard"))
+            self.experiment = SummaryWriter(log_dir=self.experiment_dir)
         self.init_tensorboard_functions()
             
     def init_tensorboard_functions(self):
         if self.use_tensorboard:
+            self.add_histogram = self._add_histogram
             self.log_metrics = self._log_metrics
             self.scalar_summary = self._scalar_summary
             self.metrics_summary = self._metrics_summary
@@ -278,6 +279,7 @@ class Logger:
             self.add_graph = self._add_graph
             self.add_embedding = self._add_embedding
         else:
+            self.add_histogram = self._do_nothing
             self.log_metrics = self._do_nothing
             self.scalar_summary = self._do_nothing
             self.metrics_summary = self._do_nothing
@@ -314,8 +316,10 @@ class Logger:
         for k, v in metrics.items():
             self.experiment.add_scalars("Val_metrics/" + k, {"Val": v}, step)
 
+    def _add_histogram(self, phase, tag, data, step):
+        self.experiment.add_histogram(f'{phase}/{tag}', data, step)
+
     def _scalar_summary(self, phase, tag, value, step):
-        # self.experiment.add_scalars(phase, {tag: value}, step)
         self.experiment.add_scalar(f'{phase}/{tag}', value, step)
 
     def _metrics_summary(self, phase, metrics, step):
@@ -323,7 +327,6 @@ class Logger:
             self.scalar_summary(phase, metric, value, step)
             
     def _add_figure(self, tag, figure, step):
-        import matplotlib
         self.experiment.add_figure(tag, figure, step)
 
     def _add_embedding(self, tag, vertices, labels, step):

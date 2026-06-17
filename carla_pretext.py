@@ -12,12 +12,12 @@ from utils.common_config import (
     get_train_dataloader,
     get_val_dataloader,
     get_train_transformations,
-    get_val_transformations1,
+    get_val_transformations,
     inject_sub_anomaly,
     get_scheduler,
     get_optimizer,
 )
-from utils.evaluate_utils import contrastive_evaluate
+from utils.evaluate_utils import contrastive_evaluate, GradientMonitor
 from utils.train_utils import pretext_train
 from utils.utils import Logger, clean_checkpoint
 
@@ -47,13 +47,13 @@ def main(args, update_dictionary={}):
     logger.log_hyperparams(p)
 
     model = get_model(p)
-    # logger.add_graph(model, torch.rand(p['res_kwargs']['in_channels'], p['wsz']).unsqueeze(0))
+    logger.add_graph(model, torch.rand((1, p['res_kwargs']['in_channels'], p['wsz'])))
     model = model.to(device)
 
     train_transforms = get_train_transformations(p)
 
     sanomaly = inject_sub_anomaly(p)
-    val_transforms = get_val_transformations1(p)
+    val_transforms = get_val_transformations(p)
 
     train_dataset = get_train_dataset(
         p, train_transforms, sanomaly, to_augmented_dataset=True
@@ -105,7 +105,7 @@ def main(args, update_dictionary={}):
             model.load_state_dict(checkpoint_model)
             model.to(device)
             start_epoch = p["epochs"] + 1  # skip training if model already exists
-
+        gradient_monitor = GradientMonitor(model, logger, step=start_epoch)
     else:
         logger.log("No checkpoint file at {}".format(p["pretext_checkpoint"]))
         start_epoch = 0
@@ -120,6 +120,7 @@ def main(args, update_dictionary={}):
         )
         logger.add_embedding("Cluster", feats, metadata, 0)
         logger.metrics_summary("Pretext Evaluation", evaluation_metrics, 0)
+        gradient_monitor = GradientMonitor(model, logger, step=0)
 
     # Training
     eval_every_n_epoch = 200
@@ -133,7 +134,7 @@ def main(args, update_dictionary={}):
 
         # logger.log('EPOCH ----> ', epoch)
         loss_dict = pretext_train(
-            train_dataloader, model, criterion, optimizer, epoch, logger, device=device
+            train_dataloader, model, criterion, optimizer, epoch, logger, device=device, gradient_monitor=gradient_monitor
         )
         last_margin = loss_dict["margin"]
         tmp_loss = loss_dict["loss"]

@@ -5,7 +5,7 @@ import yaml
 
 from carla_pretext import main as main_pretext
 from carla_classification import main as main_classification
-from carla_classification_new import main as main_classification_new
+from carla_classification import main as main_classification_new
 from evaluation import main as main_evaluation
 
 env = os.environ.copy()

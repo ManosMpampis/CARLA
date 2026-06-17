@@ -18,7 +18,7 @@ def get_criterion(p):
 
         criterion = ClassificationLoss(**p["criterion_kwargs"])
     elif p["criterion"] == "classification_e2e":
-        from losses._losses import ClassificationLossE2E
+        from losses.losses import ClassificationLossE2E
 
         criterion = ClassificationLossE2E(**p["criterion_kwargs"])
 
@@ -26,14 +26,6 @@ def get_criterion(p):
         from losses.tcl import TCLoss
 
         criterion = TCLoss(p["batch_size"], **p["criterion_kwargs"])
-    elif p["criterion"] == "pretext_new":
-        from losses._losses import PretextLoss
-
-        criterion = PretextLoss(p["batch_size"], **p["criterion_kwargs"])
-    elif p["criterion"] == "classification_new":
-        from losses._losses import ClassificationLoss
-
-        criterion = ClassificationLoss(**p["criterion_kwargs"])
     else:
         raise ValueError("Invalid criterion {}".format(p["criterion"]))
 
@@ -151,43 +143,12 @@ def get_train_dataset(
             stride=p["stride"],
         )
         mean, std = dataset.get_info()
-    
-    elif p["train_db_name"] == "new_smd":
-        from data.new_SMD import SMD
-
-        dataset = SMD(
-            p["fname"],
-            train=True,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=None,
-            std_data=None,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-        mean, std = dataset.get_info()
-    elif p["train_db_name"] == "new_psm":
-        from data.new_PSM import PSM
-
-        dataset = PSM(
-            train=True,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=None,
-            std_data=None,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-        mean, std = dataset.get_info()
     else:
         raise ValueError("Invalid train dataset {}".format(p["train_db_name"]))
 
     # Wrap into other dataset (__getitem__ changes)
     if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
-        if "new" in p["train_db_name"]:
-            from data.new_custom_dataset import AugmentedDataset
-        else:
-            from data.custom_dataset import AugmentedDataset
+        from data.custom_dataset import AugmentedDataset
 
         dataset = AugmentedDataset(dataset)
 
@@ -207,11 +168,7 @@ def get_train_dataset(
 
 def get_aug_train_dataset(p, transform, dataset=None, new=False, data_number=None):
     if new:
-        if "new" in p["train_db_name"]:
-            from data.new_custom_dataset import ContrustiveDataset, DynamicNeighbors
-        else:
-            from data.ra_dataset import DynamicNeighbors
-            from data.custom_dataset import ContrustiveDataset
+        from data.custom_dataset import ContrustiveDataset, DynamicNeighbors
         assert dataset is not None
         dynamic_dataset = DynamicNeighbors(dataset, p, data_number=data_number)
         con_dataset = ContrustiveDataset(dynamic_dataset, transform, p)
@@ -252,32 +209,6 @@ def get_val_dataset(
 
     elif p["val_db_name"] == "psm":
         from data.PSM import PSM
-
-        dataset = PSM(
-            train=False,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=mean_data,
-            std_data=std_data,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-
-    elif p["train_db_name"] == "new_smd":
-        from data.new_SMD import SMD
-
-        dataset = SMD(
-            p["fname"],
-            train=False,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=mean_data,
-            std_data=std_data,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-    elif p["train_db_name"] == "new_psm":
-        from data.new_PSM import PSM
 
         dataset = PSM(
             train=False,
@@ -361,16 +292,6 @@ def get_train_transformations(p):
 
 def get_val_transformations(p):
     return transforms.Compose(
-        [
-            transforms.CenterCrop(p["transformation_kwargs"]["crop_size"]),
-            transforms.ToTensor(),
-            transforms.Normalize(**p["transformation_kwargs"]["normalize"]),
-        ]
-    )
-
-
-def get_val_transformations1(p):
-    return transforms.Compose(
         [NoiseTransformation(p["transformation_kwargs"]["noise_sigma"])]
     )
 
@@ -386,12 +307,13 @@ def get_optimizer(p, model, cluster_head_only=False):
     else:
         params = model.parameters()
 
-    if p["optimizer"] == "sgd":
+    if p["optimizer"].lower() == "sgd":
         optimizer = torch.optim.SGD(params, **p["optimizer_kwargs"])
 
-    elif p["optimizer"] == "adam":
+    elif p["optimizer"].lower() == "adam":
         optimizer = torch.optim.Adam(params, **p["optimizer_kwargs"])
-
+    elif p["optimizer"].lower() == "adamw":
+        optimizer = torch.optim.AdamW(params, **p["optimizer_kwargs"])
     else:
         raise ValueError("Invalid optimizer {}".format(p["optimizer"]))
 

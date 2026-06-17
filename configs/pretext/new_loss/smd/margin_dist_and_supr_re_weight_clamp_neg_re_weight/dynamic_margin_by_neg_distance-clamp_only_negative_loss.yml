@@ -8,10 +8,11 @@ model_kwargs:
   features_dim: 4
 res_kwargs:
   in_channels: 38
-  mid_channels: [4, 8, 8]
+  mid_channels: [4, 8]
   kernel_sizes: [8, 5, 3]
   norm_layer_name: batch
   window_size: 256
+  dropout: True
 
 # Dataset
 train_db_name: smd
@@ -21,13 +22,13 @@ stride: 5
 num_classes: 10
 
 # Loss
-criterion: pretext_new
+criterion: pretext
 criterion_kwargs:
   temperature: 0.4
   loss_name: euclidean
   device: cuda
   normalize: True
-  clamp_neg_loss: False
+  clamp_neg_loss: True
   crop: False
   crop_size_min: 5
   crop_size_max: 10
@@ -36,21 +37,19 @@ criterion_kwargs:
   initial_margin: 0.3
   max_margin: 5.0
   min_margin: 0.01
-  margin_distance: False
-  adjust_factor: 0.001
-  ema_alpha: 0.3
-  min_improvement: 0.00001
+  margin_distance: True
+  adjust_factor: 0
+  ema_alpha: 0
+  min_improvement: 0.0001
   pos_supression: False
   re_weight: False
 
 # Hyperparameters
-epochs: 1000
-optimizer: adam
+epochs: 2000
+optimizer: adamw
 optimizer_kwargs:
-  #nesterov: False
-  #momentum: 0.9
   lr: 0.001
-  weight_decay: 0
+  weight_decay: 0.0005
 # Scheduler
 scheduler: cosine_restart
 scheduler_kwargs:

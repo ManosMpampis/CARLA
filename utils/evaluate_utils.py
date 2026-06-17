@@ -1,6 +1,9 @@
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.cluster import MiniBatchKMeans
 from sklearn import metrics
@@ -9,10 +12,15 @@ from sklearn.metrics import (
 )
 from metrics.metrics import evaluate, combine_all_evaluation_scores
 from utils.common_config import get_feature_dimensions_backbone
-from data.custom_dataset import NeighborsDataset
+from data.custom_dataset import ContrustiveDataset
 from losses.losses import entropy
 from termcolor import colored
 from utils.utils import find_target
+import matplotlib
+
+matplotlib.use("Agg")  # headless backend
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 import warnings
 
@@ -20,6 +28,182 @@ warnings.filterwarnings(
     "ignore", 
     message="No positive class found in y_true"
 )
+
+
+class GradientMonitor:
+    def __init__(
+        self,
+        model: nn.Module,
+        logger,
+        log_interval: int = 10,
+        vanishing_threshold: float = 1e-7,
+        exploding_threshold: float = 1e3,
+        log_histograms: bool = True,
+        step: int = 0
+    ):
+        self.model = model
+        self.logger = logger
+        self.log_interval = log_interval
+        self.vanishing_threshold = vanishing_threshold
+        self.exploding_threshold = exploding_threshold
+        self.log_histograms = log_histograms
+        self.step_count = step
+
+    @torch.no_grad()
+    def step(self) -> Dict[str, float]:
+        self.step_count += 1
+        total_norm_sq = 0.0
+        names: List[str] = []
+        norms: List[float] = []
+        metrics: Dict[str, float] = {}
+
+        for name, param in self.model.named_parameters():
+            if param.grad is None:
+                continue
+
+            grad_norm = param.grad.norm(2).item()
+            param_norm = param.norm(2).item()
+            total_norm_sq += grad_norm ** 2
+
+            tag = name.replace(".", "/")
+            metrics[f"grad_norm/{tag}"] = grad_norm
+            ratio = grad_norm / (param_norm + 1e-12)
+            metrics[f"update_ratio/{tag}"] = ratio
+
+            self.logger.scalar_summary("grad_norm", tag, grad_norm, self.step_count)
+            self.logger.scalar_summary("update_ratio", tag, ratio, self.step_count)
+
+            if self.log_histograms:
+                self.logger.add_histogram("grad_values", tag, param.grad, self.step_count)
+
+            names.append(name)
+            norms.append(grad_norm)
+
+        total_norm = total_norm_sq ** 0.5
+        metrics["grad_norm/total"] = total_norm
+
+
+        self.logger.scalar_summary("grad_norm", "total", total_norm, self.step_count)
+
+            # Push a gradient-flow bar chart as an image every N steps
+        if self.step_count % self.log_interval == 0:
+            fig = self._plot_gradient_flow(names, norms)
+            self.logger.add_figure("gradient_flow", fig, self.step_count)
+            plt.close(fig)
+
+        # Optional warnings (omitted here for brevity; re-add if desired)
+        return metrics
+
+    def _plot_gradient_flow(self, names: List[str], norms: List[float]):
+        fig, ax = plt.subplots(figsize=(max(8, len(names) * 0.4), 5))
+
+        norms_arr = np.array(norms, dtype=float)
+
+        # --- Detect problematic states ---------------------------------
+        zero_mask = norms_arr == 0.0
+        nan_mask = ~np.isfinite(norms_arr)
+        vanishing_mask = (~zero_mask) & (~nan_mask) & (norms_arr < self.vanishing_threshold)
+        exploding_mask = (~zero_mask) & (~nan_mask) & (norms_arr > self.exploding_threshold)
+
+        # --- Prepare values for log-scale drawing ----------------------
+        floor = 1e-10
+        plot_vals = norms_arr.copy()
+        plot_vals[zero_mask | nan_mask] = floor
+
+        # --- Color coding ----------------------------------------------
+        colors = []
+        for i in range(len(norms_arr)):
+            if zero_mask[i] or nan_mask[i]:
+                colors.append("crimson")      # dead / zero
+            elif vanishing_mask[i]:
+                colors.append("orange")
+            elif exploding_mask[i]:
+                colors.append("green")
+            else:
+                colors.append("steelblue")    # healthy
+
+        bars = ax.bar(
+            range(len(names)),
+            plot_vals,
+            color=colors,
+            edgecolor="black",
+            linewidth=0.3,
+        )
+
+        # --- Annotate bars that are exactly zero -----------------------
+        for bar, is_zero, is_nan in zip(bars, zero_mask, nan_mask):
+            if is_zero or is_nan:
+                label = "0" if is_zero else "NaN"
+                ax.annotate(
+                    label,
+                    xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                    fontsize=5,
+                    color="crimson",
+                    fontweight="bold",
+                )
+
+        # --- Axis setup ------------------------------------------------
+        if np.max(plot_vals) <= floor:
+            # Every single gradient is zero / non-finite
+            ax.set_yscale("linear")
+            ax.set_ylim(-0.1, 1.0)
+            ax.text(
+                0.5,
+                0.5,
+                "All gradients are zero or non-finite",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=12,
+                color="red",
+                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            )
+        else:
+            ax.set_yscale("log")
+            ax.set_ylim(bottom=floor * 0.1)   # ensure zero-markers sit on the axis
+
+        ax.set_xticks(range(len(names)))
+        ax.set_xticklabels(
+            [n.replace(".weight", "w").replace(".bias", "b") for n in names],
+            rotation=45,
+            ha="right",
+            fontsize=6,
+        )
+        ax.set_ylabel("Loss Gradient Norm")
+        ax.set_title("Gradient Flow")
+
+        # --- Reference lines (only if visible) -------------------------
+        y_min, y_max = ax.get_ylim()
+        if self.vanishing_threshold >= y_min:
+            ax.axhline(
+                self.vanishing_threshold,
+                color="orange",
+                linestyle="--",
+                linewidth=1,
+            )
+        if self.exploding_threshold <= y_max:
+            ax.axhline(
+                self.exploding_threshold,
+                color="purple",
+                linestyle="--",
+                linewidth=1,
+            )
+
+        # --- Legend ----------------------------------------------------
+        legend_elements = [
+            Patch(facecolor="steelblue", label="healthy"),
+            Patch(facecolor="orange", label="vanishing"),
+            Patch(facecolor="green", label="exploding"),
+            Patch(facecolor="crimson", label="zero / dead"),
+        ]
+        ax.legend(handles=legend_elements, loc="upper right", fontsize=7)
+
+        plt.tight_layout()
+        return fig
 
 
 @torch.no_grad()
@@ -118,7 +302,7 @@ def get_predictions(p, dataloader, model, return_features=False, is_training=Fal
         ft_dim = get_feature_dimensions_backbone(p)
         features = torch.zeros((len(dataloader.sampler), ft_dim))
 
-    if isinstance(dataloader.dataset, NeighborsDataset):  # Also return the neighbors
+    if isinstance(dataloader.dataset, ContrustiveDataset):  # Also return the neighbors
         key_ = "anchor"
         include_neighbors = True
         nneighbors = []

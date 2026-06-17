@@ -2,10 +2,10 @@ import torch
 from torch import Tensor
 
 from utils.utils import AverageMeter, ProgressMeter
-
+from utils.evaluate_utils import GradientMonitor
 
 def pretext_train(
-    train_loader, model, criterion, optimizer, epoch, logger, device="cuda"
+    train_loader, model, criterion, optimizer, epoch, logger, device="cuda", gradient_monitor: GradientMonitor = None
 ):
 
     avg_meters = {"meter_Margin": AverageMeter("Margin", ":.4e")}
@@ -30,10 +30,6 @@ def pretext_train(
             b, w = ts_org.shape
             h = 1
 
-        # input_: Tensor = torch.cat(
-        #     [ts_org, ts_w_augmented, ts_ss_augmented], dim=0
-        # ).view(b * 3, h, w)
-
         optimizer.zero_grad()
 
         anch_out = model(ts_org.reshape(b, h, w))
@@ -57,6 +53,8 @@ def pretext_train(
         avg_meters["meter_Margin"].update(criterion.margin)
 
         losses["loss"].backward()
+        if (gradient_monitor is not None) and (i == ((len(train_loader.dataset)//b)-1 if train_loader.drop_last else len(train_loader.dataset)//b)):
+            gradient_monitor.step()
         optimizer.step()
 
         if i % 100 == 0:
@@ -75,7 +73,8 @@ def self_sup_classification_train(
     epoch,
     logger,
     update_cluster_head_only=False,
-    device="cuda"
+    device="cuda",
+    gradient_monitor: GradientMonitor = None
 ):
     """
     Train w/ classification-Loss
@@ -141,6 +140,8 @@ def self_sup_classification_train(
         assert losses["total_loss"].requires_grad, "Total loss does not require grad!"
 
         losses["total_loss"].backward()
+        if gradient_monitor is not None:
+            gradient_monitor.step()
         optimizer.step()
         if i % 100 == 0:
             progress.display(i)

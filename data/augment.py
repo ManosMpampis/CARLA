@@ -184,10 +184,3 @@ class SubAnomaly(object):
                                                         start_index = start_index)
 
         return anomalous_window
-
-
-
-
-
-
-

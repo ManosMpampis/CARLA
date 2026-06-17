@@ -18,7 +18,7 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     for k, v in config.items():
         cfg[k] = v
 
-    for k, v in update_dictionary():
+    for k, v in update_dictionary.items():
         cfg[k] = v
     
     # Set paths for pretext task (These directories are needed in every stage)
