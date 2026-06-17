@@ -119,8 +119,8 @@ def clean_directories(base_path: str, dry_run: bool = True, eval_every_n_epoch: 
                     current_block.append(line)
                     
                     # Check if this block references a directory we're deleting
-                    if 'tensor_name:' in line and 'Cluster:' in line:
-                        match = re.search(r'tensor_name:\s*"Cluster:(\d+)"', line)
+                    if 'tensor_name:' in line:
+                        match = re.search(r'tensor_name:\s*":(\d+)"', line)
                         if match:
                             cluster_num = match.group(1)
                             if cluster_num in dirs_to_keep:
