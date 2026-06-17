@@ -28,7 +28,7 @@ criterion_kwargs:
   margin_constant: False
   pos_weight: 1
   neg_weight: 1
-  min_improvement: 0.00001
+  ema_distance: False
   ema_alpha: 0.3
   adjust_factor: 0.001
   orig_margin: False

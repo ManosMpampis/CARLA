@@ -476,7 +476,7 @@ class PretextLoss(nn.Module):
         margin_distance=False,
         adjust_factor=0,
         ema_alpha=0,
-        min_improvement=0.0001,
+        ema_distance=False,
         pos_supression=False,
         re_weight=False,
     ):
@@ -490,17 +490,17 @@ class PretextLoss(nn.Module):
         self.crop_size_min = crop_size_min
         self.crop_size_max = crop_size_max
 
-        self.margin = initial_margin
-        self.initial_margin = initial_margin
-        self.min_margin = min_margin
-        self.max_margin = max_margin
-        self.margin_distance = margin_distance
+        self.margin = torch.tensor(initial_margin).to(device)
+        self.initial_margin = torch.tensor(initial_margin).to(device)
+        self.min_margin = torch.tensor(min_margin).to(device)
+        self.max_margin = torch.tensor(max_margin).to(device)
+        self.margin_distance = torch.tensor(margin_distance).to(device)
 
         self.pos_supression = pos_supression
         self.pos_weight = pos_weight
         self.neg_weight = neg_weight
 
-        self.min_improvement = min_improvement
+        self.ema_distance = ema_distance
         self.ema_alpha = ema_alpha
         self.adjust_factor = adjust_factor
 
@@ -616,28 +616,29 @@ class PretextLoss(nn.Module):
             negative_distance_c *= weight
             loss = self.margin + positive_distance_c - negative_distance_c
 
-        ema_loss = (
-            torch.mean(
-                ((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)
+        if self.ema_distance:
+            ema_loss = (
+                torch.mean(
+                    ((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)
+                )
+                if self.previous_loss is not None
+                else loss
             )
-            if self.previous_loss is not None
-            else loss
-        )
-        improvement = (
-            (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS)
-            if self.prev_ema_loss is not None
-            else ema_loss
-        )
-        self.update_margin(
-            torch.clamp(
-                self.margin * (1 + improvement),
-                min=self.initial_margin,
-                max=self.max_margin,
-            ).item()
-        )
+            improvement = (
+                (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS)
+                if self.prev_ema_loss is not None
+                else 0
+            )
+            self.update_margin(
+                torch.clamp(
+                    self.margin * (1 + improvement),
+                    min=self.initial_margin,
+                    max=self.max_margin,
+                )
+            )
 
-        self.previous_loss = loss.item()
-        self.prev_ema_loss = ema_loss
+            self.previous_loss = loss.item()
+            self.prev_ema_loss = ema_loss
         return {
             "loss": loss,
             "positive_d_loss": positive_d_loss,

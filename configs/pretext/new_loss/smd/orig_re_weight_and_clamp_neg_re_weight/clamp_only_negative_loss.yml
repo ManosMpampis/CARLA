@@ -35,8 +35,8 @@ criterion_kwargs:
   pos_weight: 1
   neg_weight: 1
   initial_margin: 1.0
-  max_margin: 5.0
-  min_margin: 0.01
+  max_margin: 1.0
+  min_margin: 1.0
   margin_distance: False
   adjust_factor: 0
   ema_alpha: 0

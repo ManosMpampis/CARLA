@@ -40,7 +40,7 @@ criterion_kwargs:
   margin_distance: False
   adjust_factor: 0.001
   ema_alpha: 0.3
-  min_improvement: 0.00001
+  ema_distance: True
   pos_supression: False
   re_weight: False
 
