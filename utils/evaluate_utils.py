@@ -7,6 +7,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.cluster import MiniBatchKMeans
 from sklearn import metrics
+from torchmetrics.clustering import (
+    CalinskiHarabaszScore,
+    DaviesBouldinScore,
+)
+
 from sklearn.metrics import (
     precision_recall_curve,
 )
@@ -29,6 +34,42 @@ warnings.filterwarnings(
     message="No positive class found in y_true"
 )
 
+def SilhouetteScore(feats: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """GPU-compatible Silhouette Score. O(N^2) memory due to pairwise distances."""
+    n = feats.shape[0]
+    labels = labels.long()
+    dists = torch.cdist(feats, feats)  # (n, n)
+
+    a = torch.zeros(n, device=feats.device, dtype=feats.dtype)
+    b = torch.full((n,), float("inf"), device=feats.device, dtype=feats.dtype)
+    arange = torch.arange(n, device=feats.device)
+    unique_labels = torch.unique(labels)
+
+    for i in range(n):
+        same_mask = (labels == labels[i]) & (arange != i)
+        if same_mask.any():
+            a[i] = dists[i, same_mask].mean()
+            for c in unique_labels:
+                if c == labels[i]:
+                    continue
+                other_mask = labels == c
+                if other_mask.any():
+                    avg = dists[i, other_mask].mean()
+                    if avg < b[i]:
+                        b[i] = avg
+        else:
+            # Single-element cluster: silhouette is defined as 0
+            a[i] = 0.0
+            b[i] = 0.0
+
+    # Guard against remaining infinities (e.g. only one cluster present)
+    b = torch.where(torch.isinf(b), torch.zeros_like(b), b)
+
+    denom = torch.maximum(a, b)
+    s = torch.zeros_like(a)
+    valid = denom > 0
+    s[valid] = (b[valid] - a[valid]) / denom[valid]
+    return s.mean()
 
 class GradientMonitor:
     def __init__(
@@ -222,7 +263,7 @@ def contrastive_evaluate(
         target = find_target(batch["target"])
 
         b, w, h = ts_org.shape
-        label = ["anchor" for _ in target.tolist()]
+        label = ["anchor" if t==0 else "anomaly" for t in target.tolist()]
         out = model(ts_org.reshape(b, h, w)).cpu()
         vertices.append(out)
         labels.append(label)
@@ -259,15 +300,18 @@ def contrastive_evaluate(
         cluster_labels = kmeans.fit_predict(feats.numpy())
         cluster_centers = torch.from_numpy(kmeans.cluster_centers_)
 
+        # Move data to the model device for GPU metric computation
+        feats_dev = feats.to(device)
+        labels_dev = torch.from_numpy(cluster_labels).to(device)
+
+        # TorchMetrics objects (GPU-native)
+        ch = CalinskiHarabaszScore().to(device)
+        db = DaviesBouldinScore().to(device)
+
         try:
-            # Calculate Silhouette Score
-            s_score = metrics.silhouette_score(
-                feats.numpy(), cluster_labels, metric="euclidean"
-            )
-            # Calculate Calinski-Harabasz Index
-            ch_score = metrics.calinski_harabasz_score(feats.numpy(), cluster_labels)
-            # Calculate Davies-Bouldin Index
-            db_score = metrics.davies_bouldin_score(feats.numpy(), cluster_labels)
+            s_score = SilhouetteScore(feats_dev, labels_dev).item()
+            ch_score = ch(feats_dev, labels_dev).item()
+            db_score = db(feats_dev, labels_dev).item()
         except ValueError as e:
             s_score = 0
             ch_score = 0
@@ -277,7 +321,7 @@ def contrastive_evaluate(
 
         # Add centroids to the graph
         feats = torch.cat([feats, cluster_centers], dim=0)
-        metadata = metadata + ["anchor centroid", "near neighbor centroid", "far neighbor centroid"]
+        metadata = metadata + ["anchor/near centroid", "far neighbor centroid"]
         evaluation_metrics = {
             "Silhouette Score": s_score,
             "Calinski-Harabasz Score": ch_score,

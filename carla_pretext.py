@@ -148,16 +148,16 @@ def main(args, update_dictionary={}):
             feats, metadata, evaluation_metrics = contrastive_evaluate(
                 train_dataloader,
                 model,
-                output_metrics=p.get("evaluation_extra_metrics", False),
+                output_metrics=p.get("evaluation_extra_metrics", True),
             )
             
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
 
             feats, metadata, evaluation_metrics = contrastive_evaluate(
-                train_dataloader,
+                val_dataloader,
                 model,
-                output_metrics=p.get("evaluation_extra_metrics", False),
+                output_metrics=p.get("evaluation_extra_metrics", True),
             )
             
             logger.add_embedding("Cluster_eval", feats, metadata, epoch + 1)
