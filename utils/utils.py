@@ -3,9 +3,7 @@ import logging
 import errno
 import numpy as np
 import torch
-# from ..delete_files import clean_directories
 
-# import os
 import shutil
 from pathlib import Path
 
@@ -71,76 +69,55 @@ def clean_directories(base_path: str, dry_run: bool = True, eval_every_n_epoch: 
     if len(dirs) >= 3:
         dirs_to_keep.add(dirs.pop(0).name)
     
-    # Directory 0999
+    # Last Directory
     dirs_to_keep.add(dirs.pop(-1).name)
     
-    # Last non-multiple of 50
+    # Last non-multiple of evaluation epoch
     last_non_multiple = get_last_non_multiple_of_eval_epoch(dirs, eval_every_n_epoch)
     if last_non_multiple:
         dirs_to_keep.add(last_non_multiple.name)
     # Directory of the checkpoint epoch
     padding_length = next((len(d) for d in dirs_to_keep if d and d.isdigit()), None)
     dirs_to_keep.add(str(epoch).zfill(padding_length))
+    dirs_to_keep = list(dirs_to_keep)
+    dirs_to_keep.sort()
     # Directories to delete
     dirs_to_delete = [d for d in dirs if d.name not in dirs_to_keep]
     
-    
+
+    dirs_to_write = {}
+    for dir in dirs_to_keep:
+        for d in Path(f"{base_path}/{dir}").iterdir():
+            if str(d).rsplit("/", 1)[-1] not in dirs_to_write.keys():
+                    dirs_to_write[str(d).rsplit("/", 1)[-1]] = []
+            if Path(f"{base_path}/{dir}").is_dir():
+                dirs_to_write[str(d).rsplit("/", 1)[-1]].append(dir)
+
     if dry_run:
         print(f"DRY RUN: {len(dirs_to_delete)} directories would be deleted.")
         print("Run with dry_run=False to actually delete them.")
     else:
         for d in dirs_to_delete:
             shutil.rmtree(d)
-            try:
-                embeddings_file_path = f"{base_path}/projector_config.pbtxt"
-                with open(embeddings_file_path, 'r') as f:
-                    lines = f.readlines()
-            except FileNotFoundError:
-                print(f"✗ Error: Embeddings file not found at '{embeddings_file_path}'")
-                return
+        try:
+            embeddings_file_path = f"{base_path}/projector_config.pbtxt"
+            with open(embeddings_file_path, 'r') as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            print(f"✗ Error: Embeddings file not found at '{embeddings_file_path}'")
+            return
 
-            output_lines = []
-            current_block = []
-            in_block = False
-            keep_block = False
-            removed_count = 0
+        output_lines = []
+        for exp, nums in dirs_to_write.items():
+            for num in nums:
+                output_lines.append('embeddings {\n')
+                output_lines.append(f'  tensor_name: "{exp}:{num}"\n')
+                output_lines.append(f'  metadata_path: "{num}/{exp}/metadata.tsv"\n')
+                output_lines.append(f'  tensor_path: "{num}/{exp}/tensors.tsv"\n')
+                output_lines.append("}\n")
 
-            for line in lines:
-                stripped_line = line.strip()
-                
-                # Detect start of an embeddings block
-                if stripped_line.startswith('embeddings {'):
-                    in_block = True
-                    keep_block = False
-                    current_block = [line]
-                    continue
-                
-                if in_block:
-                    current_block.append(line)
-                    
-                    # Check if this block references a directory we're deleting
-                    if 'tensor_name:' in line:
-                        match = re.search(r'tensor_name:\s*":(\d+)"', line)
-                        if match:
-                            cluster_num = match.group(1)
-                            if cluster_num in dirs_to_keep:
-                                keep_block = True
-                                removed_count += 1
-                    
-                    # Detect end of an embeddings block
-                    if stripped_line == '}':
-                        in_block = False
-                        if keep_block:
-                            output_lines.extend(current_block)
-                        current_block = []
-                
-                else:
-                    # Preserve lines that are not part of embeddings blocks
-                    output_lines.append(line)
-
-            # Write the filtered content back to the file
-            with open(embeddings_file_path, 'w') as f:
-                f.writelines(output_lines)
+        with open(embeddings_file_path, 'w') as f:
+            f.writelines(output_lines)
 
 def mkdir_if_missing(directory):
     if directory == None or directory == "None" or directory == "":
