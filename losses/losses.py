@@ -653,4 +653,4 @@ class PretextLoss(nn.Module):
     def update_margin(self, new_margin):
         if new_margin is None:
             return
-        self.margin = new_margin
+        self.margin = new_margin.to(self.margin.device) if isinstance(new_margin, torch.Tensor) else torch.tensor(new_margin).to(self.margin.device)

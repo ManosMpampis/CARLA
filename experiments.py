@@ -43,8 +43,10 @@ version_no_norm = "no_norm/"
 for exp in experiments[0]:
     version = f"batch/original-dynamic_weight-loss_clamp/{exp.name[:-4]}"
     index = file_list.index('machine-1-1.txt')
-    if "original.yml" not in str(exp):
+    if "temp.yml" not in str(exp):
         for filename in file_list[index:]:
+            # if exp.name[:-4] == "clamp_only_negative_loss" and filename == "machine-1-1.txt":
+            #     continue
             print(filename)
 
             # Run the pretext script
