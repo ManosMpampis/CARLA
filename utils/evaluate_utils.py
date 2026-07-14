@@ -115,8 +115,12 @@ class GradientMonitor:
             self.logger.scalar_summary("update_ratio", tag, ratio, self.step_count)
 
             if self.log_histograms:
-                self.logger.add_histogram("grad_values", tag, param.grad, self.step_count)
-
+                try:
+                    self.logger.add_histogram("grad_values", tag, param.grad, self.step_count)
+                except ValueError as e:
+                    print(f"Histogram value of :{name} has param.grad:{param.grad}")
+                    import traceback
+                    traceback.print_exc()
             names.append(name)
             norms.append(grad_norm)
 
