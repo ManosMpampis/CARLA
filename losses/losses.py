@@ -623,7 +623,7 @@ class PretextLoss(nn.Module):
                 )
                 if self.previous_loss is not None
                 else loss
-            )
+            ).item()
             improvement = (
                 (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS)
                 if self.prev_ema_loss is not None
