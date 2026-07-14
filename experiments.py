@@ -18,7 +18,7 @@ file_list = sorted(file_list)
 print(file_list)
 
 experiment_dir = Path("configs/pretext/new_loss/smd/")
-experiment_group = [exp for exp in experiment_dir.iterdir() if exp.is_dir()]
+experiment_group = [exp for exp in experiment_dir.iterdir() if (exp.is_dir() and "normalization-strategy" not in str(exp))]
 experiments = [[exp for exp in experiment.iterdir()] for experiment in experiment_group]
 # %% Test
 # version = "test/test1"
@@ -40,51 +40,106 @@ version_instance = "instance/"
 version_no_norm = "no_norm/"
 
 # %% Pretext original-dynamic_weight-loss_clamp
-for exp in experiments[0]:
-    version = f"batch/original-dynamic_weight-loss_clamp/{exp.name[:-4]}"
-    index = file_list.index('machine-1-1.txt')
-    if "temp.yml" not in str(exp):
-        for filename in file_list[index:]:
-            # if exp.name[:-4] == "clamp_only_negative_loss" and filename == "machine-1-1.txt":
-            #     continue
-            print(filename)
+# for exp in experiments[0]:
+#     version = f"{version_layer}original-dynamic_weight-loss_clamp/{exp.name[:-4]}"
+#     index = file_list.index('machine-1-1.txt')
+#     index_scip = file_list.index('machine-3-6.txt')
+#     if "original.yml" not in str(exp):
+#         for filename in file_list[index:]:
+#             if exp.name[:-4] == "clamp_only_negative_loss" and filename in file_list[:index_scip]:
+#                 continue
+#             print(filename)
 
-            # Run the pretext script
-            pretext_args = EasyDict({"config_env": "configs/env.yml",
-                            "config_exp": str(exp),
-                            "fname": filename,
-                            "version": f"{version}"})
-            main_pretext(pretext_args)
+#             # Run the pretext script
+#             pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                             "config_exp": str(exp),
+#                             "fname": filename,
+#                             "version": f"{version}"})
+#             main_pretext(pretext_args)
+
+# %% Pretext original-dynamic_weight-loss_clamp
+# for exp in experiments[0]:
+#     version = f"batch/original-dynamic_weight-loss_clamp/{exp.name[:-4]}"
+#     index = file_list.index('machine-1-1.txt')
+#     index_scip = file_list.index('machine-3-6.txt')
+#     if "original.yml" not in str(exp):
+#         for filename in file_list[index:]:
+#             if exp.name[:-4] == "clamp_only_negative_loss" and filename in file_list[:index_scip]:
+#                 continue
+#             print(filename)
+
+#             # Run the pretext script
+#             pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                             "config_exp": str(exp),
+#                             "fname": filename,
+#                             "version": f"{version}"})
+#             main_pretext(pretext_args)
 
 # %% Pretext ema_loss
-for exp in experiments[1]:
-    version = f"batch/ema_loss/{exp.name[:-4]}"
-    index = file_list.index('machine-1-1.txt')
-    if "temp.yml" not in str(exp):
-        for filename in file_list[index:]:
-            print(filename)
+# experiment_to_go = Path(f"{experiment_dir}/ema_loss/dynamic_margin_by_ema_loss-dynamic_loss_guidance-clamp_only_negative_loss.yml")
+# exp_index = experiments[1].index(experiment_to_go)
+# for exp in experiments[1][exp_index:]:
+#     version = f"batch/ema_loss/{exp.name[:-4]}"
+#     index = file_list.index('machine-1-1.txt')
+#     index_scip = file_list.index('machine-1-1.txt')
+#     for filename in file_list[index:]:
+#         if (exp == experiment_to_go) and (filename in file_list[:index_scip]):
+#             continue
+#         print(filename)
 
-            # Run the pretext script
-            pretext_args = EasyDict({"config_env": "configs/env.yml",
-                            "config_exp": str(exp),
-                            "fname": filename,
-                            "version": f"{version}"})
-            main_pretext(pretext_args)
+#         # Run the pretext script
+#         pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": str(exp),
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_pretext(pretext_args)
 
 # %% Pretext dynamic_reweight_on_distance
-for exp in experiments[2]:
-    version = f"batch/dynamic_reweight_on_distance/{exp.name[:-4]}"
-    index = file_list.index('machine-1-1.txt')
-    if "temp.yml" not in str(exp):
-        for filename in file_list[index:]:
-            print(filename)
+# experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
+# exp_index = experiments[2].index(experiment_to_go)
+# for exp in experiments[2][exp_index:]:
+#     version = f"batch/dynamic_reweight_on_distance/{exp.name[:-4]}"
+#     index = file_list.index('machine-1-1.txt')
+#     index_scip = file_list.index('machine-1-1.txt')
+#     for filename in file_list[index:]:
+#         if (exp == experiment_to_go) and (filename in file_list[:index_scip]):
+#             continue
+#         print(filename)
+#         # Run the pretext script
+#         pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                         "config_exp": str(exp),
+#                         "fname": filename,
+#                         "version": f"{version}"})
+#         main_pretext(pretext_args)
 
+# %% Pretext normalization
+experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
+exp_index = 0# experiments[2].index(experiment_to_go)
+experiments = [exp for exp in Path(os.path.join(experiment_dir, "normalization-strategy")).iterdir()]
+for exp in experiments[exp_index:]:
+    for norm in ["layer", "instance", "none"]:
+        version = f"./normalization-strategy/{norm}/{exp.name[:-4]}"
+        index = file_list.index('machine-1-1.txt')
+        index_scip = file_list.index('machine-1-1.txt')
+        for filename in file_list[index:]:
+            if (exp == experiment_to_go) and (filename in file_list[:index_scip]):
+                continue
+            print(filename)
             # Run the pretext script
+            patch = EasyDict({"res_kwargs": {
+                "in_channels": 38,
+                "mid_channels": [4, 8],
+                "kernel_sizes": [8, 5, 3],
+                "norm_layer_name":  norm,
+                "window_size": 256,
+                "dropout": True
+                }
+            })
             pretext_args = EasyDict({"config_env": "configs/env.yml",
                             "config_exp": str(exp),
                             "fname": filename,
                             "version": f"{version}"})
-            main_pretext(pretext_args)
+            main_pretext(pretext_args, update_dictionary=patch)
 
 # index = file_list.index('machine-1-1.txt')
 # for filename in file_list[index:]:
@@ -95,3 +150,5 @@ for exp in experiments[2]:
 #                     "version": f"{version_batch}"})
 #     main_classification(classification_args)
 
+
+# %%
