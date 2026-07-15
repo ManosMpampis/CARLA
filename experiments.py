@@ -117,8 +117,8 @@ experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_
 exp_index = 0# experiments[2].index(experiment_to_go)
 experiments = [exp for exp in Path(os.path.join(experiment_dir, "normalization-strategy")).iterdir()]
 for exp in experiments[exp_index:]:
-    for norm in ["layer", "instance", "none"]:
-        version = f"./normalization-strategy/{norm}/{exp.name[:-4]}"
+    for norm in ["batch", "instance"]:
+        version = f"./best_models/{norm}/{exp.name[:-4]}"
         index = file_list.index('machine-1-1.txt')
         index_scip = file_list.index('machine-1-1.txt')
         for filename in file_list[index:]:

@@ -79,8 +79,20 @@ def main(args, update_dictionary={}):
     # optimizer = torch.optim.Adam(model.parameters(), lr=p["optimizer_kwargs"]["lr"])
     scheduler = get_scheduler(p, optimizer)
 
+    best_metrics = {
+            "loss": np.inf,
+            "clear_loss": np.inf,
+            "train_calinski": np.inf,
+            "train_davies": -np.inf,
+            "train_silhouette": np.inf,
+            "eval_calinski": np.inf,
+            "eval_davies": -np.inf,
+            "eval_silhouette": np.inf,
+            }
+    
     # Checkpoint
     if os.path.exists(p["pretext_checkpoint"]):
+
         logger.log("Restart from checkpoint {}".format(p["pretext_checkpoint"]))
         checkpoint = torch.load(
             p["pretext_checkpoint"], map_location="cpu", weights_only=False
@@ -92,7 +104,14 @@ def main(args, update_dictionary={}):
             scheduler.load_state_dict(checkpoint["scheduler"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"]
-        pretext_best_loss = checkpoint["pretext_best_loss"]
+        best_metrics["loss"] = checkpoint["pretext_best_loss"]
+        best_metrics["clear_loss"] = checkpoint["pretext_best_clear_loss"] if "pretext_best_clear_loss" in checkpoint else best_metrics["clear_loss"]
+        best_metrics["train_calinski"] = checkpoint["pretext_best_train_calinski"] if "pretext_best_train_calinski" in checkpoint else best_metrics["train_calinski"]
+        best_metrics["train_davies"] = checkpoint["pretext_best_train_davies"] if "pretext_best_train_davies" in checkpoint else best_metrics["train_davies"]
+        best_metrics["train_silhouette"] = checkpoint["pretext_best_train_silhouette"] if "pretext_best_train_silhouette" in checkpoint else best_metrics["train_silhouette"]
+        best_metrics["eval_calinski"] = checkpoint["pretext_best_eval_calinski"] if "pretext_best_eval_calinski" in checkpoint else best_metrics["eval_calinski"]
+        best_metrics["eval_davies"] = checkpoint["pretext_best_eval_davies"] if "pretext_best_eval_davies" in checkpoint else best_metrics["eval_davies"]
+        best_metrics["eval_silhouette"] = checkpoint["pretext_best_eval_silhouette"] if "pretext_best_eval_silhouette" in checkpoint else best_metrics["eval_silhouette"]
         criterion.update_margin(checkpoint.get("last_margin", None))
         if "prev_ema_loss" in checkpoint:
             criterion.prev_ema_loss = checkpoint["prev_ema_loss"]
@@ -110,7 +129,6 @@ def main(args, update_dictionary={}):
         logger.log("No checkpoint file at {}".format(p["pretext_checkpoint"]))
         start_epoch = 0
         model = model.to(device)
-        pretext_best_loss = np.inf
 
         # Make an evaluation run to check random state
         feats, metadata, evaluation_metrics = contrastive_evaluate(
@@ -142,7 +160,7 @@ def main(args, update_dictionary={}):
         if (
             (epoch+1) % eval_every_n_epoch == 0
             or (epoch+1) == p["epochs"]
-            or tmp_loss < pretext_best_loss #TODO: check edge cases, when model fail to only loss=0, the (<=) saves every epoch. Do we want the last non zero loss?
+            or tmp_loss < best_metrics["loss"] #TODO: check edge cases, when model fail to only loss=0, the (<=) saves every epoch. Do we want the last non zero loss?
         ):
             logger.metrics_summary("Pretext Loss", loss_dict, epoch + 1)
             feats, metadata, evaluation_metrics = contrastive_evaluate(
@@ -154,23 +172,36 @@ def main(args, update_dictionary={}):
             logger.add_embedding("Cluster", feats, metadata, epoch + 1)
             logger.metrics_summary("Pretext Evaluation", evaluation_metrics, epoch + 1)
 
-            feats, metadata, evaluation_metrics = contrastive_evaluate(
+            feats, metadata, evaluation_metrics_eval = contrastive_evaluate(
                 val_dataloader,
                 model,
                 output_metrics=p.get("evaluation_extra_metrics", True),
             )
             
             logger.add_embedding("Cluster_eval", feats, metadata, epoch + 1)
-            logger.metrics_summary("Pretext Evaluation_eval", evaluation_metrics, epoch + 1)
+            logger.metrics_summary("Pretext Evaluation_eval", evaluation_metrics_eval, epoch + 1)
 
             logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
 
+            # Checkpoint
+            best_metrics["loss"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["loss"], loss_dict["loss"], "loss", assending=False)
+
+            best_metrics["clear_loss"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["clear_loss"], loss_dict["clear_loss"], "clear_loss", assending=False)
+
+            best_metrics["train_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_calinski"], evaluation_metrics["Calinski-Harabasz Score"], "train_calinski", assending=False)
+            best_metrics["train_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_davies"], evaluation_metrics["Davies-Bouldin Score"], "train_davies", assending=True)
+            best_metrics["train_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_silhouette"], evaluation_metrics["Silhouette Score"], "train_silhouette", assending=False)
+
+            best_metrics["eval_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_calinski"], evaluation_metrics_eval["Calinski-Harabasz Score"], "eval_calinski", assending=False)
+            best_metrics["eval_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_davies"], evaluation_metrics_eval["Davies-Bouldin Score"], "eval_davies", assending=True)
+            best_metrics["eval_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_silhouette"], evaluation_metrics_eval["Silhouette Score"], "eval_silhouette", assending=False)
+            
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
-                "pretext_best_loss": tmp_loss,
+                "pretext_best_loss": best_metrics["loss"],
                 "last_margin": last_margin,
             }
             if hasattr(criterion, "prev_ema_loss"):
@@ -179,27 +210,54 @@ def main(args, update_dictionary={}):
                 save_dict["previous_loss"] = criterion.previous_loss
             torch.save(save_dict, p["pretext_checkpoint"])
 
-        # Checkpoint
-        if tmp_loss < pretext_best_loss:
-            pretext_best_loss = tmp_loss
+            
+            # if tmp_loss < pretext_best_loss:
+            #     pretext_best_loss = tmp_loss
+            #     torch.save(model.state_dict(), p["pretext_model"])
+            #     save_dict = {
+            #         "model": model.state_dict(),
+            #         "optimizer": optimizer.state_dict(),
+            #         "scheduler": scheduler.state_dict(),
+            #         "epoch": epoch,
+            #         "pretext_best_loss": tmp_loss,
+            #         "last_margin": last_margin,
+            #     }
+            #     if hasattr(criterion, "prev_ema_loss"):
+            #         save_dict["prev_ema_loss"] = criterion.prev_ema_loss
+            #     if hasattr(criterion, "previous_loss"):
+            #         save_dict["previous_loss"] = criterion.previous_loss
+            #     torch.save(save_dict, f"{p["pretext_checkpoint"][:-4]}_best.pth.tar")
+        scheduler.step()
+
+    logger.finalize(eval_every_n_epoch)
+
+def make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_current_metric, metric, metric_name, assending=False):
+    checkpoint = (metric > best_current_metric) if assending else (metric < best_current_metric)
+    if checkpoint:
+            best_current_metric = metric
+            best_metrics[metric_name] = best_current_metric
             torch.save(model.state_dict(), p["pretext_model"])
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
-                "pretext_best_loss": tmp_loss,
+                "pretext_best_loss": best_metrics["loss"],
+                "pretext_best_clear_loss": best_metrics["clear_loss"],
+                "pretext_best_train_calinski": best_metrics["train_calinski"],
+                "pretext_best_train_davies": best_metrics["train_davies"],
+                "pretext_best_train_silhouette": best_metrics["train_silhouette"],
+                "pretext_best_eval_calinski": best_metrics["eval_calinski"],
+                "pretext_best_eval_davies": best_metrics["eval_davies"],
+                "pretext_best_eval_silhouette": best_metrics["eval_silhouette"],
                 "last_margin": last_margin,
             }
             if hasattr(criterion, "prev_ema_loss"):
                 save_dict["prev_ema_loss"] = criterion.prev_ema_loss
             if hasattr(criterion, "previous_loss"):
                 save_dict["previous_loss"] = criterion.previous_loss
-            torch.save(save_dict, f"{p["pretext_checkpoint"][:-4]}_best.pth.tar")
-        scheduler.step()
-
-    logger.finalize(eval_every_n_epoch)
-
+            torch.save(save_dict, f"{p["pretext_checkpoint"][:-4]}_{metric_name}.pth.tar")
+    return best_current_metric
 
 if __name__ == "__main__":
     # Parser

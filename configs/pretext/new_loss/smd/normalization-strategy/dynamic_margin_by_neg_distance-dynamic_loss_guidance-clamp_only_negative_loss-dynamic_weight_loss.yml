@@ -45,7 +45,7 @@ criterion_kwargs:
   re_weight: True
 
 # Hyperparameters
-epochs: 2000
+epochs: 1500
 optimizer: adamw
 optimizer_kwargs:
   lr: 0.001
@@ -55,7 +55,7 @@ scheduler: cosine_restart
 scheduler_kwargs:
   lr_warmup_epochs: 100 #20 #100
   lr_eta_min: 0.0005
-  T_period: 250 #50 #1500
+  T_period: 500 #50 #1500
   T_mul: 2
   lr_decay_epochs: [10, 20]
   lr_decay_rate: 0.01
