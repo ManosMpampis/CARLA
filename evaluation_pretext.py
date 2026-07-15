@@ -73,8 +73,8 @@ def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None)
         if not experiments:
             experiments = ["/"]
         for exp in experiments:
-            if not exp == "original":
-                continue
+            # if not exp == "original":
+            #     continue
             exp_dir = os.path.join(exp_cluster_dir, exp)
             if not os.path.isdir(exp_dir):
                 print(f"[skip] not found: {exp_dir}")
@@ -146,7 +146,7 @@ def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None)
 
 
 if __name__ == "__main__":
-    experiment_cluster = ["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"] #["none"]#["instance", "layer", "none"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
+    experiment_cluster = ["instance", "layer", "none"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
     ds_name = "smd"
-    big_exp_name = "batch" #"normalization-strategy" #"batch"
+    big_exp_name = "normalization-strategy" #"batch"
     evaluate(experiment_cluster, ds_name, big_exp_name)

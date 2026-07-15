@@ -6,13 +6,12 @@ import argparse
 metric_cols = [
     "train_calinski", "train_davies", "train_silhouette",
     "eval_calinski", "eval_davies", "eval_silhouette",
-    "loss", "clear_loss", "neg_included", "neg_not_included",
-    "pos_included", "pos_not_included", "margin",
-    "negative_d_loss", "positive_d_loss",
+    "loss", "clear_loss",
 ]
 
 
 def summarize(base_path, out_path, focused_tag=""):
+    focused_tag = focused_tag if focused_tag=="" else f"_{focused_tag}"
     pattern = os.path.join(base_path, "**", f"pretext_evaluation{focused_tag}.csv")
     files = glob.glob(pattern, recursive=True)
 
@@ -24,8 +23,17 @@ def summarize(base_path, out_path, focused_tag=""):
     for fpath in sorted(files):
         rel = os.path.relpath(fpath, base_path)
         parts = rel.replace(".csv", "").split(os.sep)
-        exp_label = " / ".join(parts[:-1]) if len(parts) > 1 else parts[0]
-
+        exp_label = parts[-2] if len(parts) > 1 else parts[0]
+        if "batch" in parts:
+            exp_label = f"batch_{exp_label}"
+        elif "instance" in parts:
+            exp_label = f"instance_{exp_label}"
+        elif "layer" in parts:
+            exp_label = f"layer_{exp_label}"
+        elif "none" in parts:
+            exp_label = f"none_{exp_label}"
+        else:
+            print("None normalization found")
         df = pd.read_csv(fpath)
         if "run" not in df.columns:
             continue
@@ -55,5 +63,8 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=str, default="./pretext_summary.csv",
                         help="Output CSV path")
     args = parser.parse_args()
-
-    summarize(args.base_path, args.out)
+    
+    focused_tag = [""] + metric_cols
+    for tag in focused_tag:
+        out = f"./pretext_summary{tag}.csv"
+        summarize(args.base_path, out, focused_tag=tag)
