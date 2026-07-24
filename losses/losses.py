@@ -145,6 +145,10 @@ class ClassificationLossE2E(nn.Module):
         positives_prob = self.softmax(nneighbors["cluster"])
         negatives_prob = self.softmax(fneighbors["cluster"])
 
+        # Per-sample predicted classes (used for per-class count logging)
+        anchor_preds = torch.argmax(anchors_prob, dim=1)
+        neg_preds = torch.argmax(negatives_prob, dim=1)
+
         # Similarity in output space
         similarity = torch.bmm(
             anchors_prob.view(b, 1, n), positives_prob.view(b, n, 1)
@@ -201,12 +205,9 @@ class ClassificationLossE2E(nn.Module):
             #     negatives_prob, input_as_probabilities=True
             # )
 
-        pos_classification = torch.argmax(anchors_prob, dim=0)
-        negs_classification = torch.argmax(negatives_prob, dim=0)
-
         anchors_prob = torch.mean(anchors_prob, 0)
         negatives_prob = torch.mean(negatives_prob, 0)
-        
+
         positive_entropy = entropy(
             anchors_prob, input_as_probabilities=True
         ) * self.positive_entropy_weight
@@ -233,28 +234,40 @@ class ClassificationLossE2E(nn.Module):
         negs_margin_per_class = { 
             f"{i+1}": negatives_prob[i] for i in range(n)
         }
+        anchor_class_counts = torch.bincount(anchor_preds, minlength=int(n))
+        negs_class_counts = torch.bincount(neg_preds, minlength=int(n))
         negs_classified_per_class = {
-            f"{i+1}": negs_classification[i] for i in range(n)
+            f"{i+1}": negs_class_counts[i] for i in range(n)
         }
         anchor_classified_per_class = {
-            f"{i+1}": pos_classification[i] for i in range(n)
+            f"{i+1}": anchor_class_counts[i] for i in range(n)
         }
 
         pos_normal_class_probs = torch.cat([anchors["output"], nneighbors["output"]])
         neg_normal_class_probs = fneighbors["output"]
 
         pos_targets = torch.zeros_like(pos_normal_class_probs)
-        neg_targets = torch.ones_like(neg_normal_class_probs)
 
         if anchors["output"].size(1) != 1:
-            # Multi-class classification
-            pos_targets[:, 0] = 1  # Normal class is class 0
-            neg_targets[:, 0] = 0  # Anomalous classes are all except class 0
+            # Multi-class classification; regular class is fixed to class 0
+            pos_targets[:, 0] = 1
+            # Negatives: only the regular-class logit is constrained (to be off);
+            # entropy/dissimilarity terms shape the remaining classes.
+            neg_normal_logits = neg_normal_class_probs[:, 0]
+            neg_bce_loss = self.bce_with_logits(
+                neg_normal_logits, torch.zeros_like(neg_normal_logits)
+            )
+        else:
+            neg_targets = torch.ones_like(neg_normal_class_probs)
+            neg_bce_loss = self.bce_with_logits(neg_normal_class_probs, neg_targets)
         pos_bce_loss = self.bce_with_logits(pos_normal_class_probs, pos_targets)
-        neg_bce_loss = self.bce_with_logits(neg_normal_class_probs, neg_targets)
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
 
-        shift_weight = (anchors_prob.std() - negatives_prob.std())*(n/torch.sqrt(n-1)).detach() * self.classification_loss_flag
+        shift_weight = (
+            (anchors_prob.std() - negatives_prob.std())
+            * (n / torch.sqrt(n - 1))
+            * self.classification_loss_flag
+        ).detach()  # Pure scheduler: no gradient through the mixing coefficient
         total_loss = (1 - shift_weight) * marginal_total_loss + (shift_weight) * classification_loss
 
         out = {
@@ -319,6 +332,10 @@ class ClassificationLoss(nn.Module):
         positives_prob = self.softmax(nneighbors["output"])
         negatives_prob = self.softmax(fneighbors["output"])
 
+        # Per-sample predicted classes (used for per-class count logging)
+        anchor_preds = torch.argmax(anchors_prob, dim=1)
+        neg_preds = torch.argmax(negatives_prob, dim=1)
+
         # Similarity in output space
         similarity = torch.bmm(
             anchors_prob.view(b, 1, n), positives_prob.view(b, n, 1)
@@ -365,8 +382,11 @@ class ClassificationLoss(nn.Module):
         entropy_loss = torch.tensor(0)
         negative_entropy = torch.tensor(0)
         negative_per_sample_entropy = torch.tensor(0)
+
+        pos_logits = anchors["output"]
         if self.entropy_to_all_instances:
             anchors_prob = torch.cat([anchors_prob, positives_prob])
+            pos_logits = torch.cat([pos_logits, nneighbors["output"]])
             self.positive_entropy_weight = 0.5  # Reduce the weight of positive entropy since we are also applying it to the neighbors
             negative_entropy = entropy(
                 torch.mean(negatives_prob, 0), input_as_probabilities=True
@@ -375,22 +395,23 @@ class ClassificationLoss(nn.Module):
             #     negatives_prob, input_as_probabilities=True
             # )
 
-        pos_classification = torch.argmax(anchors_prob, dim=0)
-        negs_classification = torch.argmax(negatives_prob, dim=0)
-        
-
         normal_class_idx = torch.argmax(anchors_prob.mean(dim=0), dim=-1).item()
-        pos_targets = torch.zeros_like(anchors_prob)
-        pos_targets[:, normal_class_idx] = 1  # Normal class is class 0
 
-        neg_targets = torch.ones_like(negatives_prob)
-        neg_targets[:, normal_class_idx] = 0  # Anomalous class is class 1
+        pos_targets = torch.zeros_like(pos_logits)
+        pos_targets[:, normal_class_idx] = 1  # Regular class: most probable on average
 
-        # pos_normal_class_probs = anchors_prob[:, normal_class_idx]
-        # neg_normal_class_probs = negatives_prob[:, normal_class_idx]
+        # Negatives: only the regular-class logit is constrained (to be off);
+        # entropy/dissimilarity terms shape the remaining classes.
+        neg_normal_logits = fneighbors["output"][:, normal_class_idx]
 
-        pos_bce_loss = self.bce_with_logits(torch.cat([anchors["output"], nneighbors["output"]]), pos_targets)
-        neg_bce_loss = self.bce_with_logits(fneighbors["output"], neg_targets)
+        pos_bce_loss = self.bce_with_logits(pos_logits, pos_targets)
+
+        # neg_targets = torch.ones_like(negatives_prob)
+        # neg_targets[:, normal_class_idx] = 0  # Regular class: most probable on average
+        # neg_bce_loss = self.bce_with_logits(fneighbors["output"], neg_targets)
+        neg_bce_loss = self.bce_with_logits(
+            neg_normal_logits, torch.zeros_like(neg_normal_logits)
+        )
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
 
         anchors_prob = torch.mean(anchors_prob, 0)
@@ -422,15 +443,21 @@ class ClassificationLoss(nn.Module):
         negs_margin_per_class = { 
             f"{i+1}": negatives_prob[i] for i in range(n)
         }
+        anchor_class_counts = torch.bincount(anchor_preds, minlength=int(n))
+        negs_class_counts = torch.bincount(neg_preds, minlength=int(n))
         negs_classified_per_class = {
-            f"{i+1}": negs_classification[i] for i in range(n)
+            f"{i+1}": negs_class_counts[i] for i in range(n)
         }
         anchor_classified_per_class = {
-            f"{i+1}": pos_classification[i] for i in range(n)
+            f"{i+1}": anchor_class_counts[i] for i in range(n)
         }
 
 
-        shift_weight = (anchors_prob.std() - negatives_prob.std())*(n/torch.sqrt(n-1)).detach() * self.classification_loss_flag
+        shift_weight = (
+            (anchors_prob.std() - negatives_prob.std())
+            * (n / torch.sqrt(n - 1))
+            * self.classification_loss_flag
+        ).detach()  # Pure scheduler: no gradient through the mixing coefficient
         total_loss = (1 - shift_weight) * marginal_total_loss + (shift_weight * classification_loss)
 
         out = {
