@@ -452,6 +452,12 @@ class ClassificationLoss(nn.Module):
             f"{i+1}": anchor_class_counts[i] for i in range(n)
         }
 
+        # shift_weight = (
+        #     0.5 #positive = 0 και neg = 1
+        #     * (-positive_entropy + negative_entropy)/torch.log(torch.tensor(n)) 
+        #     * self.classification_loss_flag
+        # ).detach()  # Pure scheduler: no gradient through the mixing coefficient
+        # total_loss = (1 - torch.clamp(shift_weight, min=-1)) * marginal_total_loss + (torch.clamp(shift_weight, max=1) * classification_loss)
 
         shift_weight = (
             (anchors_prob.std() - negatives_prob.std())
