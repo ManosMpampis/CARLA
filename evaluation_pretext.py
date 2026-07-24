@@ -63,7 +63,7 @@ def _best_epoch_metric_value(df, tag, min=False):
     step = (sub["step"].iloc[-1])
     return step
 
-def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None):
+def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None, save_tag=None):
     if base_path is None:
         base_path = f"./results/{ds_name}/{big_exp_name}"
 
@@ -87,7 +87,7 @@ def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None)
             rows_logs_check_tags = {key: [] for key in logs_check_tags.keys()}
             for run in run_dirs:
                 run_path = os.path.join(exp_dir, run)
-                ckpt = _find_path(run_path, "checkpoint.pth_best.pth.tar")
+                ckpt = _find_path(run_path, f"checkpoint.pth{f"_{save_tag}" if save_tag is not None else ""}.pth.tar")
                 if ckpt is None:
                     print(f"[skip] no checkpoint: {run_path}")
                     continue
@@ -146,7 +146,7 @@ def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None)
 
 
 if __name__ == "__main__":
-    experiment_cluster = ["instance", "layer", "none"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
+    experiment_cluster = ["batch", "instance"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
     ds_name = "smd"
-    big_exp_name = "normalization-strategy" #"batch"
-    evaluate(experiment_cluster, ds_name, big_exp_name)
+    big_exp_name = "best_models" #"normalization-strategy" #"batch"
+    evaluate(experiment_cluster, ds_name, big_exp_name, save_tag="eval_silhouette")
