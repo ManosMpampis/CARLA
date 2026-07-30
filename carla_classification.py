@@ -69,9 +69,11 @@ def main(args, update_dictionary={}):
     val_dataloader = get_val_dataloader(p, val_dataset)
 
     # Model
-    model = get_model(p, p["pretext_model"])
-    model = model.to(device)
+    metric_name = p.get("starting_metric_nama", "loss")
+    model = get_model(p, f"{p["pretext_checkpoint"][:-4]}_{metric_name}.pth.tar")
+    # model = get_model(p, p["pretext_model"])
     logger.add_graph(model, torch.rand([1, p['res_kwargs']['in_channels'], p['wsz']]))
+    model = model.to(device)
 
     # Find new datase
     train_dataset_base, con_dataset = get_aug_train_dataset(p, transform=train_transforms, dataset=train_dataset, new=True, data_number=None)
@@ -122,6 +124,10 @@ def main(args, update_dictionary={}):
         best_cls_f1 = checkpoint.get("best_cls_f1", -1 * np.inf)
         train_best_f1 = checkpoint.get("train_best_f1", -1 * np.inf)
         best_train_th_eval_f1 = checkpoint.get("best_train_th_eval_f1", -1 * np.inf)
+        best_VUS_ROC = checkpoint.get("best_VUS_ROC", -1 * np.inf)
+        best_VUS_PR = checkpoint.get("best_VUS_PR", -1 * np.inf)
+        best_pa_VUS_ROC = checkpoint.get("best_pa_VUS_ROC", -1 * np.inf)
+        best_pa_VUS_PR = checkpoint.get("best_pa_VUS_PR", -1 * np.inf)
 
         if start_epoch >= p["epochs"]-1 and os.path.exists(p["classification_model"]):
             checkpoint = torch.load(p["classification_model"], map_location="cpu", weights_only=False)
@@ -143,6 +149,10 @@ def main(args, update_dictionary={}):
         best_cls_f1 = -1 * np.inf
         train_best_f1 = -1 * np.inf
         best_train_th_eval_f1 = -1 * np.inf
+        best_VUS_ROC = -1 * np.inf
+        best_VUS_PR = -1 * np.inf
+        best_pa_VUS_ROC = -1 * np.inf
+        best_pa_VUS_PR = -1 * np.inf
         gradient_monitor = GradientMonitor(model, logger)
     
     # Initi neighbors with the current model
@@ -182,7 +192,12 @@ def main(args, update_dictionary={}):
         rep_f1 = best_eval_metrics["f1_score"]
         scheduler.step()
 
-        if epoch % 100 == 0 or epoch == p["epochs"] - 1 or rep_f1 >= best_f1 or cls_eval_metrics["f1_score"] > best_cls_f1 or eval_best_metrics_with_train_th["f1_score"] > best_train_th_eval_f1:
+        if (epoch % 100 == 0 
+            or epoch == p["epochs"] - 1 
+            or rep_f1 >= best_f1 
+            or cls_eval_metrics["f1_score"] > best_cls_f1 
+            or eval_best_metrics_with_train_th["f1_score"] > best_train_th_eval_f1
+        ):
             print(f"log at epoch: {epoch}/{p["epochs"]}")
             logger.scalar_summary("", "Learning Rate", lr, epoch)
             logger.metrics_summary("Evaluation cls_eval_metrics Metrics", cls_eval_metrics, epoch)
@@ -204,25 +219,6 @@ def main(args, update_dictionary={}):
 
             logger.log(report_str)
             logger.metrics_summary("Classification Loss", loss_dict, epoch)
-            # Function that makes and logs figures to tensorboard
-            # Needs to find a way that the inputs have the whole timeseries
-            # While labels and predictions correspond to one time interval.
-            # make_figures(logger, inputs, labels, predictions, mode="Validation", epoch=epoch)
-            torch.save(
-                {
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict(),
-                    "model": model.state_dict(),
-                    "epoch": epoch,
-                    "normal_label": normal_label,
-                    "best_f1": best_f1,
-                    "best_cls_f1": best_cls_f1,
-                    "train_best_f1": train_best_f1,
-                    "best_train_th_eval_f1": best_train_th_eval_f1,
-                    "best_train_threshold": best_train_th
-                },
-                p["classification_checkpoint"],
-            )
 
         if cls_eval_metrics["f1_score"] >= best_cls_f1:
             best_cls_f1 = cls_eval_metrics["f1_score"]
@@ -254,6 +250,30 @@ def main(args, update_dictionary={}):
                 {"model": model.state_dict(), "normal_label": normal_label},
                 f"{p["classification_model"][:-8]}_train.pth.tar",
             )
+
+        # Function that makes and logs figures to tensorboard
+        # Needs to find a way that the inputs have the whole timeseries
+        # While labels and predictions correspond to one time interval.
+        # make_figures(logger, inputs, labels, predictions, mode="Validation", epoch=epoch)
+        torch.save(
+            {
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict(),
+                "model": model.state_dict(),
+                "epoch": epoch,
+                "normal_label": normal_label,
+                "best_f1": best_f1,
+                "best_cls_f1": best_cls_f1,
+                "train_best_f1": train_best_f1,
+                "best_train_th_eval_f1": best_train_th_eval_f1,
+                "best_train_threshold": best_train_th,
+                "best_VUS_ROC": best_VUS_ROC,
+                "best_VUS_PR": best_VUS_PR,
+                "best_pa_VUS_ROC": best_pa_VUS_ROC,
+                "best_pa_VUS_PR": best_pa_VUS_PR,
+            },
+            p["classification_checkpoint"],
+        )
     
     model_checkpoint = torch.load(
         p["classification_model"], map_location="cpu", weights_only=False

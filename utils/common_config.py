@@ -5,7 +5,7 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 from data.augment import NoiseTransformation, SubAnomaly
 from utils.collate import collate_custom
-
+from collections.abc import Mapping
 
 def get_criterion(p):
     if p["criterion"] == "pretext":
@@ -74,7 +74,7 @@ def get_model(p, pretrain_path=None):
     # Load pretrained weights
     if pretrain_path is not None and os.path.exists(pretrain_path):
         state = torch.load(pretrain_path, map_location="cpu", weights_only=False)
-
+        state = state if is_state_dict(state) else state["model"]
         if (
             p["setup"] in ["classification", "classification_e2e"]
         ):  # Weights are supposed to be transfered from contrastive training
@@ -105,6 +105,13 @@ def get_model(p, pretrain_path=None):
 
     return model
 
+
+def is_state_dict(obj):
+    """Return True if obj looks like a plain PyTorch model state_dict."""
+    if not isinstance(obj, Mapping) or not obj:
+        return False
+
+    return all(isinstance(key, str) and torch.is_tensor(value) for key, value in obj.items())
 
 def get_train_dataset(
     p,

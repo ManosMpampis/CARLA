@@ -113,12 +113,55 @@ version_no_norm = "no_norm/"
 #         main_pretext(pretext_args)
 
 # %% Pretext normalization
+# experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
+# exp_index = 0# experiments[2].index(experiment_to_go)
+# experiments = [exp for exp in Path(os.path.join(experiment_dir, "normalization-strategy")).iterdir()]
+# for exp in experiments[exp_index:]:
+#     for norm in ["batch", "instance"]:
+#         version = f"./best_models/{norm}/{exp.name[:-4]}"
+#         index = file_list.index('machine-1-1.txt')
+#         index_scip = file_list.index('machine-1-1.txt')
+#         for filename in file_list[index:]:
+#             if (exp == experiment_to_go) and (filename in file_list[:index_scip]):
+#                 continue
+#             print(filename)
+#             # Run the pretext script
+#             patch = EasyDict({"res_kwargs": {
+#                 "in_channels": 38,
+#                 "mid_channels": [4, 8],
+#                 "kernel_sizes": [8, 5, 3],
+#                 "norm_layer_name":  norm,
+#                 "window_size": 256,
+#                 "dropout": True
+#                 }
+#             })
+#             pretext_args = EasyDict({"config_env": "configs/env.yml",
+#                             "config_exp": str(exp),
+#                             "fname": filename,
+#                             "version": f"{version}"})
+#             main_pretext(pretext_args, update_dictionary=patch)
+
+# index = file_list.index('machine-1-1.txt')
+# for filename in file_list[index:]:
+#     # Run the classification script
+#     classification_args = EasyDict({"config_env": "configs/env.yml",
+#                     "config_exp": "configs/classification/batch_common.yml",
+#                     "fname": filename,
+#                     "version": f"{version_batch}"})
+#     main_classification(classification_args)
+
+
+# %% Pretext normalization
+experiment_dir = Path("configs/classification/experiments/")
+# experiment_group = [exp for exp in experiment_dir.iterdir() if (exp.is_dir() and "normalization-strategy" not in str(exp))]
+experiments = [experiment for experiment in experiment_dir.iterdir()]
+
+pretext_model = "original" #"dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss"
 experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
 exp_index = 0# experiments[2].index(experiment_to_go)
-experiments = [exp for exp in Path(os.path.join(experiment_dir, "normalization-strategy")).iterdir()]
 for exp in experiments[exp_index:]:
-    for norm in ["batch", "instance"]:
-        version = f"./best_models/{norm}/{exp.name[:-4]}"
+    for norm in ["batch"]:
+        version = f"./best_models/{norm}/{pretext_model}"
         index = file_list.index('machine-1-1.txt')
         index_scip = file_list.index('machine-1-1.txt')
         for filename in file_list[index:]:
@@ -133,22 +176,12 @@ for exp in experiments[exp_index:]:
                 "norm_layer_name":  norm,
                 "window_size": 256,
                 "dropout": True
-                }
+                },
+                "epochs": 500,
             })
-            pretext_args = EasyDict({"config_env": "configs/env.yml",
+            classification_args = EasyDict({"config_env": "configs/env.yml",
                             "config_exp": str(exp),
                             "fname": filename,
                             "version": f"{version}"})
-            main_pretext(pretext_args, update_dictionary=patch)
-
-# index = file_list.index('machine-1-1.txt')
-# for filename in file_list[index:]:
-#     # Run the classification script
-#     classification_args = EasyDict({"config_env": "configs/env.yml",
-#                     "config_exp": "configs/classification/batch_common.yml",
-#                     "fname": filename,
-#                     "version": f"{version_batch}"})
-#     main_classification(classification_args)
-
-
+            main_classification(classification_args, update_dictionary=patch)
 # %%
