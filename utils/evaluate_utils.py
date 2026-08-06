@@ -80,7 +80,8 @@ class GradientMonitor:
         vanishing_threshold: float = 1e-7,
         exploding_threshold: float = 1e3,
         log_histograms: bool = True,
-        step: int = 0
+        step: int = 0,
+        aggregate: bool = False,
     ):
         self.model = model
         self.logger = logger
@@ -89,6 +90,11 @@ class GradientMonitor:
         self.exploding_threshold = exploding_threshold
         self.log_histograms = log_histograms
         self.step_count = step
+        self.aggregate = aggregate
+        self._gradient_sums = {}
+        self._ratio_sums = {}
+        self._total_norm_sum = 0.0
+        self._aggregate_steps = 0
 
     @torch.no_grad()
     def step(self) -> Dict[str, float]:
@@ -111,10 +117,14 @@ class GradientMonitor:
             ratio = grad_norm / (param_norm + 1e-12)
             metrics[f"update_ratio/{tag}"] = ratio
 
-            self.logger.scalar_summary("grad_norm", tag, grad_norm, self.step_count)
-            self.logger.scalar_summary("update_ratio", tag, ratio, self.step_count)
+            if self.aggregate:
+                self._gradient_sums[name] = self._gradient_sums.get(name, 0.0) + grad_norm
+                self._ratio_sums[name] = self._ratio_sums.get(name, 0.0) + ratio
+            else:
+                self.logger.scalar_summary("grad_norm", tag, grad_norm, self.step_count)
+                self.logger.scalar_summary("update_ratio", tag, ratio, self.step_count)
 
-            if self.log_histograms:
+            if self.log_histograms and not self.aggregate:
                 try:
                     self.logger.add_histogram("grad_values", tag, param.grad, self.step_count)
                 except ValueError as e:
@@ -128,13 +138,36 @@ class GradientMonitor:
         metrics["grad_norm/total"] = total_norm
 
 
-        self.logger.scalar_summary("grad_norm", "total", total_norm, self.step_count)
+        if self.aggregate:
+            self._total_norm_sum += total_norm
+            self._aggregate_steps += 1
+            if self.step_count % self.log_interval != 0:
+                return metrics
 
-            # Push a gradient-flow bar chart as an image every N steps
-        if self.step_count % self.log_interval == 0:
-            fig = self._plot_gradient_flow(names, norms)
-            self.logger.add_figure("gradient_flow", fig, self.step_count)
-            plt.close(fig)
+            count = self._aggregate_steps
+            names = sorted(self._gradient_sums)
+            norms = []
+            for name in names:
+                tag = name.replace(".", "/")
+                average_norm = self._gradient_sums[name] / count
+                average_ratio = self._ratio_sums[name] / count
+                self.logger.scalar_summary("grad_norm", tag, average_norm, self.step_count)
+                self.logger.scalar_summary("update_ratio", tag, average_ratio, self.step_count)
+                norms.append(average_norm)
+            total_norm = self._total_norm_sum / count
+            self.logger.scalar_summary("grad_norm", "total", total_norm, self.step_count)
+            self._gradient_sums.clear()
+            self._ratio_sums.clear()
+            self._total_norm_sum = 0.0
+            self._aggregate_steps = 0
+        else:
+            self.logger.scalar_summary("grad_norm", "total", total_norm, self.step_count)
+
+            # Push a gradient-flow bar chart as an image every N steps.
+            if self.step_count % self.log_interval == 0:
+                fig = self._plot_gradient_flow(names, norms)
+                self.logger.add_figure("gradient_flow", fig, self.step_count)
+                plt.close(fig)
 
         # Optional warnings (omitted here for brevity; re-add if desired)
         return metrics
@@ -496,7 +529,8 @@ def pr_evaluate_timeseries(
     inputs,
     tag,
     epoch=-1,
-    ch=None
+    ch=None,
+    make_figures=True,
 ):
 
     probs = all_predictions["probabilities"]
@@ -508,16 +542,16 @@ def pr_evaluate_timeseries(
     targets = (gt != 0).astype(int)
     predictions = (predictions != majority_label).numpy().astype(int)
     predictions = np.repeat(predictions[:, np.newaxis], (end[0]-start[0]), axis=-1)
-    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}_cls_prediction_", ch=ch, threshold=None, det_threshold=None, pre_classify=False, make_figures=True)
+    cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}_cls_prediction_", ch=ch, threshold=None, det_threshold=None, pre_classify=False, make_figures=make_figures)
 
     # Anomaly score metrics
     scores = 1 - np.array(probs)[:, majority_label]
     scores = np.repeat(scores[:, np.newaxis], (end[0]-start[0]), axis=-1)
     # Find best threshold based on F1 score
-    score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}_anomaly_best_", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=True)
+    score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}_anomaly_best_", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=make_figures)
 
     # Anomaly score metrics based on train best threshold
-    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}_anomaly_train_best_", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=True, make_extras=False)
+    score_train_best, _ = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}_anomaly_train_best_", ch=ch, threshold=train_best_threshold, det_threshold=1, pre_classify=False, make_figures=make_figures, make_extras=False)
     return cls_score, score_best, score_train_best, threshold_best, best_detections_thresholds
 
 @torch.no_grad()

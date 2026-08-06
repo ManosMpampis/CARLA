@@ -82,12 +82,12 @@ def main(args, update_dictionary={}):
     best_metrics = {
             "loss": np.inf,
             "clear_loss": np.inf,
-            "train_calinski": np.inf,
-            "train_davies": -np.inf,
-            "train_silhouette": np.inf,
-            "eval_calinski": np.inf,
-            "eval_davies": -np.inf,
-            "eval_silhouette": np.inf,
+            "train_calinski": -np.inf,
+            "train_davies": np.inf,
+            "train_silhouette": -np.inf,
+            "eval_calinski": -np.inf,
+            "eval_davies": np.inf,
+            "eval_silhouette": -np.inf,
             }
     
     # Checkpoint
@@ -103,7 +103,8 @@ def main(args, update_dictionary={}):
         if "scheduler" in checkpoint:
             scheduler.load_state_dict(checkpoint["scheduler"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        start_epoch = checkpoint["epoch"]
+        # Resume at the next epoch; fall back to the old zero-based format.
+        start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
         best_metrics["loss"] = checkpoint["pretext_best_loss"]
         best_metrics["clear_loss"] = checkpoint["pretext_best_clear_loss"] if "pretext_best_clear_loss" in checkpoint else best_metrics["clear_loss"]
         best_metrics["train_calinski"] = checkpoint["pretext_best_train_calinski"] if "pretext_best_train_calinski" in checkpoint else best_metrics["train_calinski"]
@@ -118,12 +119,12 @@ def main(args, update_dictionary={}):
         if "previous_loss" in checkpoint:
             criterion.previous_loss = checkpoint["previous_loss"]
         
-        if start_epoch >= p["epochs"]-1 and os.path.exists(p["pretext_model"]):
+        if start_epoch >= p["epochs"] and os.path.exists(p["pretext_model"]):
             checkpoint_model = torch.load(p["pretext_model"], map_location="cpu", weights_only=False)
             checkpoint_model = clean_checkpoint(checkpoint_model, p["pretext_model"])
             model.load_state_dict(checkpoint_model)
             model.to(device)
-            start_epoch = p["epochs"] + 1  # skip training if model already exists
+            start_epoch = p["epochs"]  # skip training if model already exists
         gradient_monitor = GradientMonitor(model, logger, step=start_epoch)
     else:
         logger.log("No checkpoint file at {}".format(p["pretext_checkpoint"]))
@@ -157,6 +158,9 @@ def main(args, update_dictionary={}):
         last_margin = loss_dict["margin"]
         tmp_loss = loss_dict["loss"]
 
+        # Save the scheduler state for the next epoch in checkpoints.
+        scheduler.step()
+
         if (
             (epoch+1) % eval_every_n_epoch == 0
             or (epoch+1) == p["epochs"]
@@ -188,20 +192,28 @@ def main(args, update_dictionary={}):
 
             best_metrics["clear_loss"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["clear_loss"], loss_dict["clear_loss"], "clear_loss", assending=False)
 
-            best_metrics["train_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_calinski"], evaluation_metrics["Calinski-Harabasz Score"], "train_calinski", assending=False)
-            best_metrics["train_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_davies"], evaluation_metrics["Davies-Bouldin Score"], "train_davies", assending=True)
-            best_metrics["train_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_silhouette"], evaluation_metrics["Silhouette Score"], "train_silhouette", assending=False)
+            best_metrics["train_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_calinski"], evaluation_metrics["Calinski-Harabasz Score"], "train_calinski", assending=True)
+            best_metrics["train_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_davies"], evaluation_metrics["Davies-Bouldin Score"], "train_davies", assending=False)
+            best_metrics["train_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_silhouette"], evaluation_metrics["Silhouette Score"], "train_silhouette", assending=True)
 
-            best_metrics["eval_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_calinski"], evaluation_metrics_eval["Calinski-Harabasz Score"], "eval_calinski", assending=False)
-            best_metrics["eval_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_davies"], evaluation_metrics_eval["Davies-Bouldin Score"], "eval_davies", assending=True)
-            best_metrics["eval_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_silhouette"], evaluation_metrics_eval["Silhouette Score"], "eval_silhouette", assending=False)
+            best_metrics["eval_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_calinski"], evaluation_metrics_eval["Calinski-Harabasz Score"], "eval_calinski", assending=True)
+            best_metrics["eval_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_davies"], evaluation_metrics_eval["Davies-Bouldin Score"], "eval_davies", assending=False)
+            best_metrics["eval_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_silhouette"], evaluation_metrics_eval["Silhouette Score"], "eval_silhouette", assending=True)
             
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
-                "pretext_best_loss": best_metrics["loss"],
+                "next_epoch": epoch + 1,
+                "pretext_best_loss": loss_dict["loss"],
+                "pretext_best_clear_loss": loss_dict["clear_loss"],
+                "pretext_best_train_calinski": evaluation_metrics_eval["Calinski-Harabasz Score"],
+                "pretext_best_train_davies": evaluation_metrics_eval["Davies-Bouldin Score"],
+                "pretext_best_train_silhouette": evaluation_metrics_eval["Silhouette Score"],
+                "pretext_best_eval_calinski": evaluation_metrics["Calinski-Harabasz Score"],
+                "pretext_best_eval_davies": evaluation_metrics["Davies-Bouldin Score"],
+                "pretext_best_eval_silhouette": evaluation_metrics["Silhouette Score"],
                 "last_margin": last_margin,
             }
             if hasattr(criterion, "prev_ema_loss"):
@@ -227,8 +239,6 @@ def main(args, update_dictionary={}):
             #     if hasattr(criterion, "previous_loss"):
             #         save_dict["previous_loss"] = criterion.previous_loss
             #     torch.save(save_dict, f"{p["pretext_checkpoint"][:-4]}_best.pth.tar")
-        scheduler.step()
-
     logger.finalize(eval_every_n_epoch)
 
 def make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_current_metric, metric, metric_name, assending=False):
@@ -236,12 +246,15 @@ def make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterio
     if checkpoint:
             best_current_metric = metric
             best_metrics[metric_name] = best_current_metric
-            torch.save(model.state_dict(), p["pretext_model"])
+            # Keep the generic model path owned by the loss-best checkpoint.
+            if metric_name == "loss":
+                torch.save(model.state_dict(), p["pretext_model"])
             save_dict = {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict(),
                 "epoch": epoch,
+                "next_epoch": epoch + 1,
                 "pretext_best_loss": best_metrics["loss"],
                 "pretext_best_clear_loss": best_metrics["clear_loss"],
                 "pretext_best_train_calinski": best_metrics["train_calinski"],

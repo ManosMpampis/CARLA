@@ -26,9 +26,10 @@ class Carla():
         print(colored('\n- Model initialisation', 'green'))
         
         # Checkpoint
-        if os.path.exists(self.p['classification_checkpoint']):
-            print(colored('-- Model initialised from last checkpoint: {}'.format(self.p['classification_checkpoint']), 'green'))
-            checkpoint = torch.load(self.p['classification_checkpoint'], map_location='cpu', weights_only=False)
+        model_path = self.p['classification_model'] if os.path.exists(self.p['classification_model']) else self.p['classification_checkpoint']
+        if os.path.exists(model_path):
+            print(colored('-- Model initialised from selected model: {}'.format(model_path), 'green'))
+            checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
             self.model.load_state_dict(checkpoint['model'])
             self.normal_label = checkpoint['normal_label']
         else:
@@ -38,9 +39,6 @@ class Carla():
         self.model.eval()
 
     def predict(self, ts):
-        probs = []
-        predictions = []
-
         if ts.ndim == 3:
             bs, w, h = ts.shape
         else:
@@ -49,12 +47,8 @@ class Carla():
         
         res = self.model(ts.reshape(bs, h, w), forward_pass='return_all')
         output = res['output']
-        for i, output_i in enumerate(output):
-            predictions[i].append(torch.argmax(output_i, dim=1))
-            probs[i].append(F.softmax(output_i, dim=1))
-
-        anomalies = np.where((predictions == self.normal_label), 0, 1)
-        scores = 1-np.array(probs)[:, self.normal_label]
+        predictions = torch.argmax(output, dim=1).cpu().numpy()
+        anomalies = np.where(predictions == self.normal_label, 0, 1)
         return anomalies
 
 def main():

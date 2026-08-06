@@ -72,9 +72,9 @@ class AugmentedDataset(Dataset):
             self.meta[index] = item["meta"]
 
             self.samples[index] = {
-                "ts_org": ts_org,
-                "ts_w_augment": ts_w_augment,
-                "ts_ss_augment": ts_ss_augment,
+                "ts_org": self.ts_org[index],
+                "ts_w_augment": self.ts_w_augment[index],
+                "ts_ss_augment": self.ts_ss_augment[index],
                 "target": ts_trg,
                 "meta": item["meta"],
             }

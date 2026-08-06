@@ -118,7 +118,8 @@ def main(args, update_dictionary={}):
         if "scheduler" in checkpoint.keys():
             scheduler.load_state_dict(checkpoint["scheduler"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        start_epoch = checkpoint["epoch"]
+        # Resume at the next epoch; fall back to the old zero-based format.
+        start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
         normal_label = checkpoint["normal_label"]
         best_f1 = checkpoint["best_f1"]
         best_cls_f1 = checkpoint.get("best_cls_f1", -1 * np.inf)
@@ -129,14 +130,21 @@ def main(args, update_dictionary={}):
         best_pa_VUS_ROC = checkpoint.get("best_pa_VUS_ROC", -1 * np.inf)
         best_pa_VUS_PR = checkpoint.get("best_pa_VUS_PR", -1 * np.inf)
 
-        if start_epoch >= p["epochs"]-1 and os.path.exists(p["classification_model"]):
+        if start_epoch >= p["epochs"] and os.path.exists(p["classification_model"]):
             checkpoint = torch.load(p["classification_model"], map_location="cpu", weights_only=False)
             model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_model"], checkpoint)
             model.load_state_dict(model_checkpoint)
             model.to(device)
             normal_label = checkpoint["normal_label"]
-            start_epoch = p["epochs"] + 1  # skip training if model already exists
-        gradient_monitor = GradientMonitor(model, logger, step=start_epoch)
+            start_epoch = p["epochs"]  # skip training if model already exists
+        gradient_monitor = GradientMonitor(
+            model,
+            logger,
+            log_interval=max(1, len(train_dataloader)),
+            log_histograms=False,
+            aggregate=True,
+            step=start_epoch * max(1, len(train_dataloader)),
+        )
     else:
         logger.log(
             "-- No checkpoint file at {} -- new model initialised".format(
@@ -153,7 +161,13 @@ def main(args, update_dictionary={}):
         best_VUS_PR = -1 * np.inf
         best_pa_VUS_ROC = -1 * np.inf
         best_pa_VUS_PR = -1 * np.inf
-        gradient_monitor = GradientMonitor(model, logger)
+        gradient_monitor = GradientMonitor(
+            model,
+            logger,
+            log_interval=max(1, len(train_dataloader)),
+            log_histograms=False,
+            aggregate=True,
+        )
     
     # Initi neighbors with the current model
     # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
@@ -174,7 +188,9 @@ def main(args, update_dictionary={}):
             gradient_monitor=gradient_monitor
         )
 
-        predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, p["update_data"])
+        predictions = train_dataset_base.predict_and_update(
+            model, base_dataloader, p, p.get("update_data", False)
+        )
 
         label_counts = torch.bincount(predictions["predictions"])
         normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax()
@@ -248,7 +264,7 @@ def main(args, update_dictionary={}):
             # logger.log('New Checkpoint ...')
             torch.save(
                 {"model": model.state_dict(), "normal_label": normal_label},
-                f"{p["classification_model"][:-8]}_train.pth.tar",
+                f"{p["classification_model"][:-8]}_train_th.pth.tar",
             )
 
         # Function that makes and logs figures to tensorboard
@@ -261,6 +277,7 @@ def main(args, update_dictionary={}):
                 "scheduler": scheduler.state_dict(),
                 "model": model.state_dict(),
                 "epoch": epoch,
+                "next_epoch": epoch + 1,
                 "normal_label": normal_label,
                 "best_f1": best_f1,
                 "best_cls_f1": best_cls_f1,
@@ -280,16 +297,43 @@ def main(args, update_dictionary={}):
     )
     model.load_state_dict(model_checkpoint["model"])
 
-    model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag="")
+    model_evaluation(
+        model,
+        p,
+        train_dataset_base,
+        base_dataloader,
+        val_dataloader,
+        logger,
+        tag="",
+        make_figures=p.get("classification_make_figures", True),
+    )
     model_checkpoint = torch.load(
         f"{p["classification_model"][:-8]}_cls.pth.tar", map_location="cpu", weights_only=False
     )
     model.load_state_dict(model_checkpoint["model"])
-    model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag="cls")
+    model_evaluation(
+        model,
+        p,
+        train_dataset_base,
+        base_dataloader,
+        val_dataloader,
+        logger,
+        tag="cls",
+        make_figures=p.get("classification_make_figures", True),
+    )
 
     logger.finalize()
 
-def model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataloader, logger, tag):
+def model_evaluation(
+    model,
+    p,
+    train_dataset_base,
+    base_dataloader,
+    val_dataloader,
+    logger,
+    tag,
+    make_figures=False,
+):
 
     # Evaluate on the train set and find the best threshold for the train set to evaluate on the test set with the same threshold
     predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
@@ -348,7 +392,8 @@ def model_evaluation(model, p, train_dataset_base, base_dataloader, val_dataload
         gt,
         inputs,
         tag=f"{tag} Final Timeseries_",
-        epoch=-2
+        epoch=-2,
+        make_figures=make_figures,
     )
     
     with open(p[f"{tag}eval_tstest_cls"], "w", newline="") as f:

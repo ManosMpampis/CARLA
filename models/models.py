@@ -82,7 +82,11 @@ class ClusteringModel(nn.Module):
         elif forward_pass == "backbone":
             out = self.backbone(x)
         elif forward_pass == "head":
-            out = self.cluster_head(x.mean(dim=-1))
+            features = x.mean(dim=-1)
+            out = {
+                "features": features,
+                "output": self.cluster_head(features),
+            }
         elif forward_pass == "return_all":
             features = self.backbone(x)
             out = {
@@ -118,7 +122,13 @@ class ClassificationModel(nn.Module):
         elif forward_pass == "cluster":
             out = self.cluster_head(x.mean(dim=-1))
         elif forward_pass == "head":
-            out = self.classification_head(x)
+            features = x.mean(dim=-1)
+            cluster = self.cluster_head(features)
+            out = {
+                "features": features,
+                "cluster": cluster,
+                "output": self.classification_head(cluster),
+            }
         elif forward_pass == "return_all":
             features = self.backbone(x)
             cluster = self.cluster_head(features.mean(dim=-1))
