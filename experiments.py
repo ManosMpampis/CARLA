@@ -156,11 +156,11 @@ experiment_dir = Path("configs/classification/experiments/")
 # experiment_group = [exp for exp in experiment_dir.iterdir() if (exp.is_dir() and "normalization-strategy" not in str(exp))]
 experiments = [experiment for experiment in experiment_dir.iterdir()]
 
-pretext_model = "original" #"dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss"
+pretext_model = "dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss" #"original" #"dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss"
 experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
 exp_index = 0# experiments[2].index(experiment_to_go)
 for exp in experiments[exp_index:]:
-    for norm in ["batch"]:
+    for norm in ["batch", "instance"]:
         version = f"./best_models/{norm}/{pretext_model}"
         index = file_list.index('machine-1-1.txt')
         index_scip = file_list.index('machine-1-1.txt')
@@ -177,7 +177,7 @@ for exp in experiments[exp_index:]:
                 "window_size": 256,
                 "dropout": True
                 },
-                "epochs": 500,
+                "epochs": 1000,
             })
             classification_args = EasyDict({"config_env": "configs/env.yml",
                             "config_exp": str(exp),
