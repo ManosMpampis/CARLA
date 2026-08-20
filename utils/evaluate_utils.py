@@ -538,14 +538,17 @@ def pr_evaluate_timeseries(
     start = all_predictions["start_idxs"].numpy().astype(int)
     end = all_predictions["end_idxs"].numpy().astype(int)
 
+    # `majority_label` may be a single class or a set/list of normal classes
+    normal_classes = [int(majority_label)] if np.isscalar(majority_label) else [int(c) for c in majority_label]
+
     # Classification metrics
     targets = (gt != 0).astype(int)
-    predictions = (predictions != majority_label).numpy().astype(int)
+    predictions = (~np.isin(predictions.numpy(), normal_classes)).astype(int)
     predictions = np.repeat(predictions[:, np.newaxis], (end[0]-start[0]), axis=-1)
     cls_score, best_detections_thresholds = evaluate(logger, epoch, predictions, inputs, targets, start, end, tag=f"{tag}_cls_prediction_", ch=ch, threshold=None, det_threshold=None, pre_classify=False, make_figures=make_figures)
 
     # Anomaly score metrics
-    scores = 1 - np.array(probs)[:, majority_label]
+    scores = 1 - np.array(probs)[:, normal_classes].sum(axis=1)
     scores = np.repeat(scores[:, np.newaxis], (end[0]-start[0]), axis=-1)
     # Find best threshold based on F1 score
     score_best, threshold_best = evaluate(logger, epoch, scores, inputs, targets, start, end, tag=f"{tag}_anomaly_best_", ch=ch, threshold=None, det_threshold=1, pre_classify=False, make_figures=make_figures)
@@ -566,14 +569,17 @@ def pr_evaluate(
     predictions = all_predictions["predictions"]
     probs = all_predictions["probabilities"]
 
+    # `majority_label` may be a single class or a set/list of normal classes
+    normal_classes = [int(majority_label)] if np.isscalar(majority_label) else [int(c) for c in majority_label]
+
     # Classification metrics
     cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)
-    anomalies = np.where((predictions == majority_label), 0, 1)
+    anomalies = np.where(np.isin(np.asarray(predictions), normal_classes), 0, 1)
 
     cls_score = combine_all_evaluation_scores(anomalies, cls_targets)
 
     # Anomaly score metrics
-    scores = 1 - np.array(probs)[:, majority_label]
+    scores = 1 - np.array(probs)[:, normal_classes].sum(axis=1)
     labels = cls_targets.astype(int)
     precision, recall, thresholds = precision_recall_curve(labels, scores, pos_label=1)
     f1_score = 2 * precision * recall / (precision + recall)

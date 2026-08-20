@@ -3,6 +3,7 @@ import os
 import csv
 import torch
 import numpy as np
+import pandas as pd
 from utils.config import create_config
 from utils.common_config import (
     get_train_transformations,
@@ -20,7 +21,7 @@ from utils.common_config import (
 )
 from utils.evaluate_utils import get_predictions, pr_evaluate, pr_evaluate_timeseries, GradientMonitor
 from utils.train_utils import self_sup_classification_train
-from utils.utils import Logger, clean_checkpoint
+from utils.utils import Logger, clean_checkpoint, find_target
 
 import random
 
@@ -307,6 +308,19 @@ def main(args, update_dictionary={}):
         tag="",
         make_figures=p.get("classification_make_figures", True),
     )
+
+    if p.get("normal_set_eval", True):
+        logger.log("\n- Normal-set (Tier-2) evaluation of the best model")
+        normal_set_evaluation(
+            model,
+            p,
+            train_dataset_base,
+            base_dataloader,
+            val_dataloader,
+            logger,
+            tag="",
+        )
+
     model_checkpoint = torch.load(
         f"{p["classification_model"][:-8]}_cls.pth.tar", map_location="cpu", weights_only=False
     )
@@ -421,6 +435,131 @@ def model_evaluation(
                 f"{''.join(f'{key}:{value}\n' for key, value in score_train_best.items())}"
             )
     logger.log(report_str)
+
+
+def normal_set_evaluation(
+    model,
+    p,
+    train_dataset_base,
+    base_dataloader,
+    val_dataloader,
+    logger,
+    tag="",
+    coverages=(0.90, 0.95, 0.99, 1.0),
+    make_figures=False,
+):
+    """Tier-2 prototype: compare normal-class selection rules without retraining.
+
+    Rules evaluated:
+      - ``all_majority``    : current behaviour, majority over anchors + weak views
+                              + synthetic anomalies (single class).
+      - ``anchor_majority`` : majority over anchor predictions only (single class).
+      - ``cov_<c>``         : smallest set of classes covering fraction ``c`` of the
+                              anchor predictions ("normal set").
+
+    For every rule the anomaly score is ``1 - sum_c p(c)`` over the normal set and
+    the classification decision is ``argmax not in set``. Train-derived thresholds
+    are recomputed per rule on the training scores (synthetic anomalies vs rest).
+
+    Writes a long-format CSV (one row per rule x evaluation mode) to
+    ``<classification_dir>/normal_set/<tag>eval_normal_set.csv``.
+    """
+    num_classes = p["num_classes"]
+
+    # One pass over the training data (anchors / weak views / synthetic anomalies)
+    train_predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    group_labels = find_target(train_predictions["targets"])  # 0 anchor, 2 weak, 4 synthetic
+    train_preds = np.asarray(train_predictions["predictions"])
+    anchor_hist = np.bincount(train_preds[group_labels == 0], minlength=num_classes).astype(float)
+
+    def anchor_set(coverage):
+        order = np.argsort(-anchor_hist)
+        cum = np.cumsum(anchor_hist[order]) / max(anchor_hist.sum(), 1.0)
+        k = int(np.searchsorted(cum, coverage)) + 1
+        return sorted(order[:k].tolist())
+
+    rules = {
+        "all_majority": [int(np.bincount(train_preds, minlength=num_classes).argmax())],
+        "anchor_majority": [int(anchor_hist.argmax())],
+    }
+    for c in coverages:
+        rules[f"cov_{c:.2f}"] = anchor_set(c)
+
+    # One pass over the validation data
+    val_predictions = get_predictions(p, val_dataloader, model, False, False)
+
+    # Reconstruct the full timeseries for the timeseries-level metrics
+    end = val_predictions["end_idxs"].numpy()
+    start = val_predictions["start_idxs"].numpy()
+    labels = val_predictions["targets"].numpy()
+    test_inputs = val_predictions["inputs"].numpy()
+    ts_len = end[-1]
+    gt = np.zeros((ts_len, 1)).astype(int)
+    inputs = np.zeros((ts_len, test_inputs[0].shape[-1]))
+    for s, e, l, i in zip(start, end, labels, test_inputs):
+        gt[s:e] = l.reshape(-1, 1)
+        inputs[s:e] = i
+
+    rows = []
+    for rule_name, normal_set in rules.items():
+        # Window-level metrics (train threshold derived per rule)
+        cls_train_metrics, best_train_metrics, _, best_train_th = pr_evaluate(
+            train_predictions, majority_label=normal_set, train=True
+        )
+        cls_eval_metrics, best_eval_metrics, eval_train_th_metrics, _ = pr_evaluate(
+            val_predictions, majority_label=normal_set, train_best_threshold=best_train_th
+        )
+
+        # Timeseries-level metrics
+        ts_cls, ts_best, ts_train_best, threshold_best, _ = pr_evaluate_timeseries(
+            logger,
+            val_predictions,
+            best_train_th,
+            normal_set,
+            gt,
+            inputs,
+            tag=f"{tag} NormalSet/{rule_name}_",
+            epoch=-2,
+            make_figures=make_figures,
+        )
+
+        eval_modes = [
+            ("window_cls", cls_eval_metrics),
+            ("window_best", best_eval_metrics),
+            ("window_train_th", eval_train_th_metrics),
+            ("ts_cls", ts_cls),
+            ("ts_best", ts_best),
+            ("ts_train_th", ts_train_best),
+        ]
+        for eval_mode, metrics in eval_modes:
+            row = {
+                "rule": rule_name,
+                "set_size": len(normal_set),
+                "normal_set": " ".join(map(str, normal_set)),
+                "train_threshold": best_train_th,
+                "eval_mode": eval_mode,
+            }
+            row.update(metrics)
+            rows.append(row)
+
+        compact = {
+            f"{mode}_{key}": m.get(key) for mode, m in eval_modes
+            for key in ("precision", "recall", "f1_score")
+        }
+        logger.metrics_summary(f"NormalSet/{rule_name}", compact, 0)
+
+    out_dir = os.path.join(p["classification_dir"], "normal_set")
+    os.makedirs(out_dir, exist_ok=True)
+    out_file = os.path.join(out_dir, f"{tag}eval_normal_set.csv")
+    pd.DataFrame(rows).to_csv(out_file, index=False)
+
+    keep = ("precision", "recall", "f1_score")
+    report = "\n".join(
+        f"{r['rule']:16s} set=[{r['normal_set']:9s}] {r['eval_mode']:15s} "
+        + " ".join(f"{k}={r[k]:.3f}" for k in keep if k in r)
+        for r in rows
+    )
+    logger.log(f"\nNormal-set evaluation (written to {out_file}):\n{report}\n")
 
 
 if __name__ == "__main__":
