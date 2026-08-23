@@ -49,6 +49,19 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     cfg['contrastive_dataloader'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
 
 
+    if cfg['setup'] == 'jepa':
+        jepa_tag = cfg.get('tag_jepa', None)
+        cfg['jepa_tag'] = ("_"+jepa_tag) if jepa_tag else ""
+        jepa_dir = os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
+        mkdir(base_dir)
+        mkdir(jepa_dir)
+        cfg['jepa_dir'] = jepa_dir
+        cfg['jepa_checkpoint'] = os.path.join(jepa_dir, 'checkpoint.pth.tar')
+        cfg['jepa_model'] = os.path.join(jepa_dir, 'model.pth.tar')
+        cfg['calibration_path'] = os.path.join(jepa_dir, 'calibration.json')
+        cfg['scores_path'] = os.path.join(jepa_dir, 'scores.npz')
+        cfg['metrics_path'] = os.path.join(jepa_dir, 'metrics.json')
+
     if cfg['setup'] in ['classification', 'classification_e2e']:
         classification_tag = cfg.get('tag_class', None)
         cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
@@ -84,5 +97,6 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
         cfg['clseval_tstest_trainth'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_train_th.csv')
         
 
-    cfg["res_kwargs"]["window_size"] = cfg["wsz"]
-    return cfg 
+    if "res_kwargs" in cfg:
+        cfg["res_kwargs"]["window_size"] = cfg["wsz"]
+    return cfg

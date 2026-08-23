@@ -5,10 +5,16 @@ import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 from data.augment import NoiseTransformation, SubAnomaly
 from utils.collate import collate_custom
+from utils.mypath import MyPath
 from collections.abc import Mapping
 
 def get_criterion(p):
-    if p["criterion"] == "pretext":
+    if p["criterion"] == "jepa":
+        from losses.jepa_losses import JEPALoss
+
+        criterion = JEPALoss(**p["criterion_kwargs"])
+
+    elif p["criterion"] == "pretext":
         from losses.losses import PretextLoss
 
         criterion = PretextLoss(p["batch_size"], **p["criterion_kwargs"])
@@ -44,14 +50,11 @@ def get_feature_dimensions_backbone(p):
 
 
 def get_model(p, pretrain_path=None):
-    # Get backbone
-    if p["backbone"] == "resnet_ts":
-        from models import resnet_ts
+    # Get backbone through the registry (single wiring point).
+    # Legacy setups consume the historical {'backbone': ..., 'dim': ...} mapping.
+    from models import get_backbone
 
-        backbone = resnet_ts(**p["res_kwargs"])
-
-    else:
-        raise ValueError("Invalid backbone {}".format(p["backbone"]))
+    backbone = get_backbone(p["backbone"], **p.get("res_kwargs", {}))
 
     # Setup
     if p["setup"] in ["pretext"]:
@@ -112,6 +115,49 @@ def is_state_dict(obj):
         return False
 
     return all(isinstance(key, str) and torch.is_tensor(value) for key, value in obj.items())
+
+
+def get_jepa_model(p):
+    """Single wiring point for JEPA arms: registry-built encoder + config
+    selected predictor and anti-collapse mechanism."""
+    from models import get_backbone
+    from models.jepa_core import JEPAModel
+
+    built = get_backbone(p["backbone"], **p["model_kwargs"])
+    return JEPAModel(
+        encoder=built["model"],
+        predictor=p.get("predictor", "tcn"),
+        horizons=p.get("horizons", 2),
+        predictor_hidden=p.get("predictor_hidden", None),
+        anti_collapse=p.get("anti_collapse", "none"),
+        ema_momentum=p.get("ema_momentum", 0.99925),
+        codebook_kwargs=p.get("codebook_kwargs", None),
+        target_norm=p.get("target_norm", None),
+    )
+
+
+def get_jepa_datasets(p):
+    """Train/validation datasets for JEPA stages.
+
+    ``stage_a.corpus: single`` (official protocol) trains on one machine;
+    ``joint`` pools all SMD machines' train splits with per-machine
+    normalization respected. PSM and synthetic are always their own corpus.
+    Validation windows come exclusively from the train-side tail.
+    """
+    from data.jepa_dataset import JEPADataset, JEPACorpusDataset
+
+    corpus = p.get("stage_a", {}).get("corpus", "single")
+    if p["train_db_name"] == "smd" and corpus == "joint":
+        machine_dir = os.path.join(MyPath.db_root_dir("smd"), "train")
+        machines = sorted(f for f in os.listdir(machine_dir) if f.startswith("machine-"))
+        train_dataset = JEPACorpusDataset(p, machines)
+        val_dataset = JEPACorpusDataset.validation_split(train_dataset)
+    else:
+        train_dataset = JEPADataset(p, train=True)
+        val_dataset = JEPADataset.validation_split(train_dataset, p)
+    train_dataset.mean = getattr(train_dataset, "mean", None)
+    train_dataset.std = getattr(train_dataset, "std", None)
+    return train_dataset, val_dataset
 
 def get_train_dataset(
     p,

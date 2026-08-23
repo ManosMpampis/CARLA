@@ -22,28 +22,6 @@ class ResNetBlock(nn.Module):
         channels = [in_channels] + [out_channels for _ in range(len(kernel_sizes))]
         assert len(kernel_sizes) >= 2
 
-        # self.layers = nn.Sequential()
-        # for i in range(len(kernel_sizes)-1):
-        #     self.layers.add_module(f"Convolution {i}", ConvBlock(
-        #         in_channels=channels[i],
-        #         out_channels=channels[i + 1],
-        #         kernel_size=kernel_sizes[i],
-        #         stride=1,
-        #         norm_layer_name=norm_layer_name,
-        #         window_size=window_size,
-        #         dropout=dropout,
-        #     ))
-        #     self.layers.add_module(f"Activation {i}", nn.ReLU())
-
-        # self.layers.add_module(f"Convolution {len(kernel_sizes)-1}", ConvBlock(
-        #         in_channels=channels[-2],
-        #         out_channels=channels[-1],
-        #         kernel_size=kernel_sizes[-2],
-        #         stride=1,
-        #         norm_layer_name=norm_layer_name,
-        #         window_size=window_size,
-        #         dropout=dropout,
-        #     ))
         self.layers = nn.Sequential(
             *[
                 layer
