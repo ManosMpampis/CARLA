@@ -74,10 +74,15 @@ def main():
                      for i in idxs])
     probe_scores = scorer.score_windows(
         torch.from_numpy(wins).permute(0, 2, 1).contiguous())
-    probe_fused = probe_scores["fused"].reshape(-1)
+    # same statistic on both sides: per-window means (as Calibrator sees them)
+    probe_fused = probe_scores["fused"].mean(axis=1)
+    clean_fused_w = np.array([
+        clean_fused[s:e].mean()
+        for s, e in zip(clean_result["start_idxs"], clean_result["end_idxs"])
+    ])
 
     # separation on machine-1-1: injected probes score higher than clean
-    c_mean, pr_mean = clean_fused.mean(), probe_fused.mean()
+    c_mean, pr_mean = clean_fused_w.mean(), probe_fused.mean()
     assert pr_mean > c_mean, \
         f"no separation on machine-1-1: clean {c_mean:.4f} vs probe {pr_mean:.4f}"
 

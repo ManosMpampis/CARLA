@@ -8,9 +8,10 @@ class MaskingCollator:
     Samples blocks on the *input* axis and marks the pyramid-level tokens
     whose covered input range overlaps them. Produces one boolean mask per
     batch sample per level: {level: (B, T_l)}. V-JEPA block-sampler
-    mechanics flattened to 1D: block starts are drawn uniformly, blocks may
-    not extend past the window, and a minimum number of visible context
-    tokens is guaranteed at every level.
+    mechanics flattened to 1D: block starts are drawn uniformly in token
+    space per level, and levels too coarse to mask (at or below
+    ``min_context_tokens``) stay fully visible; a masked level always keeps
+    at least one visible token.
     """
 
     def __init__(self, num_blocks: int = 4, block_span: int = 24,

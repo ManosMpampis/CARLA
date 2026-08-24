@@ -37,14 +37,15 @@ def make_synthetic_series(n_steps: int, n_channels: int, seed: int,
             length = int(rng.integers(20, 60))
             start = int(rng.integers(0, max(n_steps - length - 1, 1)))
             channels = rng.choice(n_channels, size=max(1, n_channels // 2), replace=False)
+            seg = series[start:start + length]
             if kind == 0:  # amplitude spike
-                series[start:start + length][:, channels] *= rng.uniform(4.0, 8.0)
+                seg[:, channels] = seg[:, channels] * rng.uniform(4.0, 8.0)
             elif kind == 1:  # level shift
-                series[start:start + length][:, channels] += rng.uniform(3.0, 6.0)
+                seg[:, channels] = seg[:, channels] + rng.uniform(3.0, 6.0)
             else:  # frequency break (compressed oscillation)
-                seg = series[start:start + length][:, channels]
                 idx = np.linspace(0, len(seg) - 1, max(len(seg) // 3, 2)).astype(int)
-                series[start:start + len(idx)][:, channels] = seg[idx] * 3.0
+                series[start:start + len(idx), channels] = \
+                    np.asarray(seg)[:, channels][idx] * 3.0
             labels[start:start + length] = 1
     return series.astype(np.float32), labels
 
@@ -116,19 +117,22 @@ class JEPADataset(Dataset):
         elif source == "psm":
             from data.PSM import PSM
 
-            legacy = PSM(train=train, sanomaly=None, wsz=p["wsz"], stride=p["stride"])
-            series = legacy.data
+            legacy_train = PSM(train=True, sanomaly=None, wsz=p["wsz"], stride=p["stride"])
+            scaler = StandardScaler().fit(legacy_train.data)
+            self.mean, self.std = scaler.mean_, scaler.scale_
             if train:
-                scaler = StandardScaler().fit(series)
-                self.mean, self.std = scaler.mean_, scaler.scale_
+                series = legacy_train.data
                 series = scaler.transform(series).astype(np.float32)
                 cut = int(series.shape[0] * (1.0 - p.get("val_fraction", 0.05)))
                 self.series = series[:cut]
                 self.val_series = series[cut:]
                 self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
             else:
-                self.targets = legacy.targets
-                self.series = series
+                legacy_test = PSM(train=False, sanomaly=None, wsz=p["wsz"],
+                                  stride=p["stride"],
+                                  mean_data=scaler.mean_, std_data=scaler.scale_)
+                self.targets = legacy_test.targets
+                self.series = legacy_test.data
         else:
             raise ValueError("Invalid train dataset {}".format(source))
 
@@ -210,5 +214,11 @@ class JEPACorpusDataset(Dataset):
         cut = int(train_dataset.series.shape[0] * 0.9)
         val.series = train_dataset.series[cut:]
         val.machine_files = train_dataset.machine_files
+        # rebase machine offsets onto the tail so attribution stays correct
+        full_offsets = list(train_dataset.offsets)
+        rebased = [max(o - cut, 0) for o in full_offsets if o >= cut]
+        if not rebased or rebased[0] != 0:
+            rebased.insert(0, 0)
+        val.offsets = np.asarray(sorted(set(rebased)))
         val.targets = np.zeros(val.series.shape[0], dtype=np.int64)
         return val

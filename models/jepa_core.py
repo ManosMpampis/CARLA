@@ -8,18 +8,24 @@ from models.ema import EMAWrapper
 
 
 def build_predictor(kind, dim, horizons, hidden=None):
-    if kind == "tcn":
-        from models.jepa_pyramid import CausalTCNPredictor
-
-        return CausalTCNPredictor(dim, horizons=horizons, hidden=hidden)
-    elif kind == "gru":
-        from models.jepa_pyramid import GRUPredictor
-
-        return GRUPredictor(dim, horizons=horizons, hidden=hidden)
-    raise ValueError("Invalid predictor {}".format(kind))
+    if kind not in PREDICTOR_REGISTRY:
+        raise ValueError("Invalid predictor {}".format(kind))
+    return PREDICTOR_REGISTRY[kind](dim, horizons=horizons, hidden=hidden)
 
 
-PREDICTOR_REGISTRY = ("tcn", "gru")
+def _build_tcn(dim, horizons, hidden=None):
+    from models.jepa_pyramid import CausalTCNPredictor
+
+    return CausalTCNPredictor(dim, horizons=horizons, hidden=hidden)
+
+
+def _build_gru(dim, horizons, hidden=None):
+    from models.jepa_pyramid import GRUPredictor
+
+    return GRUPredictor(dim, horizons=horizons, hidden=hidden)
+
+
+PREDICTOR_REGISTRY = {"tcn": _build_tcn, "gru": _build_gru}
 ANTI_COLLAPSE_REGISTRY = ("none", "sigreg", "ema", "codebook")
 
 
@@ -136,6 +142,9 @@ class JEPAModel(nn.Module):
         self.eval()
         latents = self.encode(x)
         predicted = self.predict(latents)
+        # surprise is divergence from what the target branch encodes:
+        # the trailing teacher on EMA arms, own latents (stop-grad) otherwise
+        targets = self._targets_from(x, latents)
 
         b, _, window = x.shape
         sums = x.new_zeros((b, window), dtype=torch.float32)
@@ -143,7 +152,7 @@ class JEPAModel(nn.Module):
         level_maps: dict[str, torch.Tensor] = {}
         for idx, name in enumerate(self.level_names):
             stride = self.level_strides[idx]
-            tok = self._token_errors(predicted[name], latents[name])  # (B, T_l)
+            tok = self._token_errors(predicted[name], targets[name])  # (B, T_l)
             steps = tok.repeat_interleave(stride, dim=1)[:, :window]
             sums = sums + steps
             counts += 1
@@ -177,11 +186,6 @@ class JEPAModel(nn.Module):
             padded = F.pad(diff, (k, 0))  # align error to the *future* position
             err_sum = padded if err_sum is None else err_sum + padded
         assert err_sum is not None, "window shorter than the first horizon"
-        weights = torch.minimum(
-            torch.arange(length, device=target.device) + 1,
-            torch.tensor(k_total, device=target.device),
-        ).clamp(min=1)
-        return err_sum / weights
         weights = torch.minimum(
             torch.arange(length, device=target.device) + 1,
             torch.tensor(k_total, device=target.device),

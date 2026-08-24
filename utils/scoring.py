@@ -40,6 +40,11 @@ class Scorer:
         last covered value (documented behavior).
         """
         n_steps = series.shape[0]
+        if n_steps < wsz:
+            raise ValueError(
+                f"series length {n_steps} shorter than window {wsz}; "
+                "no full scoring window fits"
+            )
         starts = list(range(0, max(n_steps - wsz, 0) + 1, stride))
         if n_steps >= wsz and starts[-1] != n_steps - wsz:
             starts.append(n_steps - wsz)

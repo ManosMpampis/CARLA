@@ -153,6 +153,30 @@ def run_adapt(p, device):
     logger.finalize()
 
 
+def _honest_metrics(metric_dict, scores, targets, starts, ends) -> dict:
+    """Honest headline: point-level metrics without point adjustment plus
+    window-level AUROC/AP (per-window max score vs any anomaly inside)."""
+    from sklearn.metrics import roc_auc_score, average_precision_score
+
+    win_scores = np.array([scores[s:e].max() for s, e in zip(starts, ends)])
+    win_labels = np.array([targets[s:e].max() for s, e in zip(starts, ends)])
+    return {
+        "point_AUROC": float(roc_auc_score(targets, scores)),
+        "point_AP": float(average_precision_score(targets, scores)),
+        "window_AUROC": float(roc_auc_score(win_labels, win_scores)),
+        "window_AP": float(average_precision_score(win_labels, win_scores)),
+        "point_precision": float(metric_dict["precision"]),
+        "point_recall": float(metric_dict["recall"]),
+        "point_F1_no_PA": float(metric_dict["f1_score"]),
+        "MCC": float(metric_dict["MCC"]),
+    }
+
+
+def _window_means(values: np.ndarray, starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
+    """Per-window mean of a per-timestep array (comparable to probe windows)."""
+    return np.array([values[s:e].mean() for s, e in zip(starts, ends)])
+
+
 def _series_from_dataset(dataset):
     return np.asarray(dataset.series, dtype=np.float32)
 
@@ -196,13 +220,23 @@ def run_score(p, device):
         ])
         batch = torch.from_numpy(windows).permute(0, 2, 1).contiguous()
         probe_scores = scorer.score_windows(batch)
-        probe_channels = {
-            "fused": probe_scores.pop("fused").reshape(-1),
-            **{k: v.reshape(-1) for k, v in probe_scores.pop("levels").items()},
-            **{f"signal/{k}": v.reshape(-1) for k, v in probe_scores.pop("signals").items()},
+        probe_maps = {
+            "fused": probe_scores.pop("fused"),
+            **probe_scores.pop("levels"),
+            **{f"signal/{k}": v for k, v in probe_scores.pop("signals").items()},
         }
+        # comparable statistics on both sides: per-window means
+        probe_channels = {k: v.mean(axis=1) for k, v in probe_maps.items()}
+        clean_window_starts = clean_result["start_idxs"]
+        clean_window_ends = clean_result["end_idxs"]
+        fit_clean_channels = {
+            k: _window_means(v, clean_window_starts, clean_window_ends)
+            for k, v in clean_channels.items()
+        }
+    else:
+        fit_clean_channels = clean_channels
 
-    calibrator.fit(clean_channels, probes=probe_channels)
+    calibrator.fit(fit_clean_channels, probes=probe_channels)
 
     fused_clean = calibrator.fuse(clean_channels)
     threshold = calibrator.threshold_for(fused_clean)
@@ -225,19 +259,26 @@ def run_score(p, device):
     window_size = int(p.get("eval_window_size", 100))
     metric_dict = combine_all_evaluation_scores(pred_labels, targets, window_size)
 
-    honest = {
-        "window_AUROC": float(roc_auc_score(targets, fused_test)),
-        "window_AP": float(average_precision_score(targets, fused_test)),
-        "point_precision": float(metric_dict["precision"]),
-        "point_recall": float(metric_dict["recall"]),
-        "point_F1_no_PA": float(metric_dict["f1_score"]),
-        "MCC": float(metric_dict["MCC"]),
-    }
+    honest = _honest_metrics(metric_dict, fused_test, targets,
+                             test_result["start_idxs"], test_result["end_idxs"])
     point_adjust = {
         key[3:]: float(value) for key, value in metric_dict.items()
         if key.startswith("pa_") and isinstance(value, (int, float))
     }
     report = {"honest": honest, "point_adjust_comparability": point_adjust}
+
+    # mandatory no-training baseline (design §6 risk table): same scoring
+    # path with an untrained model of the identical architecture
+    baseline_model = get_jepa_model(p).to(device)
+    baseline_model.eval()
+    baseline_result = Scorer(baseline_model, device).score_series(
+        test_series, p["wsz"], p["stride"])
+    baseline_fused = baseline_result.pop("scores")
+    report["no_training_baseline"] = _honest_metrics(
+        combine_all_evaluation_scores((baseline_fused >= threshold).astype(int),
+                                      targets, window_size),
+        baseline_fused, targets,
+        baseline_result["start_idxs"], baseline_result["end_idxs"])
 
     np.savez_compressed(
         p["scores_path"],
