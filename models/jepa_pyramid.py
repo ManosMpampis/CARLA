@@ -117,7 +117,7 @@ class CausalTCNPredictor(nn.Module):
     Fully parallel over t during training; single pass at inference.
     """
 
-    def __init__(self, dim: int, horizons: int = 2, hidden: int = None,
+    def __init__(self, dim: int, horizons: int = 2, hidden: int | None = None,
                  dilations: tuple = (1, 2, 4), kernel_size: int = 3):
         super().__init__()
         hidden = hidden or dim
@@ -148,7 +148,7 @@ class GRUPredictor(nn.Module):
     a linear head emits all horizon predictions per position.
     """
 
-    def __init__(self, dim: int, horizons: int = 2, hidden: int = None, num_layers: int = 1):
+    def __init__(self, dim: int, horizons: int = 2, hidden: int | None = None, num_layers: int = 1):
         super().__init__()
         hidden = hidden or dim
         self.gru = nn.GRU(dim, hidden, num_layers=num_layers, batch_first=True)

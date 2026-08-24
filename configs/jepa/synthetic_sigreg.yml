@@ -1,0 +1,65 @@
+# J1 tracer: tiny synthetic self-JEPA, CPU, deterministic, minutes-fast.
+setup: jepa
+stage: pretrain
+
+# Model
+backbone: jepa_pyramid
+predictor: tcn
+horizons: 2
+model_kwargs:
+  in_channels: 2
+  stem_channels: 8
+  level_channels: [8, 12]
+  kernel_size: 5
+  strides: [2, 2]
+  dropout: false
+
+anti_collapse: sigreg
+criterion: jepa
+criterion_kwargs:
+  lambda_sigreg: 0.1
+  sigreg_kwargs:
+    num_slices: 16
+
+# Data (synthetic corpus is always its own)
+train_db_name: synthetic
+val_db_name: synthetic
+fname: ""
+wsz: 64
+stride: 4
+val_fraction: 0.15
+synthetic_kwargs:
+  n_steps: 4000
+  n_channels: 2
+  test_n_steps: 2000
+
+# Stage A / B wiring
+stage_a:
+  corpus: single
+  masking:
+    mode: none
+stage_b:
+  mode: frozen
+
+# Training
+seed: 4
+device: cpu
+amp: false
+epochs: 40
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.004
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+# Calibration / scoring
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 100
+  portion: 0.99
+eval_window_size: 50

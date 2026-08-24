@@ -1,120 +1,18 @@
+"""Component factories for the JEPA pipeline.
+
+The single wiring convention: every construction is keyed by config
+names through registries (models.BACKBONE_REGISTRY, predictor and
+anti-collapse registries in models.jepa_core). Legacy contrastive
+wiring was removed at cutover; the legacy dataset classes remain in
+data/custom_dataset.py, unused but functional.
+"""
 import os
-import numpy as np
+
 import torch
-import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
-from data.augment import NoiseTransformation, SubAnomaly
+
 from utils.collate import collate_custom
 from utils.mypath import MyPath
-from collections.abc import Mapping
-
-def get_criterion(p):
-    if p["criterion"] == "jepa":
-        from losses.jepa_losses import JEPALoss
-
-        criterion = JEPALoss(**p["criterion_kwargs"])
-
-    elif p["criterion"] == "pretext":
-        from losses.losses import PretextLoss
-
-        criterion = PretextLoss(p["batch_size"], **p["criterion_kwargs"])
-
-    elif p["criterion"] == "classification":
-        from losses.losses import ClassificationLoss
-
-        criterion = ClassificationLoss(**p["criterion_kwargs"])
-    elif p["criterion"] == "classification_e2e":
-        from losses.losses import ClassificationLossE2E
-
-        criterion = ClassificationLossE2E(**p["criterion_kwargs"])
-
-    elif p["criterion"] == "tcl":
-        from losses.tcl import TCLoss
-
-        criterion = TCLoss(p["batch_size"], **p["criterion_kwargs"])
-    else:
-        raise ValueError("Invalid criterion {}".format(p["criterion"]))
-
-    return criterion
-
-
-def get_feature_dimensions_backbone(p):
-    if p["backbone"] == "resnet18":
-        return p["res_kwargs"]["mid_channels"][-1]
-
-    elif p["backbone"] == "resnet_ts":
-        return p["res_kwargs"]["mid_channels"][-1]
-
-    else:
-        raise NotImplementedError
-
-
-def get_model(p, pretrain_path=None):
-    # Get backbone through the registry (single wiring point).
-    # Legacy setups consume the historical {'backbone': ..., 'dim': ...} mapping.
-    from models import get_backbone
-
-    backbone = get_backbone(p["backbone"], **p.get("res_kwargs", {}))
-
-    # Setup
-    if p["setup"] in ["pretext"]:
-        from models.models import ContrastiveModel
-
-        model = ContrastiveModel(backbone, **p["model_kwargs"])
-
-    elif p["setup"] in ["classification"]:
-        from models.models import ClusteringModel
-
-        model = ClusteringModel(backbone, p["num_classes"], p["num_heads"])
-    elif p["setup"] in ["classification_e2e"]:
-        from models.models import ClusteringModel
-        from models.models import ClassificationModel
-
-        model = ClassificationModel(ClusteringModel(backbone, p["num_classes"], p["num_heads"]), p["num_classes_classificaton"])
-    else:
-        raise ValueError("Invalid setup {}".format(p["setup"]))
-
-    # Load pretrained weights
-    if pretrain_path is not None and os.path.exists(pretrain_path):
-        state = torch.load(pretrain_path, map_location="cpu", weights_only=False)
-        state = state if is_state_dict(state) else state["model"]
-        if (
-            p["setup"] in ["classification", "classification_e2e"]
-        ):  # Weights are supposed to be transfered from contrastive training
-            missing = model.load_state_dict(state, strict=False)
-            assert (
-                set(missing[1])
-                == {
-                    "contrastive_head.1.weight",
-                    "contrastive_head.1.bias",
-                    "contrastive_head.3.weight",
-                    "contrastive_head.3.bias",
-                }
-                or set(missing[1])
-                == {"contrastive_head.0.weight", "contrastive_head.0.bias"}
-                or set(missing[1]) == set()
-            )
-
-        else:
-            raise NotImplementedError
-
-    elif pretrain_path is not None and not os.path.exists(pretrain_path):
-        raise ValueError(
-            "Path with pre-trained weights does not exist {}".format(pretrain_path)
-        )
-
-    else:
-        pass
-
-    return model
-
-
-def is_state_dict(obj):
-    """Return True if obj looks like a plain PyTorch model state_dict."""
-    if not isinstance(obj, Mapping) or not obj:
-        return False
-
-    return all(isinstance(key, str) and torch.is_tensor(value) for key, value in obj.items())
 
 
 def get_jepa_model(p):
@@ -136,6 +34,14 @@ def get_jepa_model(p):
     )
 
 
+def get_criterion(p):
+    if p["criterion"] == "jepa":
+        from losses.jepa_losses import JEPALoss
+
+        return JEPALoss(**p["criterion_kwargs"])
+    raise ValueError("Invalid criterion {}".format(p["criterion"]))
+
+
 def get_jepa_datasets(p):
     """Train/validation datasets for JEPA stages.
 
@@ -147,6 +53,8 @@ def get_jepa_datasets(p):
     from data.jepa_dataset import JEPADataset, JEPACorpusDataset
 
     corpus = p.get("stage_a", {}).get("corpus", "single")
+    train_dataset: object
+    val_dataset: object
     if p["train_db_name"] == "smd" and corpus == "joint":
         machine_dir = os.path.join(MyPath.db_root_dir("smd"), "train")
         machines = sorted(f for f in os.listdir(machine_dir) if f.startswith("machine-"))
@@ -155,137 +63,7 @@ def get_jepa_datasets(p):
     else:
         train_dataset = JEPADataset(p, train=True)
         val_dataset = JEPADataset.validation_split(train_dataset, p)
-    train_dataset.mean = getattr(train_dataset, "mean", None)
-    train_dataset.std = getattr(train_dataset, "std", None)
     return train_dataset, val_dataset
-
-def get_train_dataset(
-    p,
-    transform,
-    sanomaly,
-    to_augmented_dataset=False,
-    to_neighbors_dataset=False,
-):
-    # Base dataset
-    mean, std = 0, 0
-    if p["train_db_name"] == "smd":
-        from data.SMD import SMD
-
-        dataset = SMD(
-            p["fname"],
-            train=True,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=None,
-            std_data=None,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-        mean, std = dataset.get_info()
-
-    elif p["train_db_name"] == "psm":
-        from data.PSM import PSM
-
-        dataset = PSM(
-            train=True,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=None,
-            std_data=None,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-        mean, std = dataset.get_info()
-    else:
-        raise ValueError("Invalid train dataset {}".format(p["train_db_name"]))
-
-    # Wrap into other dataset (__getitem__ changes)
-    if to_augmented_dataset:  # Dataset returns a ts and an augmentation of that.
-        from data.custom_dataset import AugmentedDataset
-
-        dataset = AugmentedDataset(dataset)
-
-    if (
-        to_neighbors_dataset
-    ):  # Dataset returns ts and its nearest and furthest neighbors.
-        from data.custom_dataset import NeighborsDataset
-
-        nindices = np.load(p["topk_neighbors_train_path"])
-        findices = np.load(p["bottomk_neighbors_train_path"])
-        dataset = NeighborsDataset(dataset, None, nindices, findices, p)
-
-    dataset.mean = mean
-    dataset.std = std
-    return dataset
-
-
-def get_aug_train_dataset(p, transform, dataset=None, new=False, data_number=None):
-    if new:
-        from data.custom_dataset import ContrustiveDataset, DynamicNeighbors
-        assert dataset is not None
-        dynamic_dataset = DynamicNeighbors(dataset, p, data_number=data_number)
-        con_dataset = ContrustiveDataset(dynamic_dataset, transform, p)
-        return dynamic_dataset, con_dataset
-    if dataset is None:
-        dataset = torch.load(p["contrastive_dataset"], weights_only=False).dataset
-    from data.custom_dataset import NeighborsDataset
-
-    N_indices = np.load(p["topk_neighbors_train_path"])
-    F_indices = np.load(p["bottomk_neighbors_train_path"])
-    dataset = NeighborsDataset(dataset, transform, N_indices, F_indices, p)
-
-    return dataset
-
-
-def get_val_dataset(
-    p,
-    transform=None,
-    sanomaly=None,
-    to_neighbors_dataset=False,
-    mean_data=None,
-    std_data=None,
-):
-    # Base dataset
-    if p["val_db_name"] == "smd":
-        from data.SMD import SMD
-
-        dataset = SMD(
-            p["fname"],
-            train=False,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=mean_data,
-            std_data=std_data,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-
-    elif p["val_db_name"] == "psm":
-        from data.PSM import PSM
-
-        dataset = PSM(
-            train=False,
-            transform=transform,
-            sanomaly=sanomaly,
-            mean_data=mean_data,
-            std_data=std_data,
-            wsz=p["wsz"],
-            stride=p["stride"],
-        )
-    else:
-        raise ValueError("Invalid validation dataset {}".format(p["val_db_name"]))
-
-    # Wrap into other dataset (__getitem__ changes)
-    if to_neighbors_dataset:  # Dataset returns a ts and one of its nearest neighbors.
-        from data.custom_dataset import NeighborsDataset
-
-        N_indices = np.load(p["topk_neighbors_val_path"])
-        F_indices = np.load(p["bottomk_neighbors_val_path"])
-        dataset = NeighborsDataset(
-            dataset, transform, N_indices, F_indices, 5
-        )  # Only use 5
-
-    return dataset
 
 
 def get_train_dataloader(p, dataset):
@@ -309,43 +87,6 @@ def get_val_dataloader(p, dataset):
         collate_fn=collate_custom,
         drop_last=False,
         shuffle=False,
-    )
-
-
-def inject_sub_anomaly(p):
-    return SubAnomaly(p["anomaly_kwargs"]["portion"])
-
-
-def get_train_transformations(p):
-    if p["augmentation_strategy"] == "standard":
-        # Standard augmentation strategy
-        return transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    **p["augmentation_kwargs"]["random_resized_crop"]
-                ),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(**p["augmentation_kwargs"]["normalize"]),
-            ]
-        )
-
-    elif p["augmentation_strategy"] == "ts":
-        return transforms.Compose(
-            [
-                NoiseTransformation(p["transformation_kwargs"]["noise_sigma"]),
-            ]
-        )
-
-    else:
-        raise ValueError(
-            "Invalid augmentation strategy {}".format(p["augmentation_strategy"])
-        )
-
-
-def get_val_transformations(p):
-    return transforms.Compose(
-        [NoiseTransformation(p["transformation_kwargs"]["noise_sigma"])]
     )
 
 

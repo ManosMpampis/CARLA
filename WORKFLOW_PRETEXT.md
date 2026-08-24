@@ -1,3 +1,8 @@
+> **HISTORICAL RECORD.** The contrastive pretext pipeline described here was
+> deleted at the JEPA cutover (see `specs/jepa-tsad-rebuild.md`, ticket 12).
+> Kept for provenance of the earlier experiments; nothing in this document
+> applies to the current `carla_jepa.py` pipeline.
+
 # CARLA Pretext Workflow
 
 Source: `carla_pretext.py`, with the training/loss path in `utils/train_utils.py`, `utils/common_config.py`, `data/custom_dataset.py`, and `losses/losses.py`.

@@ -1,3 +1,5 @@
+from typing import cast
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,11 +39,11 @@ class JEPAModel(nn.Module):
         encoder: nn.Module,
         predictor: str = "tcn",
         horizons: int = 2,
-        predictor_hidden: int = None,
+        predictor_hidden: int | None = None,
         anti_collapse: str = "none",
         ema_momentum: float = 0.99925,
-        codebook_kwargs: dict = None,
-        target_norm: str = None,
+        codebook_kwargs: dict | None = None,
+        target_norm: str | None = None,
     ):
         super().__init__()
         if predictor not in PREDICTOR_REGISTRY:
@@ -50,9 +52,13 @@ class JEPAModel(nn.Module):
             raise ValueError("Invalid anti_collapse {}".format(anti_collapse))
 
         self.encoder = encoder
-        self.level_names = list(encoder.level_names)
-        self.level_dims = list(encoder.level_dims)
-        self.level_strides = list(getattr(encoder, "level_strides", [1] * len(self.level_names)))
+        names = cast("list[str]", getattr(encoder, "level_names"))
+        dims = cast("list[int]", getattr(encoder, "level_dims"))
+        strides = cast("list[int]", getattr(encoder, "level_strides",
+                                            [1] * len(names)))
+        self.level_names: list[str] = list(names)
+        self.level_dims: list[int] = [int(d) for d in dims]
+        self.level_strides: list[int] = [int(s) for s in strides]
 
         self.predictors = nn.ModuleDict({
             name: build_predictor(predictor, dim, horizons, predictor_hidden)
@@ -64,6 +70,7 @@ class JEPAModel(nn.Module):
 
         self.target_encoder = None
         self.codebook = None
+        self.encoder_frozen = False
         if anti_collapse == "ema":
             self.target_encoder = EMAWrapper(encoder, momentum=ema_momentum)
         elif anti_collapse == "codebook":
@@ -86,16 +93,19 @@ class JEPAModel(nn.Module):
             return self.target_encoder.encode(x)
         return {name: z.detach() for name, z in latents.items()}
 
-    def forward(self, x: torch.Tensor, mask: dict = None) -> dict:
+    def forward(self, x: torch.Tensor, mask: dict | None = None) -> dict:
         latents = self.encode(x)
         targets = self._targets_from(x, latents)
         predicted = self.predict(latents)
-        return {
+        outputs: dict[str, object] = {
             "latents": latents,
             "targets": targets,
             "predicted": predicted,
             "mask": mask,
         }
+        if self.codebook is not None:
+            outputs["codebook"] = self.codebook.quantization_loss(latents)
+        return outputs
 
     def update_ema(self) -> None:
         if self.target_encoder is not None:
@@ -130,7 +140,7 @@ class JEPAModel(nn.Module):
         b, _, window = x.shape
         sums = x.new_zeros((b, window), dtype=torch.float32)
         counts = 0
-        level_maps = {}
+        level_maps: dict[str, torch.Tensor] = {}
         for idx, name in enumerate(self.level_names):
             stride = self.level_strides[idx]
             tok = self._token_errors(predicted[name], latents[name])  # (B, T_l)
@@ -139,15 +149,16 @@ class JEPAModel(nn.Module):
             counts += 1
             level_maps[name] = steps
         fused = sums / max(counts, 1)
-        out = {"fused": fused, "levels": level_maps, "signals": {}}
+        signals_out: dict[str, torch.Tensor] = {}
+        out = {"fused": fused, "levels": level_maps, "signals": signals_out}
 
         if self.codebook is not None:
             for name in latents:
                 dist, entropy = self.codebook.signals(name, latents[name])
                 stride = self.level_strides[self.level_names.index(name)]
-                out["signals"][f"{name}/codebook_dist"] = \
+                signals_out[f"{name}/codebook_dist"] = \
                     dist.repeat_interleave(stride, dim=1)[:, :window]
-                out["signals"][f"{name}/attn_entropy"] = \
+                signals_out[f"{name}/attn_entropy"] = \
                     entropy.repeat_interleave(stride, dim=1)[:, :window]
         if was_training:
             self.train()
@@ -157,7 +168,7 @@ class JEPAModel(nn.Module):
         """Mean |pred - target| per *future* token position over its valid horizons."""
         k_total = pred.size(1)
         length = target.size(-1)
-        err_sum = None
+        err_sum: torch.Tensor | None = None
         for k in range(1, k_total + 1):
             n_future = length - k
             if n_future <= 0:
@@ -165,6 +176,12 @@ class JEPAModel(nn.Module):
             diff = (pred[:, k - 1, :, :n_future] - target[:, :, k:]).abs().mean(dim=1)
             padded = F.pad(diff, (k, 0))  # align error to the *future* position
             err_sum = padded if err_sum is None else err_sum + padded
+        assert err_sum is not None, "window shorter than the first horizon"
+        weights = torch.minimum(
+            torch.arange(length, device=target.device) + 1,
+            torch.tensor(k_total, device=target.device),
+        ).clamp(min=1)
+        return err_sum / weights
         weights = torch.minimum(
             torch.arange(length, device=target.device) + 1,
             torch.tensor(k_total, device=target.device),

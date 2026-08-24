@@ -88,7 +88,6 @@ class JEPADataset(Dataset):
                 self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
             else:
                 self.series = series
-                self.targets = np.zeros(series.shape[0], dtype=np.int64)
         elif source == "smd":
             fname = p["fname"]
             root = MyPath.db_root_dir("smd")
@@ -169,6 +168,9 @@ class JEPACorpusDataset(Dataset):
     Each machine keeps its own per-machine normalization (official-protocol
     compatible); windows are drawn from the concatenation.
     """
+
+    machine_files: list
+    targets: np.ndarray
 
     def __init__(self, p, machine_files: list):
         self.wsz = p["wsz"]

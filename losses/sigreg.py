@@ -1,3 +1,5 @@
+from typing import cast
+
 import torch
 import torch.nn as nn
 
@@ -23,7 +25,7 @@ class SIGReg(nn.Module):
             persistent=False,
         )
         self._seed = seed
-        self._slices = {}
+        self._slices: dict[int, torch.Tensor] = {}
 
     def _get_slices(self, dim: int, device, dtype) -> torch.Tensor:
         if dim not in self._slices:
@@ -35,13 +37,14 @@ class SIGReg(nn.Module):
 
     def statistic(self, tokens: torch.Tensor) -> torch.Tensor:
         """Epps-Pulley statistic for token embeddings of shape (N, D)."""
+        freqs = cast(torch.Tensor, self.freqs)
         slices = self._get_slices(tokens.size(1), tokens.device, tokens.dtype)
         z = tokens @ slices.t()  # (N, S)
         z = (z - z.mean(dim=0, keepdim=True)) / (z.std(dim=0, keepdim=True) + 1e-6)
         z = z.to(torch.float64)
-        angles = z.unsqueeze(-1) * self.freqs.double()  # (N, S, F)
+        angles = z.unsqueeze(-1) * freqs.double()  # (N, S, F)
         phi_hat = torch.polar(torch.ones_like(angles), angles).mean(dim=0).abs() ** 2
-        target = torch.exp(-(self.freqs.double() ** 2))
+        target = torch.exp(-(freqs.double() ** 2))
         return ((phi_hat - target) ** 2).sum(dim=1).mean()
 
     def forward(self, latents: dict) -> torch.Tensor:

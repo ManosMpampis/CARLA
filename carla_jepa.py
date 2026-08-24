@@ -126,6 +126,7 @@ def run_adapt(p, device):
         if model.target_encoder is not None:
             for param in model.target_encoder.parameters():
                 param.requires_grad = False
+        model.encoder_frozen = True
         frozen = sum(1 for q in model.parameters() if not q.requires_grad)
         logger.log(f"Adaptation mode 'frozen': encoder frozen ({frozen} tensors)")
     elif mode == "finetune":
@@ -201,10 +202,7 @@ def run_score(p, device):
             **{f"signal/{k}": v.reshape(-1) for k, v in probe_scores.pop("signals").items()},
         }
 
-    calibrator.fit(
-        {k: v for k, v in clean_channels.items()},
-        probes=probe_channels,
-    )
+    calibrator.fit(clean_channels, probes=probe_channels)
 
     fused_clean = calibrator.fuse(clean_channels)
     threshold = calibrator.threshold_for(fused_clean)

@@ -33,6 +33,7 @@ class Trainer:
         if amp and device.type != "cuda":
             logger.log("amp requested but device is CPU; running fp32")
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp)
+        self._codebook_samples: dict[str, list] | None = None
 
     # ------------------------------------------------------------------ #
     @staticmethod
@@ -59,11 +60,22 @@ class Trainer:
 
     def train_one_epoch(self, loader, epoch: int) -> dict:
         self.model.train()
+        if getattr(self.model, "encoder_frozen", False):
+            # frozen adaptation: BN stats of the encoder must not move
+            self.model.encoder.eval()
         if self.model.target_encoder is not None:
             self.model.target_encoder.train_mode()
+        if self.model.codebook is not None and epoch == 0 \
+                and not self.model.codebook.initialized:
+            # collect first-epoch latents for the k-means warmup
+            samples: dict[str, list] = {name: [] for name in self.model.level_names}
+            self._codebook_samples = samples
         meters = {}
         for i, batch in enumerate(loader):
             losses, extras = self._forward_loss(batch)
+            if self._codebook_samples is not None and i < 8:
+                for name, z in extras["latents"].items():
+                    self._codebook_samples[name].append(z.detach().cpu())
             for key, value in losses.items():
                 if f"meter_{key}" not in meters:
                     meters[f"meter_{key}"] = AverageMeter(key, ":.4e")
@@ -86,6 +98,11 @@ class Trainer:
                 )
                 self.logger.log(f"Epoch [{epoch+1}] batch [{i}/{len(loader)}] "
                                 f"latent_var {var:.4f} {progress}")
+
+        if self._codebook_samples is not None:
+            self.model.codebook.init_from_latents(self._codebook_samples,
+                                                  logger=self.logger)
+            self._codebook_samples = None
         return {key[6:]: meter.avg for key, meter in meters.items()}
 
     @torch.no_grad()
@@ -160,8 +177,7 @@ class Trainer:
         if "scheduler" in checkpoint:
             scheduler.load_state_dict(checkpoint["scheduler"])
         start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
-        best = checkpoint.get("best_val_loss",
-                              checkpoint.get("pretext_best_loss", np.inf))
+        best = checkpoint.get("best_val_loss", np.inf)
         return start_epoch, best
 
     @staticmethod

@@ -45,7 +45,7 @@ class Scorer:
             starts.append(n_steps - wsz)
         ends = [s + wsz for s in starts]
 
-        sums = {}
+        sums: dict[str, np.ndarray] = {}
         for begin in range(0, len(starts), 256):
             chunk = starts[begin:begin + 256]
             batch = torch.from_numpy(
@@ -106,11 +106,11 @@ class Calibrator:
     def __init__(self, quantile: float = 0.995, min_probe_samples: int = 50):
         self.quantile = float(quantile)
         self.min_probe_samples = int(min_probe_samples)
-        self.thresholds = {}
-        self.weights = {}
+        self.thresholds: dict[str, float] = {}
+        self.weights: dict[str, float] = {}
         self.fallback = True
 
-    def fit(self, clean: dict, probes: dict = None) -> "Calibrator":
+    def fit(self, clean: dict, probes: dict | None = None) -> "Calibrator":
         """clean/probes map signal name -> 1D per-timestep score arrays."""
         clean = dict(clean)
         probes = dict(probes or {})
@@ -140,16 +140,15 @@ class Calibrator:
         stacked = [np.asarray(signals[n], dtype=np.float64) for n in names]
         if self.fallback or not self.weights:
             return np.mean(stacked, axis=0)
-        combined = None
+        combined = np.zeros_like(stacked[0])
         for n, values in zip(names, stacked):
-            term = self.weights.get(n, 0.0) * values
-            combined = term if combined is None else combined + term
+            combined = combined + self.weights.get(n, 0.0) * values
         return combined
 
     def threshold_for(self, fused_clean: np.ndarray) -> float:
         return float(np.quantile(np.asarray(fused_clean, dtype=np.float64), self.quantile))
 
-    def save(self, path: str, extra: dict = None) -> None:
+    def save(self, path: str, extra: dict | None = None) -> None:
         payload = {
             "quantile": self.quantile,
             "thresholds": self.thresholds,

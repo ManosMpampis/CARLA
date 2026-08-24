@@ -15,10 +15,12 @@ class JEPALoss(nn.Module):
     are masked; SIGReg always sees the full latents.
     """
 
-    def __init__(self, lambda_sigreg: float = 0.0, sigreg_kwargs: dict = None,
-                 target_norm: str = None, level_weights: dict = None):
+    def __init__(self, lambda_sigreg: float = 0.0, sigreg_kwargs: dict | None = None,
+                 target_norm: str | None = None, level_weights: dict | None = None,
+                 lambda_codebook: float = 1.0):
         super().__init__()
         self.lambda_sigreg = float(lambda_sigreg)
+        self.lambda_codebook = float(lambda_codebook)
         self.sigreg = SIGReg(**(sigreg_kwargs or {})) if self.lambda_sigreg > 0 else None
         self.target_norm = target_norm
         self.level_weights = level_weights or {}
@@ -45,8 +47,8 @@ class JEPALoss(nn.Module):
             b, k_total, d, t = pred.shape
             tmask = self._masked_target_positions(name, tgt, mask)
 
-            err_sum = None
-            weight_sum = None
+            err_sum = pred.new_zeros(())
+            weight_sum = pred.new_zeros(())
             for k in range(1, k_total + 1):
                 n_future = t - k
                 if n_future <= 0:
@@ -55,9 +57,8 @@ class JEPALoss(nn.Module):
                 w = torch.ones(b, n_future, device=diff.device, dtype=diff.dtype)
                 if tmask is not None:
                     w = w * tmask[:, k:].to(diff.dtype)
-                diff_w = diff * w.unsqueeze(1)
-                err_sum = diff_w.sum() if err_sum is None else err_sum + diff_w.sum()
-                weight_sum = w.sum() if weight_sum is None else weight_sum + w.sum()
+                err_sum = err_sum + (diff * w.unsqueeze(1)).sum()
+                weight_sum = weight_sum + w.sum()
 
             level_loss = err_sum / weight_sum.clamp(min=1.0)
             losses[f"pred_{name}"] = level_loss
@@ -65,6 +66,10 @@ class JEPALoss(nn.Module):
 
         losses["pred_loss"] = torch.stack(level_losses).mean()
         losses["loss"] = losses["pred_loss"]
+
+        if outputs.get("codebook") is not None:
+            losses["codebook"] = outputs["codebook"]
+            losses["loss"] = losses["loss"] + self.lambda_codebook * losses["codebook"]
 
         if self.sigreg is not None and self.lambda_sigreg > 0:
             losses["sigreg"] = self.sigreg(latents)
