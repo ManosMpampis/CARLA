@@ -17,6 +17,10 @@ def get_criterion(p):
         from losses.losses import ClassificationLoss
 
         criterion = ClassificationLoss(**p["criterion_kwargs"])
+    elif p["criterion"] == "classification_moco":
+        from losses.losses import ClassificationLossMoCo
+
+        criterion = ClassificationLossMoCo(**p["criterion_kwargs"])
     elif p["criterion"] == "classification_e2e":
         from losses.losses import ClassificationLossE2E
 

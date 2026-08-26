@@ -1,5 +1,6 @@
 import argparse
 import os
+import copy
 import csv
 import torch
 import numpy as np
@@ -169,13 +170,31 @@ def main(args, update_dictionary={}):
             log_histograms=False,
             aggregate=True,
         )
-    
+
+    # Momentum (EMA) encoder, MoCo-v2 style. Used for the negative branch when
+    # `ema_negatives` is set, and/or for periodic neighbor re-mining when
+    # `ema_mining_every` > 0. Starts from the (resumed) model weights.
+    model_ema = None
+    if p.get("ema_negatives", False) or p.get("ema_mining_every", 0) > 0:
+        model_ema = copy.deepcopy(model).to(device)
+        for param in model_ema.parameters():
+            param.requires_grad_(False)
+        model_ema.eval()
+        logger.log(
+            "-- Momentum encoder enabled (ema_negatives=%s, ema_mining_every=%s, ema_momentum=%s)"
+            % (
+                p.get("ema_negatives", False),
+                p.get("ema_mining_every", 0),
+                p.get("ema_momentum", 0.999),
+            )
+        )
+
     # Initi neighbors with the current model
     # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
     logger.log("\n- Training:")
     for epoch in range(start_epoch, p["epochs"]):
         logger.log("-- Epoch %d/%d" % (epoch + 1, p["epochs"]))
-        
+
         lr = optimizer.param_groups[0]["lr"]
         loss_dict = self_sup_classification_train(
             train_dataloader,
@@ -186,11 +205,23 @@ def main(args, update_dictionary={}):
             logger,
             p["update_cluster_head_only"],
             device=device,
-            gradient_monitor=gradient_monitor
+            gradient_monitor=gradient_monitor,
+            model_ema=model_ema,
+            ema_momentum=p.get("ema_momentum", 0.999),
+            ema_negatives=p.get("ema_negatives", False),
         )
 
+        # Periodic neighbor re-mining with the stable momentum encoder
+        if (
+            model_ema is not None
+            and p.get("ema_mining_every", 0) > 0
+            and (epoch + 1) % p.get("ema_mining_every", 0) == 0
+        ):
+            logger.log("-- Re-mining neighbors with the momentum encoder")
+            train_dataset_base.predict_and_update(model_ema, base_dataloader, p, True)
+
         predictions = train_dataset_base.predict_and_update(
-            model, base_dataloader, p, p.get("update_data", False)
+            model, base_dataloader, p, (p.get("update_data", False) and p.get("ema_mining_every", 0) == 0)
         )
 
         label_counts = torch.bincount(predictions["predictions"])

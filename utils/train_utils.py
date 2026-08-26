@@ -4,6 +4,19 @@ from torch import Tensor
 from utils.utils import AverageMeter, ProgressMeter
 from utils.evaluate_utils import GradientMonitor
 
+
+@torch.no_grad()
+def update_ema_model(model, model_ema, momentum):
+    """Momentum (EMA) update of the key encoder, MoCo-style.
+
+    Parameters are EMA-updated; buffers (e.g. BatchNorm running statistics)
+    are copied directly from the live model.
+    """
+    for p_live, p_ema in zip(model.parameters(), model_ema.parameters()):
+        p_ema.mul_(momentum).add_(p_live.detach(), alpha=1 - momentum)
+    for b_live, b_ema in zip(model.buffers(), model_ema.buffers()):
+        b_ema.copy_(b_live)
+
 def pretext_train(
     train_loader, model, criterion, optimizer, epoch, logger, device="cuda", gradient_monitor: GradientMonitor = None
 ):
@@ -74,10 +87,20 @@ def self_sup_classification_train(
     logger,
     update_cluster_head_only=False,
     device="cuda",
-    gradient_monitor: GradientMonitor = None
+    gradient_monitor: GradientMonitor = None,
+    model_ema=None,
+    ema_momentum=0.999,
+    ema_negatives=False,
 ):
     """
     Train w/ classification-Loss
+
+    If ``model_ema`` is given, it is momentum-updated after every optimizer
+    step. ``ema_negatives`` selects the negative branch: ``False`` keeps the
+    default behaviour (live model in eval() mode, keeping the loss graph of
+    the negatives so the model learns to process them); ``True`` forwards the
+    negatives through the EMA encoder under no_grad (consistent negatives for
+    the MoCo-style queues, but no gradient learning on the negative branch).
     """
     avg_meters = {}
     progress = ProgressMeter(
@@ -116,15 +139,24 @@ def self_sup_classification_train(
 
             anchors_output = model(anchors_features, forward_pass="head")
             nneighbors_output = model(nneighbors_features, forward_pass="head")
-            model.eval()
-            fneighbors_output = model(fneighbors_features, forward_pass="head")
-            model.train()
+            if ema_negatives and model_ema is not None:
+                with torch.no_grad():
+                    fneighbors_ema_features = model_ema(fneighbors, forward_pass="backbone")
+                    fneighbors_output = model_ema(fneighbors_ema_features, forward_pass="head")
+            else:
+                model.eval()
+                fneighbors_output = model(fneighbors_features, forward_pass="head")
+                model.train()
         else:  # Calculate gradient for backprop of complete network
             anchors_output = model(anchors, forward_pass="return_all")
             nneighbors_output = model(nneighbors, forward_pass="return_all")
-            model.eval()
-            fneighbors_output = model(fneighbors, forward_pass="return_all")
-            model.train()
+            if ema_negatives and model_ema is not None:
+                with torch.no_grad():
+                    fneighbors_output = model_ema(fneighbors, forward_pass="return_all")
+            else:
+                model.eval()
+                fneighbors_output = model(fneighbors, forward_pass="return_all")
+                model.train()
 
         # Loss for every head
         losses = criterion(anchors_output, nneighbors_output, fneighbors_output)
@@ -143,6 +175,8 @@ def self_sup_classification_train(
         if gradient_monitor is not None:
             gradient_monitor.step()
         optimizer.step()
+        if model_ema is not None:
+            update_ema_model(model, model_ema, ema_momentum)
         if i % 100 == 0:
             progress.display(i)
 
