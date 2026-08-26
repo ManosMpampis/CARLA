@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.cluster import MiniBatchKMeans
-from sklearn import metrics
 from torchmetrics.clustering import (
     CalinskiHarabaszScore,
     DaviesBouldinScore,
@@ -20,7 +19,7 @@ from utils.common_config import get_feature_dimensions_backbone
 from data.custom_dataset import ContrustiveDataset
 from losses.losses import entropy
 from termcolor import colored
-from utils.utils import find_target
+from utils.utils import find_target, isscalar
 import matplotlib
 
 matplotlib.use("Agg")  # headless backend
@@ -570,7 +569,7 @@ def pr_evaluate(
     probs = all_predictions["probabilities"]
 
     # `majority_label` may be a single class or a set/list of normal classes
-    normal_classes = [int(majority_label)] if np.isscalar(majority_label) else [int(c) for c in majority_label]
+    normal_classes = [int(majority_label)] if isscalar(majority_label) else [int(c) for c in majority_label]
 
     # Classification metrics
     cls_targets = np.where((targets == 4), 1, 0) if train else np.where((targets == 0), 0, 1)

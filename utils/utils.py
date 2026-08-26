@@ -7,7 +7,17 @@ import torch
 import shutil
 from pathlib import Path
 
-
+def isscalar(value):
+    # PyTorch tensor (has numel)
+    if isinstance(value, torch.Tensor) and value.ndim == 0:
+        return True
+    elif isinstance(value, np.ndarray) and np.isscalar(value):
+        return True
+    elif isinstance(value, (int, float, complex)):
+        return True
+    else:
+        return False
+    
 def get_sorted_directories(base_path: str) -> list[Path]:
     """Get all subdirectories sorted by their numeric name."""
     base = Path(base_path)
