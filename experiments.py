@@ -158,9 +158,9 @@ experiments = [experiment for experiment in experiment_dir.iterdir()]
 
 pretext_model = "dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss" #"original" #"dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss"
 experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
-exp_index = 0# experiments[2].index(experiment_to_go)
+exp_index = 3# experiments[2].index(experiment_to_go)
 for exp in experiments[exp_index:]:
-    for norm in ["batch", "instance"]:
+    for norm in ["batch"]: #, "instance"]:
         version = f"./best_models/{norm}/{pretext_model}"
         index = file_list.index('machine-1-1.txt')
         index_scip = file_list.index('machine-1-1.txt')

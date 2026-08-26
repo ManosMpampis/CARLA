@@ -62,6 +62,37 @@ flowchart TD
 - Each epoch evaluates train predictions and validation predictions. It selects a majority/normal label, finds a train threshold, evaluates validation metrics with both a validation-best threshold and the train threshold, and periodically logs these values.
 - Final evaluation writes CSV metrics for per-window classification/anomaly scores and reconstructed full-timeseries scores. It evaluates both `model.pth.tar` and the `_cls.pth.tar` variant.
 
+## Normal-Set Evaluation (Tier-2 Prototype)
+
+After the final evaluation of the best model, `normal_set_evaluation` (`carla_classification.py:471`) compares normal-class selection rules without retraining. Gated by `p.get("normal_set_eval", True)`.
+
+- Rules: `all_majority` (current behavior, majority over anchors + weak views + synthetic anomalies), `anchor_majority` (majority over anchor predictions only), and `cov_<c>` (smallest set of classes covering fraction `c` of anchor predictions, for `c` in 0.90/0.95/0.99/1.00).
+- For each rule, the anomaly score is `1 - sum_c p(c)` over the normal set and the classification decision is `argmax not in set`; train thresholds are re-derived per rule on train scores (synthetic anomalies vs rest).
+- Reports window-level (`window_cls/best/train_th`) and reconstructed-timeseries (`ts_cls/best/train_th`) metrics per rule into `<classification_dir>/normal_set/<tag>eval_normal_set.csv` (long format: one row per rule x eval mode).
+- `pr_evaluate` (`utils/evaluate_utils.py:561`) and `pr_evaluate_timeseries` (`utils/evaluate_utils.py:523`) accept `majority_label` as either a single int (unchanged behavior) or a list/set of normal classes.
+- On machines where anchors collapse to one class, all rules coincide; divergence between rules marks multi-regime normality or anomaly/normal class confusion.
+
+## MoCo-v2-Style Queues and Momentum Encoder (`classification_moco`)
+
+`ClassificationLossMoCo` (`losses/losses.py:491`, registered as criterion `classification_moco` in `utils/common_config.py`) extends `ClassificationLoss` with two FIFO queues of detached softmax probabilities (MoCo-v2 principle: decouple negatives from batch size, keep them consistent with a momentum encoder). With `queue_topk < 0` and `queue_anchor: False` the objective is numerically identical to `ClassificationLoss`.
+
+Loss kwargs (`criterion_kwargs`):
+
+- `queue_size` (default 8192): capacity of each queue.
+- `queue_topk` (default 32): `> 0` keeps the top-k hardest (most anchor-similar) queued negatives per anchor for the queue inconsistency term; `0` uses the full queue; `< 0` disables the queue inconsistency term.
+- `queue_warmup` (default 0): minimum queued entries before any queue term activates.
+- `queue_anchor` (default True): estimate the loss's normal class from the mean of the anchor queue instead of the per-batch argmax, stabilizing the classification target across batches.
+
+Training-loop flags (top-level config keys, read with defaults in `carla_classification.py`):
+
+- `ema_momentum` (default 0.999): EMA coefficient for the momentum encoder. The encoder is built after checkpoint loading (`copy.deepcopy`, `requires_grad_(False)`, eval mode) whenever `ema_negatives` or `ema_mining_every > 0` is set, and is updated after every optimizer step (`update_ema_model`, `utils/train_utils.py:9`; parameters are EMA-updated, buffers such as BatchNorm running stats are copied).
+- `ema_negatives` (default False): `False` keeps the current negative branch (live model in `eval()` mode, so the loss graph of the negatives is kept and the model learns to process them); `True` forwards negatives through the EMA encoder under `no_grad` (consistent negatives, but no gradient learning on the negative branch).
+- `ema_mining_every` (default 0): if `> 0`, re-mines the neighbor index arrays with the EMA encoder every k epochs (`predict_and_update(model_ema, ..., update=True)`), refreshing the stale mined pairs without the distribution shock of re-mining with the live model. Metrics in the same epoch still come from the live model, and the live model's `predict_and_update` runs after the EMA pass, so `classification_trainprobs.csv` keeps live-model content.
+
+Queues store detached probabilities only, are created lazily on first forward, and are transient (`persistent=False` — not saved in checkpoints; they refill within a few steps after a resume). Queue diagnostics (`queue_inconsistency`, `queue_filled`, `normal_class_idx`) are logged with the other loss meters. The queue slice used in the loss is cloned before use so the in-place FIFO update cannot invalidate the autograd graph.
+
+Example configs: `configs/classification/experiments/moco.yml` (eval-mode negatives + queue + EMA re-mining) and `configs/classification/experiments/moco_ema.yml` (EMA negatives).
+
 ## Follow-up TODO List
 
 - [ ] **Python/runtime syntax validation:** keep `python -m py_compile carla_classification.py carla_pretext.py` in CI. The scripts contain dense nested f-strings and should be checked on the supported Python versions.
@@ -77,17 +108,24 @@ flowchart TD
 - [ ] **TensorBoard growth:** profile `GradientMonitor` histograms/figures, graph logging, and final evaluation figures. Classification logging is enabled without the pretext logger's cleanup flag, so event files can grow substantially; this is a likely contributor to very large runs, although model weights are saved separately as `.pth.tar` files.
 - [ ] **Loss device/scalar handling:** exercise `ClassificationLoss` with CUDA and with `entropy_norm=True`. Several scalar tensors are created with `torch.tensor(...)` without the active device, and the class-count tensors are also used in shape/math expressions.
 - [ ] **Validation leakage policy:** document whether selecting thresholds and model variants using validation labels is intended for the reported experiment protocol.
+- [ ] **MoCo queue resume behavior:** queues are transient by design and refill within a few steps after resume; verify `queue_warmup` gating prevents a loss-term jump on resumed runs.
+- [ ] **EMA re-mine cost:** with `ema_mining_every > 0`, re-mine epochs run two full train-set passes (EMA re-mine + live metrics pass), each with 3 forward passes; profile against run time.
+- [ ] **Anchor-queue vs epoch-level normal label:** the loss's queue-based `normal_class_idx` and the epoch-level `normal_label` from `predict_and_update` can diverge; log both and check for flips before comparing machines.
 
 ## Reference Locations
 
-- Entry point and epoch control: `carla_classification.py:40-290`
-- Final evaluation: `carla_classification.py:292-379`
+- Entry point and epoch control: `carla_classification.py:42-340`
+- Final evaluation: `carla_classification.py:372-469`
+- Normal-set evaluation: `carla_classification.py:471-593`
+- EMA encoder construction and re-mining: `carla_classification.py:174-190`, `carla_classification.py:215-222`
 - Model transfer: `utils/common_config.py:46-106`
 - Dynamic neighbor mining: `data/custom_dataset.py:96-218`
 - Contrastive sampling: `data/custom_dataset.py:220-261`
-- Training step: `utils/train_utils.py:68-150`
+- Training step: `utils/train_utils.py:81-176`
+- EMA update: `utils/train_utils.py:9-20`
 - Classification loss: `losses/losses.py:294-488`
-- Metrics and thresholding: `utils/evaluate_utils.py:337-559`
+- MoCo queue loss: `losses/losses.py:491-755`
+- Metrics and thresholding: `utils/evaluate_utils.py:523-600`
 
 ## Focused Agent Review
 

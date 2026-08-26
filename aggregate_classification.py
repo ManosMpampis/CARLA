@@ -32,31 +32,34 @@ def aggregate(base_path, out_path):
         groups.setdefault((experiment, split, csv_name), []).append((machine, fpath))
 
     for (experiment, split, csv_name), entries in sorted(groups.items()):
-        rows = []
-        for machine, fpath in sorted(entries, key=lambda x: natural_key(x[0])):
-            df = pd.read_csv(fpath)
-            if df.empty:
+        try:
+            rows = []
+            for machine, fpath in sorted(entries, key=lambda x: natural_key(x[0])):
+                df = pd.read_csv(fpath)
+                if df.empty:
+                    continue
+                row = {"machine": machine}
+                row.update(df.iloc[0].to_dict())
+                rows.append(row)
+
+            if not rows:
                 continue
-            row = {"machine": machine}
-            row.update(df.iloc[0].to_dict())
-            rows.append(row)
 
-        if not rows:
-            continue
+            combined = pd.DataFrame(rows)
+            metric_cols = [c for c in combined.columns if c != "machine"]
+            values = combined[metric_cols].apply(pd.to_numeric, errors="coerce")
 
-        combined = pd.DataFrame(rows)
-        metric_cols = [c for c in combined.columns if c != "machine"]
-        values = combined[metric_cols].apply(pd.to_numeric, errors="coerce")
+            stats = pd.DataFrame([values.mean(), values.std(), values.sum(min_count=1)])
+            stats.insert(0, "machine", ["mean", "std", "sum"])
+            combined = pd.concat([combined, stats], ignore_index=True)
 
-        stats = pd.DataFrame([values.mean(), values.std(), values.sum(min_count=1)])
-        stats.insert(0, "machine", ["mean", "std", "sum"])
-        combined = pd.concat([combined, stats], ignore_index=True)
-
-        out_dir = os.path.join(out_path, experiment, split)
-        os.makedirs(out_dir, exist_ok=True)
-        out_file = os.path.join(out_dir, csv_name)
-        combined.to_csv(out_file, index=False)
-        print(f"Saved {out_file} ({len(rows)} machines + mean/std/sum)")
+            out_dir = os.path.join(out_path, experiment, split)
+            os.makedirs(out_dir, exist_ok=True)
+            out_file = os.path.join(out_dir, csv_name)
+            combined.to_csv(out_file, index=False)
+            print(f"Saved {out_file} ({len(rows)} machines + mean/std/sum)")
+        except Exception as e:
+            print(f"Error processing {experiment}/{split}/{csv_name}: {e}")
 
 
 if __name__ == "__main__":
