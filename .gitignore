@@ -7,3 +7,4 @@ results
 venv/
 datasets/
 datasets
+.vscode/
