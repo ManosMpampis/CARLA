@@ -70,7 +70,7 @@ class PyramidEncoder(nn.Module):
     ):
         super().__init__()
         assert len(level_channels) == len(strides)
-        self.stem = StridedConvBlock(in_channels, stem_channels, kernel_size=7, stride=1)
+        self.stem = StridedConvBlock(in_channels, stem_channels, kernel_size=7, stride=1, dropout=dropout)
         levels = []
         ch_in = stem_channels
         for i, ch_out in enumerate(level_channels):
