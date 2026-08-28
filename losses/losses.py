@@ -188,8 +188,7 @@ class ClassificationLossE2E(nn.Module):
             # Shape: [b, b]
             neg_cross_sim = torch.mm(negatives_prob, negatives_prob.t())
             b_size = neg_cross_sim.size(0)
-            mask = ~torch.eye(b_size, device=neg_cross_sim.device).bool()
-            diff_neg_sims = neg_cross_sim[mask].mean()
+            diff_neg_sims = (neg_cross_sim.sum() - neg_cross_sim.diagonal().sum()) / (b_size * (b_size - 1))
 
         # Entropy loss
         entropy_loss = torch.tensor(0)
@@ -234,8 +233,8 @@ class ClassificationLossE2E(nn.Module):
         negs_margin_per_class = { 
             f"{i+1}": negatives_prob[i] for i in range(n)
         }
-        anchor_class_counts = torch.bincount(anchor_preds, minlength=int(n))
-        negs_class_counts = torch.bincount(neg_preds, minlength=int(n))
+        anchor_class_counts = torch.nn.functional.one_hot(anchor_preds, int(n)).sum(dim=0)
+        negs_class_counts = torch.nn.functional.one_hot(neg_preds, int(n)).sum(dim=0)
         negs_classified_per_class = {
             f"{i+1}": negs_class_counts[i] for i in range(n)
         }
@@ -375,8 +374,7 @@ class ClassificationLoss(nn.Module):
             # Shape: [b, b]
             neg_cross_sim = torch.mm(negatives_prob, negatives_prob.t())
             b_size = neg_cross_sim.size(0)
-            mask = ~torch.eye(b_size, device=neg_cross_sim.device).bool()
-            diff_neg_sims = neg_cross_sim[mask].mean()
+            diff_neg_sims = (neg_cross_sim.sum() - neg_cross_sim.diagonal().sum()) / (b_size * (b_size - 1))
 
         # Entropy loss
         entropy_loss = torch.tensor(0)
@@ -395,14 +393,15 @@ class ClassificationLoss(nn.Module):
             #     negatives_prob, input_as_probabilities=True
             # )
 
-        normal_class_idx = torch.argmax(anchors_prob.mean(dim=0), dim=-1).item()
+        normal_class_idx = torch.argmax(anchors_prob.mean(dim=0), dim=-1)
+        normal_class_idx = normal_class_idx.view(1, 1)
 
         pos_targets = torch.zeros_like(pos_logits)
-        pos_targets[:, normal_class_idx] = 1  # Regular class: most probable on average
+        pos_targets = pos_targets.scatter(1, normal_class_idx.expand(pos_logits.size(0), 1), 1.0)  # Regular class: most probable on average
 
         # Negatives: only the regular-class logit is constrained (to be off);
         # entropy/dissimilarity terms shape the remaining classes.
-        neg_normal_logits = fneighbors["output"][:, normal_class_idx]
+        neg_normal_logits = fneighbors["output"].gather(1, normal_class_idx.expand(fneighbors["output"].size(0), 1)).squeeze(1)
 
         pos_bce_loss = self.bce_with_logits(pos_logits, pos_targets)
 
@@ -443,8 +442,8 @@ class ClassificationLoss(nn.Module):
         negs_margin_per_class = { 
             f"{i+1}": negatives_prob[i] for i in range(n)
         }
-        anchor_class_counts = torch.bincount(anchor_preds, minlength=int(n))
-        negs_class_counts = torch.bincount(neg_preds, minlength=int(n))
+        anchor_class_counts = torch.nn.functional.one_hot(anchor_preds, int(n)).sum(dim=0)
+        negs_class_counts = torch.nn.functional.one_hot(neg_preds, int(n)).sum(dim=0)
         negs_classified_per_class = {
             f"{i+1}": negs_class_counts[i] for i in range(n)
         }
@@ -524,6 +523,8 @@ class ClassificationLossMoCo(ClassificationLoss):
         self.queue_warmup = queue_warmup
         self.queue_anchor = queue_anchor
         self._queues_ready = False
+        self._ptr = 0
+        self._filled = 0
 
     def _init_queues(self, num_classes, device, dtype):
         self.register_buffer(
@@ -553,15 +554,18 @@ class ClassificationLossMoCo(ClassificationLoss):
             anchor_probs = anchor_probs[-self.queue_size:]
             neg_probs = neg_probs[-self.queue_size:]
             b = self.queue_size
-        ptr = int(self.queue_ptr.item())
+        ptr = self._ptr
         idx = (ptr + torch.arange(b, device=anchor_probs.device)) % self.queue_size
         self.queue_pos[idx] = anchor_probs
         self.queue_neg[idx] = neg_probs
-        self.queue_ptr[0] = (ptr + b) % self.queue_size
-        self.queue_filled[0] = min(int(self.queue_filled.item()) + b, self.queue_size)
+        self._ptr = (ptr + b) % self.queue_size
+        self._filled = min(self._filled + b, self.queue_size)
+        # Keep the (unused-for-logic) buffers in sync without a blocking host copy.
+        self.queue_ptr.fill_(float(self._ptr))
+        self.queue_filled.fill_(float(self._filled))
 
     def _queue_filled_enough(self):
-        return self._queues_ready and int(self.queue_filled.item()) >= max(
+        return self._queues_ready and self._filled >= max(
             self.queue_warmup, 1
         )
 
@@ -622,8 +626,8 @@ class ClassificationLossMoCo(ClassificationLoss):
 
         # MoCo-style queue inconsistency: anchors vs past queued negatives.
         # topk > 0: hardest k queued negatives per anchor; 0: full queue; <0: off.
-        queue_inconsistency = torch.tensor(0.0, device=anchors_prob.device)
-        filled = int(self.queue_filled.item()) if self._queues_ready else 0
+        queue_inconsistency = torch.zeros((), device=anchors_prob.device)
+        filled = self._filled if self._queues_ready else 0
         if self.queue_topk >= 0 and self._queue_filled_enough():
             # Clone: the FIFO enqueue at the end of forward modifies the queue
             # buffers in-place, which would otherwise invalidate this graph.
@@ -644,8 +648,7 @@ class ClassificationLossMoCo(ClassificationLoss):
             # Shape: [b, b]
             neg_cross_sim = torch.mm(negatives_prob, negatives_prob.t())
             b_size = neg_cross_sim.size(0)
-            mask = ~torch.eye(b_size, device=neg_cross_sim.device).bool()
-            diff_neg_sims = neg_cross_sim[mask].mean()
+            diff_neg_sims = (neg_cross_sim.sum() - neg_cross_sim.diagonal().sum()) / (b_size * (b_size - 1))
 
         # Entropy loss
         entropy_loss = torch.tensor(0)
@@ -661,23 +664,16 @@ class ClassificationLossMoCo(ClassificationLoss):
                 torch.mean(negatives_prob, 0), input_as_probabilities=True
             )
 
-        if self.queue_anchor and self._queue_filled_enough():
-            # Stable normal class from the anchor queue instead of the batch
-            normal_class_idx = int(
-                self.queue_pos[: int(self.queue_filled.item())]
-                .mean(dim=0)
-                .argmax()
-                .item()
-            )
-        else:
-            normal_class_idx = torch.argmax(anchors_prob.mean(dim=0), dim=-1).item()
+        normal_class_idx = self.queue_pos[:filled].mean(dim=0).argmax() if (self.queue_anchor and self._queue_filled_enough()) else torch.argmax(anchors_prob.mean(dim=0), dim=-1)
+        normal_class_idx_scalar = normal_class_idx.detach()
+        normal_class_idx = normal_class_idx.view(1, 1)
 
         pos_targets = torch.zeros_like(pos_logits)
-        pos_targets[:, normal_class_idx] = 1  # Regular class: most probable on average
+        pos_targets = pos_targets.scatter(1, normal_class_idx.expand(pos_logits.size(0), 1), 1.0)  # Regular class: most probable on average
 
         # Negatives: only the regular-class logit is constrained (to be off);
         # entropy/dissimilarity terms shape the remaining classes.
-        neg_normal_logits = fneighbors["output"][:, normal_class_idx]
+        neg_normal_logits = fneighbors["output"].gather(1, normal_class_idx.expand(fneighbors["output"].size(0), 1)).squeeze(1)
 
         pos_bce_loss = self.bce_with_logits(pos_logits, pos_targets)
 
@@ -711,8 +707,8 @@ class ClassificationLossMoCo(ClassificationLoss):
         negs_margin_per_class = {
             f"{i+1}": negatives_prob[i] for i in range(n)
         }
-        anchor_class_counts = torch.bincount(anchor_preds, minlength=int(n))
-        negs_class_counts = torch.bincount(neg_preds, minlength=int(n))
+        anchor_class_counts = torch.nn.functional.one_hot(anchor_preds, int(n)).sum(dim=0)
+        negs_class_counts = torch.nn.functional.one_hot(neg_preds, int(n)).sum(dim=0)
         negs_classified_per_class = {
             f"{i+1}": negs_class_counts[i] for i in range(n)
         }
@@ -738,7 +734,7 @@ class ClassificationLossMoCo(ClassificationLoss):
             "inconsistency_loss": inconsistency_loss,
             "queue_inconsistency": queue_inconsistency,
             "queue_filled": torch.tensor(float(filled)),
-            "normal_class_idx": torch.tensor(float(normal_class_idx)),
+            "normal_class_idx": normal_class_idx_scalar.float(),
             "entropy_loss": entropy_loss,
             "positive_entropy": positive_entropy,
             "negative_entropy": negative_entropy,
@@ -790,11 +786,11 @@ class PretextLoss(nn.Module):
         self.crop_size_min = crop_size_min
         self.crop_size_max = crop_size_max
 
-        self.margin = torch.tensor(initial_margin).to(device)
-        self.initial_margin = torch.tensor(initial_margin).to(device)
-        self.min_margin = torch.tensor(min_margin).to(device)
-        self.max_margin = torch.tensor(max_margin).to(device)
-        self.margin_distance = torch.tensor(margin_distance).to(device)
+        self.margin = torch.tensor(initial_margin, device=device)
+        self.initial_margin = torch.tensor(initial_margin, device=device)
+        self.min_margin = torch.tensor(min_margin, device=device)
+        self.max_margin = torch.tensor(max_margin, device=device)
+        self.margin_distance = margin_distance
 
         self.pos_supression = pos_supression
         self.pos_weight = pos_weight
@@ -903,32 +899,42 @@ class PretextLoss(nn.Module):
         positive_d_loss = torch.mean(positive_distance)
         negative_d_loss = torch.mean(negative_distance)
 
-        loss_pos_nc = torch.mean(positive_distance_c[~mask]) if (~mask).sum()>0 else torch.tensor(0.0, device=loss.device, dtype=loss.dtype)
-        loss_neg_nc = torch.mean(negative_distance_c[~mask]) if (~mask).sum()>0 else torch.tensor(0.0, device=loss.device, dtype=loss.dtype)
+        non_clamped = ~mask
+        non_clamped_count = torch.sum(non_clamped)
+        loss_pos_nc = torch.sum(positive_distance_c * non_clamped) / torch.clamp(non_clamped_count, min=1)
+        loss_neg_nc = torch.sum(negative_distance_c * non_clamped) / torch.clamp(non_clamped_count, min=1)
 
         positive_distance_c = torch.mean(positive_distance_c) - loss_pos_nc
         negative_distance_c = torch.mean(negative_distance_c) - loss_neg_nc
 
         mask_number = torch.sum(mask)
-        if mask_number > 0 and self.re_weight:
+        if mask_number > torch.tensor(0.0, device=loss.device) and self.re_weight:
             weight = self.bs / mask_number
             positive_distance_c *= weight
             negative_distance_c *= weight
             loss = self.margin + positive_distance_c - negative_distance_c
 
         if self.ema_distance:
-            ema_loss = (
-                torch.mean(
-                    ((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * self.previous_loss)
+            if self.previous_loss is not None:
+                previous = self.previous_loss if torch.is_tensor(self.previous_loss) else torch.tensor(self.previous_loss, device=loss.device, dtype=loss.dtype)
+                previous = previous.to(loss.device)
+                ema_loss = (
+                    torch.mean(
+                        ((1.0 - self.ema_alpha) * loss) + (self.ema_alpha * previous)
+                    )
                 )
-                if self.previous_loss is not None
-                else loss
-            ).item()
-            improvement = (
-                (self.prev_ema_loss - ema_loss) / max(self.prev_ema_loss, EPS)
-                if self.prev_ema_loss is not None
-                else 0
-            )
+            else:
+                ema_loss = loss
+            if self.prev_ema_loss is not None:
+                prev_ema = self.prev_ema_loss if torch.is_tensor(self.prev_ema_loss) else torch.tensor(self.prev_ema_loss, device=ema_loss.device, dtype=ema_loss.dtype)
+                prev_ema = prev_ema.to(ema_loss.device)
+                improvement = (
+                    (prev_ema - ema_loss) / torch.clamp(prev_ema, min=EPS)
+                )
+            else:
+                improvement = 0
+            if torch.is_tensor(improvement):
+                improvement = improvement.detach()
             self.update_margin(
                 torch.clamp(
                     self.margin * (1 + improvement),
@@ -937,8 +943,8 @@ class PretextLoss(nn.Module):
                 )
             )
 
-            self.previous_loss = loss.item()
-            self.prev_ema_loss = ema_loss
+            self.previous_loss = loss.detach()
+            self.prev_ema_loss = ema_loss.detach()
         return {
             "loss": loss,
             "positive_d_loss": positive_d_loss,

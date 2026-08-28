@@ -184,12 +184,12 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 class Logger:
-    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', delete_files=False):
+    def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', delete_files=False, name="Self-Awareness"):
 
         self.verbose = verbose
         self.use_tensorboard = use_tensorboard
 
-        self._name = "Self-Awareness"
+        self._name = name
         self._version = version
         self.log_dir = os.path.join(file_path)
         self.file_name = file_name
