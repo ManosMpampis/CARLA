@@ -8,7 +8,9 @@ telemetry behaves; anomalies are latent-prediction surprise localized at
 sub-window granularity. The legacy contrastive pipeline was deleted at cutover
 (see `specs/jepa-tsad-rebuild.md` and `DESIGN_TSAD_JEPA.md`); its history lives
 on other branches, and `WORKFLOW_PRETEXT.md` is kept as a historical record of
-that deleted pipeline.
+that deleted pipeline. `DESIGN_TSAD_DUALSTREAM.md` is a standalone (unimplemented)
+design doc for a dual-stream time×frequency architecture; `CONTEXT.md` is the
+project glossary.
 
 ## Environment
 
