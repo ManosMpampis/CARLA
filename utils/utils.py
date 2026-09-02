@@ -17,6 +17,7 @@ def isscalar(value):
         return True
     else:
         return False
+
     
 def get_sorted_directories(base_path: str) -> list[Path]:
     """Get all subdirectories sorted by their numeric name."""
@@ -129,6 +130,7 @@ def clean_directories(base_path: str, dry_run: bool = True, eval_every_n_epoch: 
         with open(embeddings_file_path, 'w') as f:
             f.writelines(output_lines)
 
+
 def mkdir_if_missing(directory):
     if directory == None or directory == "None" or directory == "":
         return
@@ -182,6 +184,7 @@ class ProgressMeter(object):
         num_digits = len(str(num_batches // 1))
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+
 
 class Logger:
     def __init__(self, version, verbose=1, file_path="./", use_tensorboard=True, file_name='log', delete_files=False, name="Self-Awareness"):
@@ -354,12 +357,14 @@ class Logger:
     def _do_nothing(self, *args, **kwargs):
         pass
 
+
 def find_target(arrays):
     result = []
     for arr in arrays:
         non_zero = arr[arr != 0]
         result.append(non_zero[0] if len(non_zero) > 0 else 0)
     return np.array(result).astype(int)
+
 
 def clean_checkpoint(model_checkpoint, save_path=None, checkpoint=None):
     change_flag = False

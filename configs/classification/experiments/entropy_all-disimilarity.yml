@@ -35,7 +35,7 @@ wsz: 256 #200
 stride: 5
 num_classes: 10
 num_neighbors: 5
-update_data: False
+update_data: 0
 
 # Transformations
 augmentation_strategy: ts

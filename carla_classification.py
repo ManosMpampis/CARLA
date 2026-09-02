@@ -102,7 +102,7 @@ def main(args, update_dictionary={}):
 
     logger.log("\n- Model initialisation")
     # Initi neighbors with the current model
-    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
+    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, epoch=0, update=1)
 
     # Checkpoint
     if os.path.exists(p["classification_checkpoint"]):
@@ -218,10 +218,10 @@ def main(args, update_dictionary={}):
             and (epoch + 1) % p.get("ema_mining_every", 0) == 0
         ):
             logger.log("-- Re-mining neighbors with the momentum encoder")
-            train_dataset_base.predict_and_update(model_ema, base_dataloader, p, True)
+            train_dataset_base.predict_and_update(model_ema, base_dataloader, p, epoch=epoch, update=1)
 
         predictions = train_dataset_base.predict_and_update(
-            model, base_dataloader, p, (p.get("update_data", False) and p.get("ema_mining_every", 0) == 0)
+            model, base_dataloader, p, epoch=epoch, update=(p.get("update_data", 0) * int(p.get("ema_mining_every", 0) == 0))
         )
 
         label_counts = torch.bincount(predictions["predictions"])
@@ -381,7 +381,7 @@ def model_evaluation(
 ):
 
     # Evaluate on the train set and find the best threshold for the train set to evaluate on the test set with the same threshold
-    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, epoch=0, update=0)
     label_counts = torch.bincount(predictions["predictions"])
     normal_label = 0 if p['setup'] == 'classification_e2e' else label_counts.argmax().item()
     cls_train_metrics, best_train_metrics, _, best_train_th = pr_evaluate(
@@ -498,7 +498,7 @@ def normal_set_evaluation(
     num_classes = p["num_classes"]
 
     # One pass over the training data (anchors / weak views / synthetic anomalies)
-    train_predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, False)
+    train_predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, epoch=0, update=0)
     group_labels = find_target(train_predictions["targets"])  # 0 anchor, 2 weak, 4 synthetic
     train_preds = np.asarray(train_predictions["predictions"])
     anchor_hist = np.bincount(train_preds[group_labels == 0], minlength=num_classes).astype(float)

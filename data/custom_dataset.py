@@ -116,7 +116,7 @@ class DynamicNeighbors(Dataset):
         self.k_nearest_fneighbours = np.zeros((len(self.data), self.topk))
     
     @torch.no_grad()
-    def predict_and_update(self, model, loader, p, update=True):
+    def predict_and_update(self, model, loader, p, epoch=0, update=0):
         model.eval()
         predictions = []
         probs = []
@@ -157,7 +157,7 @@ class DynamicNeighbors(Dataset):
             probs.append(F.softmax(output["output"], dim=1) if output["output"].size(1) > 1 else F.sigmoid(output["output"]))
             targets.append(torch.ones_like(ts_label)*4)
 
-        if update:
+        if (update > 0) and (epoch % update == 0):
             # Compute pairwise distances
             distances = torch.cdist(data_features, ts_w_augment_features).to("cpu")
             del ts_w_augment_features

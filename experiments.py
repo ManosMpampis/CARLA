@@ -178,6 +178,7 @@ for exp in experiments[exp_index:]:
                 "dropout": True
                 },
                 "epochs": 1000,
+                "update_data": 0,
             })
             classification_args = EasyDict({"config_env": "configs/env.yml",
                             "config_exp": str(exp),
