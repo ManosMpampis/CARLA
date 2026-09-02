@@ -192,13 +192,15 @@ def main(args, update_dictionary={}):
 
             best_metrics["clear_loss"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["clear_loss"], loss_dict["clear_loss"], "clear_loss", assending=False)
 
-            best_metrics["train_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_calinski"], evaluation_metrics["Calinski-Harabasz Score"], "train_calinski", assending=True)
-            best_metrics["train_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_davies"], evaluation_metrics["Davies-Bouldin Score"], "train_davies", assending=False)
-            best_metrics["train_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_silhouette"], evaluation_metrics["Silhouette Score"], "train_silhouette", assending=True)
+            if len(evaluation_metrics)>0:
+                best_metrics["train_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_calinski"], evaluation_metrics["Calinski-Harabasz Score"], "train_calinski", assending=True)
+                best_metrics["train_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_davies"], evaluation_metrics["Davies-Bouldin Score"], "train_davies", assending=False)
+                best_metrics["train_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["train_silhouette"], evaluation_metrics["Silhouette Score"], "train_silhouette", assending=True)
 
-            best_metrics["eval_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_calinski"], evaluation_metrics_eval["Calinski-Harabasz Score"], "eval_calinski", assending=True)
-            best_metrics["eval_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_davies"], evaluation_metrics_eval["Davies-Bouldin Score"], "eval_davies", assending=False)
-            best_metrics["eval_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_silhouette"], evaluation_metrics_eval["Silhouette Score"], "eval_silhouette", assending=True)
+            if len(evaluation_metrics_eval)>0:
+                best_metrics["eval_calinski"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_calinski"], evaluation_metrics_eval["Calinski-Harabasz Score"], "eval_calinski", assending=True)
+                best_metrics["eval_davies"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_davies"], evaluation_metrics_eval["Davies-Bouldin Score"], "eval_davies", assending=False)
+                best_metrics["eval_silhouette"] = make_checkpoint(p, epoch, model, optimizer, scheduler, last_margin, criterion, best_metrics, best_metrics["eval_silhouette"], evaluation_metrics_eval["Silhouette Score"], "eval_silhouette", assending=True)
             
             save_dict = {
                 "model": model.state_dict(),
@@ -208,12 +210,12 @@ def main(args, update_dictionary={}):
                 "next_epoch": epoch + 1,
                 "pretext_best_loss": loss_dict["loss"],
                 "pretext_best_clear_loss": loss_dict["clear_loss"],
-                "pretext_best_train_calinski": evaluation_metrics_eval["Calinski-Harabasz Score"],
-                "pretext_best_train_davies": evaluation_metrics_eval["Davies-Bouldin Score"],
-                "pretext_best_train_silhouette": evaluation_metrics_eval["Silhouette Score"],
-                "pretext_best_eval_calinski": evaluation_metrics["Calinski-Harabasz Score"],
-                "pretext_best_eval_davies": evaluation_metrics["Davies-Bouldin Score"],
-                "pretext_best_eval_silhouette": evaluation_metrics["Silhouette Score"],
+                "pretext_best_train_calinski": evaluation_metrics_eval.get("Calinski-Harabasz Score", -np.inf),
+                "pretext_best_train_davies": evaluation_metrics_eval.get("Davies-Bouldin Score", np.inf),
+                "pretext_best_train_silhouette": evaluation_metrics_eval.get("Silhouette Score", -np.inf),
+                "pretext_best_eval_calinski": evaluation_metrics.get("Calinski-Harabasz Score", -np.inf),
+                "pretext_best_eval_davies": evaluation_metrics.get("Davies-Bouldin Score", np.inf),
+                "pretext_best_eval_silhouette": evaluation_metrics.get("Silhouette Score", -np.inf),
                 "last_margin": last_margin,
             }
             if hasattr(criterion, "prev_ema_loss"):
