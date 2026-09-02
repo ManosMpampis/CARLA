@@ -12,8 +12,49 @@ class NoiseTransformation(object):
         return X + noise
     
 class SubAnomaly(object):
-    def __init__(self, portion_len):
+    """
+    Injects subsequence anomalies into windows.
+
+    Anomaly types:
+        0: frequency - repeated/compressed pattern over one long segment
+        1: trend     - shifted segment ending at the window edge
+        2: spike     - very short high-amplitude burst
+        3: scale     - short amplitude-scaled burst
+        4: shapelet  - flat plateau segment
+
+    With balanced=True every anomaly type receives the same per-feature
+    timestep budget. Short anomaly types (spike, scale) are injected as
+    multiple instances at scattered, non-overlapping positions until they
+    cover the same number of timesteps as the long anomaly types, so no
+    type dominates the data purely because it spans more timesteps. Types
+    are also assigned round-robin across windows/features, giving each type
+    an equal number of injections overall. `last_injections` records
+    (anomaly_type, covered_timesteps) of the most recent call so the
+    balance can be audited or logged.
+    """
+
+    FREQ = 0
+    TREND = 1
+    SPIKE = 2
+    SCALE = 3
+    SHAPELET = 4
+    NUM_TYPES = 5
+    SHORT_TYPES = (SPIKE, SCALE)
+
+    def __init__(self, portion_len, balanced=True, budget=0.25,
+                 spike_len=2, spike_scale=8.0, scale_len=5, scale_scale=3.0,
+                 max_instances=32, min_budget=10):
         self.portion_len = portion_len
+        self.balanced = balanced
+        self.budget = budget
+        self.spike_len = spike_len
+        self.spike_scale = spike_scale
+        self.scale_len = scale_len
+        self.scale_scale = scale_scale
+        self.max_instances = max_instances
+        self.min_budget = min_budget
+        self._cycle = 0
+        self.last_injections = []
 
     def inject_frequency_anomaly(self, window,
                                  subsequence_length: int= None,
@@ -91,9 +132,117 @@ class SubAnomaly(object):
 
         return np.squeeze(window)
 
-    def __call__(self, X):
+    def _next_type(self):
+        anomaly_type = self._cycle % self.NUM_TYPES
+        self._cycle += 1
+        return anomaly_type
+
+    def _budget_len(self, window_len):
+        if isinstance(self.budget, float):
+            budget = int(window_len * self.budget)
+        else:
+            budget = int(self.budget)
+        upper = max(1, window_len - 1)
+        lower = min(self.min_budget, upper)
+        return int(np.clip(budget, lower, upper))
+
+    def _place_segments(self, window_len, num_segments, seg_len, gap=1):
+        seg_len = max(1, min(seg_len, window_len // 2))
+        starts = []
+        candidates = list(range(0, window_len - seg_len + 1))
+        np.random.shuffle(candidates)
+        for start in candidates:
+            if len(starts) >= num_segments:
+                break
+            if all(start >= s + seg_len + gap or s >= start + seg_len + gap for s in starts):
+                starts.append(start)
+        if not starts:
+            starts = [int(np.random.randint(0, max(1, window_len - seg_len)))]
+        return [(s, seg_len) for s in sorted(starts)]
+
+    def _segments_for_type(self, anomaly_type, window_len, budget):
+        if anomaly_type in self.SHORT_TYPES:
+            seg_len = self.spike_len if anomaly_type == self.SPIKE else self.scale_len
+            num_segments = max(1, int(np.ceil(budget / max(1, seg_len))))
+            num_segments = min(num_segments, self.max_instances)
+            return self._place_segments(window_len, num_segments, seg_len)
+        if anomaly_type == self.TREND:
+            return [(window_len - budget, budget)]
+        start = int(np.random.randint(0, window_len - budget))
+        return [(start, budget)]
+
+    def _apply_type(self, column, anomaly_type, segments):
+        col = np.asarray(column).reshape(-1, 1)
+        for start, seg_len in segments:
+            if anomaly_type == self.FREQ:
+                col = self.inject_frequency_anomaly(col,
+                                                    scale_factor=1,
+                                                    trend_factor=0,
+                                                    subsequence_length=seg_len,
+                                                    start_index=start)
+            elif anomaly_type == self.TREND:
+                col = self.inject_frequency_anomaly(col,
+                                                    compression_factor=1,
+                                                    scale_factor=1,
+                                                    trend_end=True,
+                                                    subsequence_length=seg_len,
+                                                    start_index=start)
+            elif anomaly_type == self.SPIKE:
+                col = self.inject_frequency_anomaly(col,
+                                                    subsequence_length=seg_len,
+                                                    compression_factor=1,
+                                                    scale_factor=self.spike_scale,
+                                                    trend_factor=0,
+                                                    start_index=start)
+            elif anomaly_type == self.SCALE:
+                col = self.inject_frequency_anomaly(col,
+                                                    subsequence_length=seg_len,
+                                                    compression_factor=1,
+                                                    scale_factor=self.scale_scale,
+                                                    trend_factor=0,
+                                                    start_index=start)
+            elif anomaly_type == self.SHAPELET:
+                col = self.inject_frequency_anomaly(col,
+                                                    compression_factor=1,
+                                                    scale_factor=1,
+                                                    trend_factor=0,
+                                                    shapelet_factor=True,
+                                                    subsequence_length=seg_len,
+                                                    start_index=start)
+            col = col.reshape(-1, 1)
+        return col.reshape(-1)
+
+    def _balanced_call(self, X):
+        anomalous_window = X.copy()
+        self.last_injections = []
+
+        if anomalous_window.ndim > 1:
+            num_features = anomalous_window.shape[1]
+            min_dims = max(1, int(num_features / 10))
+            max_dims = max(min_dims + 1, int(num_features / 2))
+            num_dims = np.random.randint(min_dims, max_dims)
+            feature_ids = np.random.choice(num_features, size=num_dims, replace=False)
+            for i in feature_ids:
+                anomaly_type = self._next_type()
+                column = anomalous_window[:, i]
+                budget = self._budget_len(len(column))
+                segments = self._segments_for_type(anomaly_type, len(column), budget)
+                anomalous_window[:, i] = self._apply_type(column, anomaly_type, segments)
+                self.last_injections.append((anomaly_type, sum(l for _, l in segments)))
+        else:
+            anomaly_type = self._next_type()
+            budget = self._budget_len(len(anomalous_window))
+            segments = self._segments_for_type(anomaly_type, len(anomalous_window), budget)
+            anomalous_window = self._apply_type(anomalous_window, anomaly_type, segments)
+            self.last_injections.append((anomaly_type, sum(l for _, l in segments)))
+
+        return anomalous_window
+
+    def _legacy_call(self, X):
         """
-        Adding sub anomaly with user-defined portion
+        Original random injection: one random-length segment per modified
+        feature with a uniformly drawn anomaly type (short types stay short,
+        so their timestep coverage is much smaller than the long types).
         """
         anomalous_window = X.copy()
 
@@ -107,7 +256,7 @@ class SubAnomaly(object):
             for _ in range(num_dims):
                 i = np.random.randint(0, num_features)
                 temp_win = anomalous_window[:, i].reshape((anomalous_window.shape[0], 1))
-                anomaly_type = np.random.randint(0, 4)
+                anomaly_type = np.random.randint(0, self.NUM_TYPES)
                 if anomaly_type == 0:
                     anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,
@@ -146,7 +295,7 @@ class SubAnomaly(object):
 
         else:
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
-            anomaly_type = np.random.randint(0, 4)
+            anomaly_type = np.random.randint(0, self.NUM_TYPES)
             if anomaly_type == 0:
                 anomalous_window = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,
@@ -184,3 +333,11 @@ class SubAnomaly(object):
                                                         start_index = start_index)
 
         return anomalous_window
+
+    def __call__(self, X):
+        """
+        Adding sub anomaly with user-defined portion
+        """
+        if self.balanced:
+            return self._balanced_call(X)
+        return self._legacy_call(X)

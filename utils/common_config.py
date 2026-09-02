@@ -4,30 +4,31 @@ import torch
 import torchvision.transforms as transforms
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 from data.augment import NoiseTransformation, SubAnomaly
+from data.augment_balanced import SubAnomaly as BalancedSubAnomaly
 from utils.collate import collate_custom
 from collections.abc import Mapping
 
 def get_criterion(p):
     if p["criterion"] == "pretext":
-        from losses.losses import PretextLoss
+        from losses import PretextLoss
 
         criterion = PretextLoss(p["batch_size"], **p["criterion_kwargs"])
 
     elif p["criterion"] == "classification":
-        from losses.losses import ClassificationLoss
+        from losses import ClassificationLoss
 
         criterion = ClassificationLoss(**p["criterion_kwargs"])
     elif p["criterion"] == "classification_moco":
-        from losses.losses import ClassificationLossMoCo
+        from losses import ClassificationLossMoCo
 
         criterion = ClassificationLossMoCo(**p["criterion_kwargs"])
     elif p["criterion"] == "classification_e2e":
-        from losses.losses import ClassificationLossE2E
+        from losses import ClassificationLossE2E
 
         criterion = ClassificationLossE2E(**p["criterion_kwargs"])
 
     elif p["criterion"] == "tcl":
-        from losses.tcl import TCLoss
+        from losses import TCLoss
 
         criterion = TCLoss(p["batch_size"], **p["criterion_kwargs"])
     else:
