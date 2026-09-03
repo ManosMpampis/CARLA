@@ -53,10 +53,10 @@ if __name__ == "__main__":
                     "from the aggregated results."
     )
     parser.add_argument("--agg-path", type=str,
-                        default="./results/smd/best_models/batch/original/aggregated",
+                        default="./results/smd/best_models/batch/dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss/aggregated",
                         help="Root directory with the output of aggregate_classification.py")
     parser.add_argument("--out", type=str,
-                        default="./results/smd/best_models/batch/original/aggregated/summary",
+                        default="./results/smd/best_models/batch/dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss/aggregated/summary",
                         help="Output root directory for the summary CSVs")
     args = parser.parse_args()
 

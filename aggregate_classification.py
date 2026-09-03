@@ -69,10 +69,10 @@ if __name__ == "__main__":
                     "with mean/std/sum rows appended."
     )
     parser.add_argument("--base-path", type=str,
-                        default="./results/smd/best_models/batch/original",
+                        default="./results/smd/best_models/batch/dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss",
                         help="Root directory containing the machine-* folders")
     parser.add_argument("--out", type=str,
-                        default="./results/smd/best_models/batch/original/aggregated",
+                        default="./results/smd/best_models/batch/dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss/aggregated",
                         help="Output root directory for the aggregated CSVs")
     args = parser.parse_args()
 
