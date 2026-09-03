@@ -107,7 +107,7 @@ class SubAnomaly(object):
             for _ in range(num_dims):
                 i = np.random.randint(0, num_features)
                 temp_win = anomalous_window[:, i].reshape((anomalous_window.shape[0], 1))
-                anomaly_type = np.random.randint(0, 4)
+                anomaly_type = np.random.randint(0, 5)
                 if anomaly_type == 0:
                     anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,
