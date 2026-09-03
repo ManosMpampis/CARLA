@@ -2,7 +2,7 @@
 
 The single wiring convention: every construction is keyed by config
 names through registries (models.BACKBONE_REGISTRY, predictor and
-anti-collapse registries in models.jepa_core). Legacy contrastive
+anti-collapse registries in models.lewm, criteria below). Legacy contrastive
 wiring was removed at cutover; the legacy dataset classes remain in
 data/custom_dataset.py, unused but functional.
 """
@@ -19,10 +19,10 @@ def get_jepa_model(p):
     """Single wiring point for JEPA arms: registry-built encoder + config
     selected predictor and anti-collapse mechanism."""
     from models import get_backbone
-    from models.jepa_core import JEPAModel
+    from models.lewm import LeWMModel
 
     built = get_backbone(p["backbone"], **p["model_kwargs"])
-    return JEPAModel(
+    return LeWMModel(
         encoder=built["model"],
         predictor=p.get("predictor", "tcn"),
         horizons=p.get("horizons", 2),
@@ -31,15 +31,48 @@ def get_jepa_model(p):
         ema_momentum=p.get("ema_momentum", 0.99925),
         codebook_kwargs=p.get("codebook_kwargs", None),
         target_norm=p.get("target_norm", None),
+        use_projector=p.get("use_projector", False),
+        projector_hidden=p.get("projector_hidden", None),
+        action_dim=p.get("action_dim", 0),
     )
 
 
-def get_criterion(p):
-    if p["criterion"] == "jepa":
-        from losses.jepa_losses import JEPALoss
+def _criterion_combined_aux(kw):
+    from losses.combined import CombinedAuxCriterion
+    from losses.detection import BoxLoss
+    from losses.reconstruction import ReconLoss
 
-        return JEPALoss(**p["criterion_kwargs"])
-    raise ValueError("Invalid criterion {}".format(p["criterion"]))
+    kw = dict(kw)
+    return CombinedAuxCriterion(
+        recon=ReconLoss(**kw.pop("recon_kwargs", {})) if kw.get("recon_kwargs") is not None else None,
+        box=BoxLoss(**kw.pop("box_kwargs", {})) if kw.get("box_kwargs") is not None else None,
+        w_rec=kw.pop("w_rec", 1.0), w_box=kw.pop("w_box", 1.0))
+
+
+# Single map shared by all criterion branches (one place to add a tactic).
+CRITERION_BUILDERS = {
+    "jepa": "losses.jepa_losses:JEPALoss",
+    "dense_pred": "losses.prediction:DensePartLoss",
+    "recon": "losses.reconstruction:ReconLoss",
+    "box": "losses.detection:BoxLoss",
+    "metric": "losses.metric:MetricLoss",
+    "energy": "losses.alignment:EnergyLoss",
+    "viewkl": "losses.alignment:ViewKLLoss",
+}
+
+
+def get_criterion(p):
+    """Build a registered criterion by config name."""
+    import importlib
+
+    name = p["criterion"]
+    if name == "combined_aux":
+        return _criterion_combined_aux(p["criterion_kwargs"])
+    if name not in CRITERION_BUILDERS:
+        raise ValueError("Invalid criterion {}".format(name))
+    module_name, class_name = CRITERION_BUILDERS[name].split(":")
+    cls = getattr(importlib.import_module(module_name), class_name)
+    return cls(**p["criterion_kwargs"])
 
 
 def get_jepa_datasets(p):

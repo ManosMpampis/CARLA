@@ -160,6 +160,13 @@ class Trainer:
         torch.save(save_dict, self.p["jepa_checkpoint"])
 
     @staticmethod
+    def _migrate_legacy_keys(state: dict) -> dict:
+        """Remap pre-rebuild encoder submodule names (shared helper)."""
+        from models.encoder import remap_legacy_encoder_keys
+
+        return remap_legacy_encoder_keys(state)
+
+    @staticmethod
     def resume(p, model, optimizer, scheduler, logger, map_location="cpu"):
         """Load run state from an existing checkpoint, if any.
 
@@ -172,7 +179,7 @@ class Trainer:
             return 0, np.inf
         logger.log(f"Restart from checkpoint {path}")
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
-        model.load_state_dict(checkpoint["model"])
+        model.load_state_dict(Trainer._migrate_legacy_keys(checkpoint["model"]))
         optimizer.load_state_dict(checkpoint["optimizer"])
         if "scheduler" in checkpoint:
             scheduler.load_state_dict(checkpoint["scheduler"])
@@ -185,6 +192,6 @@ class Trainer:
         checkpoint = torch.load(path, map_location="cpu", weights_only=False)
         state = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint \
             else checkpoint
-        model.load_state_dict(state, strict=strict)
+        model.load_state_dict(Trainer._migrate_legacy_keys(state), strict=strict)
         if logger is not None:
             logger.log(f"Loaded weights from {path}")
