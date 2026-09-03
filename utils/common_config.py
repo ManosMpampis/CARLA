@@ -272,6 +272,8 @@ def get_val_dataloader(p, dataset):
 
 
 def inject_sub_anomaly(p):
+    if p.get("injection_strategy", "") == "balanced":
+        return BalancedSubAnomaly(p["anomaly_kwargs"]["portion"])
     return SubAnomaly(p["anomaly_kwargs"]["portion"])
 
 

@@ -41,7 +41,7 @@ class SubAnomaly(object):
     NUM_TYPES = 5
     SHORT_TYPES = (SPIKE, SCALE)
 
-    def __init__(self, portion_len, balanced=True, budget=0.25,
+    def __init__(self, portion_len, balanced=False, budget=0.25,
                  spike_len=2, spike_scale=8.0, scale_len=5, scale_scale=3.0,
                  max_instances=32, min_budget=10):
         self.portion_len = portion_len
