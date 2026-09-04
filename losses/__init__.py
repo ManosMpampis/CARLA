@@ -1,6 +1,6 @@
 """Loss registry: one import point for all criteria."""
 from losses.alignment import EnergyLoss, ViewKLLoss
-from losses.combined import CombinedAuxCriterion, CombinedHeadCriterion
+from losses.combined import CombinedAuxCriterion, CombinedHeadCriterion, FullCriterion
 from losses.detection import BoxLoss
 from losses.jepa_losses import JEPALoss
 from losses.metric import MetricLoss
@@ -10,5 +10,5 @@ from losses.sigreg import SIGReg
 
 __all__ = ["JEPALoss", "SIGReg", "DensePartLoss", "ReconLoss", "BoxLoss",
            "MetricLoss", "ViewKLLoss", "EnergyLoss",
-           "CombinedAuxCriterion", "CombinedHeadCriterion",
+           "CombinedAuxCriterion", "CombinedHeadCriterion", "FullCriterion",
            "soft_dtw_divergence"]

@@ -72,6 +72,29 @@ Still open, mapped to tickets (foundation lands first per Q10):
   interval-box language throughout); CONTEXT prefers `interval detection` —
   revisit identifiers if glossary is tightened.
 
+## Round-2 resolutions (question tool, 2026-09-04 — all implemented)
+
+- **Q1 entry/examples:** example configs PLUS new entry `carla_lewm.py`
+  for full LeWM training (trunk + attached heads, shared Trainer,
+  trunk.pth.tar exported for the trunk-only scoring entry).
+  Example arms: `configs/lewm/synthetic_lewm_full.yml` (CPU demo, verified
+  3-epoch run) and `configs/lewm/smd_lewm_full.yml` (SMD-shaped).
+- **Q4 predictor:** `MaskedReconPredictor` added in `models/predictor.py`
+  (mask-token + non-causal transformer over visible context, H=1 output
+  contract) and made the `LeWMModel` default; TCN/GRU stay as arms with a
+  uniform `forward(z, mask_pos)` signature. Masks thread facade→predict.
+- **Q5 Soft-DTW:** pure-torch mirror of sdtw_cuda_loss.py math (forward
+  Bellman softmin recursion, Gibbs backward via autograd, `normalize`
+  divergence mode, Sakoe-Chiba `bandwidth`), CPU+CUDA, no numba.
+  Verified: self-divergence exactly 0, cross positive, grads flow.
+- **Q6 focal-BCE:** kept gamma 2.0 + 1:4 hard mining (positives are exact
+  synthetic boxes, so standard focusing applies).
+- **Q7 VAE modality:** mu/logvar use temporal convs (`vae_kernel`, default
+  3, length-preserving padding) instead of pointwise.
+- **Q8 centers:** running EMA update (`H4MetricHead.update_centers`,
+  default momentum 0.99) driven per-step by a new `update_running_stats`
+  Trainer hook (no-op on the bare trunk, mirrors the codebook pattern).
+
 ## Q10 — TF-Scout full trunk in this pass?
 **Doubt:** tickets 13-18 imply full dual-stream (STFT grid, FiLM, x-attn, FPN, iFFT head). One pass cannot land all of it cleanly.
 **Taken:** this pass lands the LeWM foundation + head/loss/criterion structure + open-loop wiring points (proposals as masks, action slot present but optional). Full frequency pathway + steering + FPN fusion stays behind a `tfscout` registry stub validated by shape tests, to be filled in ticket order.

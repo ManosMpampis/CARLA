@@ -69,3 +69,63 @@ class CombinedHeadCriterion(nn.Module):
         assert total is not None, "CombinedHeadCriterion got no active member"
         out["loss"] = total
         return out
+
+
+class FullCriterion(nn.Module):
+    """Full-LeWM criterion: trunk loss plus attached-head losses, one pass.
+
+    Consumes FullLeWMModel outputs. Members activate only when their
+    inputs exist: trunk always; recon-aux and H-heads when attached;
+    box supervision only when the batch carries 'box_target' (proposal
+    wiring, staged later). Always exposes 'pred_loss' for validation.
+    """
+
+    def __init__(self, trunk, aux_recon=None, h2=None, h3=None, h4=None,
+                 box=None, weights: dict | None = None):
+        super().__init__()
+        self.trunk = trunk
+        self.aux_recon, self.h2 = aux_recon, h2
+        self.h3, self.h4, self.box = h3, h4, box
+        self.weights = dict(weights or {})
+
+    def _add(self, out, total, key, value, name):
+        out[f"{name}_{key}" if key != "loss" else name] = value
+        w = float(self.weights.get(name, 1.0))
+        return out, (w * value if total is None else total + w * value)
+
+    def forward(self, outputs: dict) -> dict:
+        """Combine trunk and head terms into one loss plus 'pred_loss'."""
+        out: dict[str, torch.Tensor] = {}
+        total = None
+        t = self.trunk(outputs["trunk"])
+        for key, value in t.items():
+            out, total = self._add(out, total, key, value, "trunk")
+        out["pred_loss"] = t["pred_loss"]
+
+        if self.aux_recon is not None and "aux_recon" in outputs:
+            r = self.aux_recon(outputs["aux_recon"], outputs["window"])
+            for key, value in r.items():
+                out, total = self._add(out, total, key, value, "aux")
+        if self.h2 is not None and "h2" in outputs:
+            # Mean-fuse per-level reconstructions to one window estimate.
+            recons = list(outputs["h2"]["recon"].values())
+            fused = sum(recons) / max(len(recons), 1)
+            r = self.h2(fused, outputs["window"])
+            for key, value in r.items():
+                out, total = self._add(out, total, key, value, "h2")
+        if self.h3 is not None and "h3" in outputs:
+            r = self.h3(outputs["h3"])
+            for key, value in r.items():
+                out, total = self._add(out, total, key, value, "h3")
+        if self.h4 is not None and "h4" in outputs:
+            r = self.h4(outputs["h4"], outputs["h4_centers"],
+                        raw_embeds=outputs["h4_raw"])
+            for key, value in r.items():
+                out, total = self._add(out, total, key, value, "h4")
+        if self.box is not None and "box_target" in outputs:
+            r = self.box(outputs["aux_boxes"], outputs["box_target"])
+            for key, value in r.items():
+                out, total = self._add(out, total, key, value, "box")
+        assert total is not None, "FullCriterion got no active member"
+        out["loss"] = total
+        return out

@@ -1,0 +1,80 @@
+# Full-LeWM on one SMD machine (official per-machine protocol).
+# Entry: carla_lewm.py --config_env configs/env.yml \
+#          --config_exp configs/lewm/smd_lewm_full.yml \
+#          --fname machine-1-1.txt --version <name>
+# Then score with carla_jepa.py (smd_score_smoke shape) pointing
+# score_checkpoint at this run's trunk.pth.tar. Short acceptance schedule.
+setup: jepa
+stage: pretrain
+
+backbone: jepa_pyramid
+predictor: masked
+predictor_kwargs:
+  nhead: 4
+  num_layers: 2
+model_kwargs:
+  in_channels: 38
+  stem_channels: 32
+  level_channels: [32, 64, 96]
+  kernel_size: 5
+  strides: [2, 2, 2]
+  dropout: true
+use_projector: true
+
+anti_collapse: sigreg
+criterion: jepa
+criterion_kwargs:
+  lambda_sigreg: 0.1
+  sigreg_kwargs:
+    num_slices: 16
+
+heads:
+  recon_aux:
+    bottleneck: 16
+  h4:
+    embed_dim: 32
+center_momentum: 0.99
+head_criterion_kwargs:
+  aux_recon: {}
+  h4: {}
+  weights:
+    trunk: 1.0
+    aux: 0.5
+    h4: 0.5
+
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 256
+stride: 10
+val_fraction: 0.1
+
+stage_a:
+  corpus: single
+  masking:
+    mode: block
+    num_blocks: 4
+    block_span: 24
+stage_b:
+  mode: frozen
+
+seed: 4
+device: cuda
+amp: false
+epochs: 2
+batch_size: 64
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.001
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 200
+  portion: 0.99
+eval_window_size: 100

@@ -76,19 +76,25 @@ class H1DetectHead(nn.Module):
 class H2ReconHead(nn.Module):
     """Reconstruction head: per-level decoders + optional tiny VAE.
 
-    Tiny VAE heads (mu/logvar per level) stay OFF by default; enable per
-    arm with KL annealing + free-bits in the criterion.
+    Tiny VAE heads (mu/logvar per level) use temporal convolutions so the
+    posterior sees local neighbor tokens; kernel configurable, length kept
+    by symmetric padding. Default off, enabled per arm.
     """
 
     def __init__(self, dims, out_channels: int, tiny_vae: bool = False,
-                 vae_dim: int = 8):
+                 vae_dim: int = 8, vae_kernel: int = 3):
         super().__init__()
         self.decoders = nn.ModuleDict({n: _head_conv(d, out_channels) for n, d in dims.items()})
         self.tiny_vae = bool(tiny_vae)
         self.mu = self.logvar = None
         if tiny_vae:
-            self.mu = nn.ModuleDict({n: _head_conv(d, vae_dim) for n, d in dims.items()})
-            self.logvar = nn.ModuleDict({n: _head_conv(d, vae_dim) for n, d in dims.items()})
+            pad = int(vae_kernel) // 2
+            def _temporal(d):
+                conv = nn.Conv1d(d, vae_dim, int(vae_kernel), padding=pad)
+                _init_weights(conv)
+                return conv
+            self.mu = nn.ModuleDict({n: _temporal(d) for n, d in dims.items()})
+            self.logvar = nn.ModuleDict({n: _temporal(d) for n, d in dims.items()})
 
     def forward(self, feats: dict, window: int):
         """Decode each level to (B, C, W); VAE params if enabled."""
@@ -139,6 +145,21 @@ class H4MetricHead(nn.Module):
                 e = self.proj[n](z).mean(dim=(0, 2))
                 e = e / (e.norm() + 1e-9)
                 getattr(self, f"center_{n}").copy_(e)
+
+    @torch.no_grad()
+    def update_centers(self, feats: dict, momentum: float = 0.99):
+        """Running center update: EMA of batch-mean normalized embeddings.
+
+        Called per training step on normal-only batches. Tracks slow drift
+        without ever taking gradients through the center.
+        """
+        for n, z in feats.items():
+            e = F.normalize(self.proj[n](z), dim=1, eps=1e-9)
+            mean = e.mean(dim=(0, 2))
+            mean = mean / (mean.norm() + 1e-9)
+            buf = getattr(self, f"center_{n}")
+            buf.mul_(float(momentum)).add_(mean, alpha=1.0 - float(momentum))
+            buf.copy_(buf / (buf.norm() + 1e-9))
 
     def forward(self, feats: dict):
         """Return L2-normalized embeddings {level: (B, E, T)}."""

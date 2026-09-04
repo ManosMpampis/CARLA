@@ -24,9 +24,10 @@ def get_jepa_model(p):
     built = get_backbone(p["backbone"], **p["model_kwargs"])
     return LeWMModel(
         encoder=built["model"],
-        predictor=p.get("predictor", "tcn"),
+        predictor=p.get("predictor", "masked"),
         horizons=p.get("horizons", 2),
         predictor_hidden=p.get("predictor_hidden", None),
+        predictor_kwargs=p.get("predictor_kwargs", None),
         anti_collapse=p.get("anti_collapse", "none"),
         ema_momentum=p.get("ema_momentum", 0.99925),
         codebook_kwargs=p.get("codebook_kwargs", None),
@@ -73,6 +74,64 @@ def get_criterion(p):
     module_name, class_name = CRITERION_BUILDERS[name].split(":")
     cls = getattr(importlib.import_module(module_name), class_name)
     return cls(**p["criterion_kwargs"])
+
+
+def get_full_model(p):
+    """Build the full-training assembly: trunk plus attached heads.
+
+    The `heads:` section selects members (recon_aux, box_aux, h1..h4 with
+    per-head kwargs); absent members stay dormant in model and criterion.
+    """
+    from models.heads import (BoxAuxHead, H1DetectHead, H2ReconHead,
+                              H3EnergyHead, H4MetricHead, ReconAuxHead)
+    from models.lewm import FullLeWMModel
+
+    trunk = get_jepa_model(p)
+    in_channels = p["model_kwargs"]["in_channels"]
+    dims = dict(zip(trunk.level_names,
+                    [int(d) for d in trunk.level_dims]))
+    cfg = p.get("heads", {})
+    recon_aux = ReconAuxHead(dims, in_channels, **cfg["recon_aux"]) \
+        if cfg.get("recon_aux") is not None else None
+    box_aux = None
+    if cfg.get("box_aux") is not None:
+        coarse = max(dims, key=lambda n: dims[n])
+        box_aux = BoxAuxHead(dims[coarse], **cfg["box_aux"])
+    heads = {}
+    if cfg.get("h1") is not None:
+        heads["h1"] = H1DetectHead(dims, **cfg["h1"])
+    if cfg.get("h2") is not None:
+        heads["h2"] = H2ReconHead(dims, in_channels, **cfg["h2"])
+    if cfg.get("h3") is not None:
+        heads["h3"] = H3EnergyHead(dims, **cfg["h3"])
+    if cfg.get("h4") is not None:
+        heads["h4"] = H4MetricHead(dims, **cfg["h4"])
+    return FullLeWMModel(trunk, in_channels, recon_aux=recon_aux,
+                         box_aux=box_aux, heads=heads,
+                         center_momentum=p.get("center_momentum", 0.99))
+
+
+def get_full_criterion(p):
+    """Build the FullCriterion matching the attached heads."""
+    from losses.alignment import EnergyLoss
+    from losses.combined import FullCriterion
+    from losses.detection import BoxLoss
+    from losses.jepa_losses import JEPALoss
+    from losses.metric import MetricLoss
+    from losses.reconstruction import ReconLoss
+
+    cfg = p.get("heads", {})
+    ck = p.get("head_criterion_kwargs", {})
+    weights = ck.get("weights", {})
+    return FullCriterion(
+        trunk=JEPALoss(**p["criterion_kwargs"]),
+        aux_recon=ReconLoss(**ck["aux_recon"]) if cfg.get("recon_aux") is not None and ck.get("aux_recon") is not None else None,
+        h2=ReconLoss(**ck["h2"]) if cfg.get("h2") is not None and ck.get("h2") is not None else None,
+        h3=EnergyLoss(**ck.get("h3", {})) if cfg.get("h3") is not None else None,
+        h4=MetricLoss(**ck.get("h4", {})) if cfg.get("h4") is not None else None,
+        box=BoxLoss(**ck["box"]) if cfg.get("box_aux") is not None and ck.get("box") is not None else None,
+        weights=weights,
+    )
 
 
 def get_jepa_datasets(p):

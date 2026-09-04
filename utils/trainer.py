@@ -29,10 +29,8 @@ class Trainer:
         self.device = device
         self.logger = logger
         self.collator = collator
-        self.amp = bool(amp) and device.type == "cuda"
-        if amp and device.type != "cuda":
-            logger.log("amp requested but device is CPU; running fp32")
-        self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp)
+        self.amp = bool(amp)
+        self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
         self._codebook_samples: dict[str, list] | None = None
 
     # ------------------------------------------------------------------ #
@@ -72,6 +70,8 @@ class Trainer:
             self._codebook_samples = samples
         meters = {}
         for i, batch in enumerate(loader):
+            self.optimizer.zero_grad()
+
             losses, extras = self._forward_loss(batch)
             if self._codebook_samples is not None and i < 8:
                 for name, z in extras["latents"].items():
@@ -83,11 +83,12 @@ class Trainer:
                 self.logger.scalar_summary("train", key, value.item(),
                                            epoch * len(loader) + i)
 
-            self.optimizer.zero_grad()
             self.scaler.scale(losses["loss"]).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
+            
             self.model.update_ema()
+            self.model.update_running_stats(extras["latents"])
 
             if i % 100 == 0:
                 var = self.model.latent_variance(extras["latents"])

@@ -1,0 +1,90 @@
+# Full-LeWM example: trunk + attached heads in one run (CPU, minutes).
+# Entry: carla_lewm.py --config_env configs/env.yml \
+#          --config_exp configs/lewm/synthetic_lewm_full.yml \
+#          --fname "" --version <name>
+# Scoring reuses carla_jepa.py with score_checkpoint pointing at the
+# exported trunk.pth.tar in the run dir.
+setup: jepa
+stage: pretrain
+
+# Trunk: masked part-predictor (default class), disposable projector for
+# SIGReg, block masking so masked positions carry the loss.
+backbone: jepa_pyramid
+predictor: masked
+predictor_kwargs:
+  nhead: 2
+  num_layers: 1
+model_kwargs:
+  in_channels: 2
+  stem_channels: 8
+  level_channels: [8, 12]
+  kernel_size: 5
+  strides: [2, 2]
+  dropout: false
+use_projector: true
+
+anti_collapse: sigreg
+criterion: jepa
+criterion_kwargs:
+  lambda_sigreg: 0.1
+  sigreg_kwargs:
+    num_slices: 8
+
+# Attached heads: training-only recon focus + metric head with running
+# centers. Absent members (box_aux, h1-h3) stay dormant.
+heads:
+  recon_aux:
+    bottleneck: 8
+  h4:
+    embed_dim: 8
+center_momentum: 0.9
+head_criterion_kwargs:
+  aux_recon: {}
+  h4: {}
+  weights:
+    trunk: 1.0
+    aux: 0.5
+    h4: 0.5
+
+# Data (synthetic corpus is always its own)
+train_db_name: synthetic
+val_db_name: synthetic
+fname: ""
+wsz: 64
+stride: 4
+val_fraction: 0.15
+synthetic_kwargs:
+  n_steps: 4000
+  n_channels: 2
+  test_n_steps: 2000
+
+stage_a:
+  corpus: single
+  masking:
+    mode: block
+    num_blocks: 2
+    block_span: 8
+stage_b:
+  mode: frozen
+
+# Training
+seed: 4
+device: cpu
+amp: false
+epochs: 3
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 100
+  portion: 0.99
+eval_window_size: 50

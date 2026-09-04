@@ -15,15 +15,16 @@ from models.conditioner import ActionEmbed, Projector
 from models.ema import EMAWrapper
 from models.predictor import CondPredictor, build_predictor
 
-PREDICTOR_REGISTRY = ("tcn", "gru")
+PREDICTOR_REGISTRY = ("masked", "tcn", "gru")
 ANTI_COLLAPSE_REGISTRY = ("none", "sigreg", "ema", "codebook")
 
 
 class LeWMModel(nn.Module):
     """LeWM trunk: shared encoder pyramid + one part-predictor per level."""
 
-    def __init__(self, encoder: nn.Module, predictor: str = "tcn",
+    def __init__(self, encoder: nn.Module, predictor: str = "masked",
                  horizons: int = 2, predictor_hidden=None,
+                 predictor_kwargs: dict | None = None,
                  anti_collapse: str = "none", ema_momentum: float = 0.99925,
                  codebook_kwargs: dict | None = None, target_norm=None,
                  use_projector: bool = False, projector_hidden=None,
@@ -42,7 +43,8 @@ class LeWMModel(nn.Module):
 
         # One predictor per level; wrapped for action conditioning if asked.
         self.predictors = nn.ModuleDict({
-            n: build_predictor(predictor, d, horizons, predictor_hidden)
+            n: build_predictor(predictor, d, horizons, predictor_hidden,
+                               **(predictor_kwargs or {}))
             for n, d in zip(self.level_names, self.level_dims)})
         self.action: ActionEmbed | None = None
         if action_dim and int(action_dim) > 0:
@@ -76,12 +78,21 @@ class LeWMModel(nn.Module):
         """Encode a window into per-level latents."""
         return self.encoder(x)
 
-    def predict(self, latents: dict, action=None) -> dict:
-        """Predict masked-part latents, optionally conditioned on action."""
+    def predict(self, latents: dict, action=None, masks=None) -> dict:
+        """Predict part latents, optionally conditioned on action.
+
+        Masked predictors receive their level mask (True = predict this
+        token); causal predictors ignore masks (uniform signature).
+        """
+        masks = masks or {}
         out = {}
         for n in latents:
             pred = self.predictors[n]
-            out[n] = pred(latents[n], action) if isinstance(pred, CondPredictor) else pred(latents[n])
+            m = masks.get(n) if isinstance(masks, dict) else None
+            if isinstance(pred, CondPredictor):
+                out[n] = pred(latents[n], action, m)
+            else:
+                out[n] = pred(latents[n], m)
         return out
 
     @torch.no_grad()
@@ -97,7 +108,7 @@ class LeWMModel(nn.Module):
         outputs: dict[str, object] = {
             "latents": latents,
             "targets": self._targets_from(x, latents),
-            "predicted": self.predict(latents, action),
+            "predicted": self.predict(latents, action, mask),
             "mask": mask,
         }
         if self.codebook is not None:
@@ -123,6 +134,9 @@ class LeWMModel(nn.Module):
         """Advance the trailing teacher after each optimizer step."""
         if self.target_encoder is not None:
             self.target_encoder.update(self.encoder)
+
+    def update_running_stats(self, latents: dict) -> None:
+        """Per-step running statistics hook; no-op on the bare trunk."""
 
     def latent_variance(self, latents: dict) -> float:
         """Collapse diagnostic: mean per-dim variance across levels."""
@@ -176,3 +190,118 @@ class LeWMModel(nn.Module):
         weights = torch.minimum(torch.arange(length, device=target.device) + 1,
                                 torch.tensor(k_total, device=target.device)).clamp(min=1)
         return err_sum / weights
+
+
+class FullLeWMModel(nn.Module):
+    """Full-training wrapper: trunk plus attached aux/H heads in one module.
+
+    Honors the Trainer contract by delegating level geometry, teacher and
+    codebook handles, and scoring to the trunk, so the existing stage
+    runner works unchanged. Forward runs the trunk once and evaluates only
+    the attached heads; the FullCriterion consumes the merged outputs.
+    Box-supervised and proposal-masked terms stay dormant until the batch
+    carries 'box_target' / 'part_masks' (proposal wiring, staged later).
+    """
+
+    def __init__(self, trunk: LeWMModel, in_channels: int,
+                 recon_aux=None, box_aux=None, heads: dict | None = None,
+                 center_momentum: float = 0.99):
+        super().__init__()
+        self.trunk = trunk
+        self.recon_aux = recon_aux
+        self.box_aux = box_aux
+        self.heads = nn.ModuleDict(heads or {})
+        self.center_momentum = float(center_momentum)
+        self.in_channels = int(in_channels)
+
+    # -- Trainer contract (delegated to the trunk) ----------------------
+    @property
+    def level_names(self):
+        """Pyramid level names, delegated for collator/scorer geometry."""
+        return self.trunk.level_names
+
+    @property
+    def level_strides(self):
+        """Cumulative strides, delegated for mask and score mapping."""
+        return self.trunk.level_strides
+
+    @property
+    def target_encoder(self):
+        """Trailing teacher handle, delegated (None unless EMA arm)."""
+        return self.trunk.target_encoder
+
+    @property
+    def codebook(self):
+        """Codebook handle, delegated (None unless codebook arm)."""
+        return self.trunk.codebook
+
+    @property
+    def encoder_frozen(self):
+        """Frozen-adaptation flag, delegated to the trunk."""
+        return self.trunk.encoder_frozen
+
+    @property
+    def anti_collapse(self):
+        """Anti-collapse name, delegated for checkpoint metadata."""
+        return self.trunk.anti_collapse
+
+    def update_ema(self) -> None:
+        """Advance the trailing teacher; delegated to the trunk."""
+        self.trunk.update_ema()
+
+    def latent_variance(self, latents: dict) -> float:
+        """Collapse diagnostic; delegated to the trunk."""
+        return self.trunk.latent_variance(latents)
+
+    def score(self, x: torch.Tensor) -> dict:
+        """Anomaly evidence; scoring never touches heads or projections."""
+        return self.trunk.score(x)
+
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        """Load weights, remapping legacy trunk keys like the trunk does."""
+        from models.encoder import remap_legacy_encoder_keys
+
+        return super().load_state_dict(
+            remap_legacy_encoder_keys(state_dict), strict=strict, assign=assign)
+
+    def trunk_state_dict(self) -> dict:
+        """Trunk-only weights, loadable into LeWMModel for scoring reuse."""
+        prefix = "trunk."
+        return {k[len(prefix):]: v for k, v in self.state_dict().items()
+                if k.startswith(prefix)}
+
+    def update_running_stats(self, latents: dict) -> None:
+        """Per-step running centers for the attached metric head, if any."""
+        if "h4" in self.heads:
+            self.heads["h4"].update_centers(latents, self.center_momentum)
+
+    # -- forward ---------------------------------------------------------
+    def forward(self, x: torch.Tensor, mask: dict | None = None,
+                action=None) -> dict:
+        """Run trunk once plus attached heads; merged outputs for criterion."""
+        trunk_out = self.trunk(x, mask=mask, action=action)
+        feats = trunk_out["latents"]
+        window = x.size(-1)
+        out: dict[str, object] = {
+            "latents": feats,
+            "mask": mask,
+            "trunk": trunk_out,
+            "window": x,
+        }
+        if self.recon_aux is not None:
+            out["aux_recon"] = self.recon_aux(feats, window)
+        if self.box_aux is not None:
+            coarse = max(feats, key=lambda n: feats[n].shape[1])
+            out["aux_boxes"] = self.box_aux(feats[coarse])
+        if "h1" in self.heads:
+            out["h1"] = self.heads["h1"](feats)
+        if "h2" in self.heads:
+            out["h2"] = self.heads["h2"](feats, window)
+        if "h3" in self.heads:
+            out["h3"] = self.heads["h3"](feats)
+        if "h4" in self.heads:
+            head = self.heads["h4"]
+            out["h4"] = head(feats)
+            out["h4_raw"] = head.raw(feats)
+            out["h4_centers"] = head.centers()
+        return out
