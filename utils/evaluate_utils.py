@@ -126,10 +126,10 @@ class GradientMonitor:
             if self.log_histograms and not self.aggregate:
                 try:
                     self.logger.add_histogram("grad_values", tag, param.grad, self.step_count)
-                except ValueError as e:
-                    print(f"Histogram value of :{name} has param.grad:{param.grad}")
-                    import traceback
-                    traceback.print_exc()
+                except ValueError:
+                    # NaN/inf-only grads (e.g. very first steps) make an empty
+                    # histogram; skip quietly instead of spamming the log.
+                    pass
             names.append(name)
             norms.append(grad_norm)
 

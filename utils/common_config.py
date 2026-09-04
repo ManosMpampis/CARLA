@@ -22,6 +22,10 @@ def get_criterion(p):
         from losses import ClassificationLossMoCo
 
         criterion = ClassificationLossMoCo(**p["criterion_kwargs"])
+    elif p["criterion"] == "classification_part":
+        from losses import ClassificationLossPart
+
+        criterion = ClassificationLossPart(**p["criterion_kwargs"])
     elif p["criterion"] == "classification_e2e":
         from losses import ClassificationLossE2E
 
@@ -38,11 +42,13 @@ def get_criterion(p):
 
 
 def get_feature_dimensions_backbone(p):
+    # Pooling changes the feature dim fed to the heads (avgmax = concat mean+max)
+    pooling_mult = 2 if p.get("pooling", "mean") == "avgmax" else 1
     if p["backbone"] == "resnet18":
-        return p["res_kwargs"]["mid_channels"][-1]
+        return p["res_kwargs"]["mid_channels"][-1] * pooling_mult
 
     elif p["backbone"] == "resnet_ts":
-        return p["res_kwargs"]["mid_channels"][-1]
+        return p["res_kwargs"]["mid_channels"][-1] * pooling_mult
 
     else:
         raise NotImplementedError
@@ -62,12 +68,22 @@ def get_model(p, pretrain_path=None):
     if p["setup"] in ["pretext"]:
         from models.models import ContrastiveModel
 
-        model = ContrastiveModel(backbone, **p["model_kwargs"])
+        model = ContrastiveModel(
+            backbone,
+            pooling=p.get("pooling", "mean"),
+            **p["model_kwargs"],
+        )
 
     elif p["setup"] in ["classification"]:
         from models.models import ClusteringModel
 
-        model = ClusteringModel(backbone, p["num_classes"], p["num_heads"])
+        model = ClusteringModel(
+            backbone,
+            p["num_classes"],
+            p["num_heads"],
+            localization_head=p.get("localization_head", False),
+            pooling=p.get("pooling", "mean"),
+        )
     elif p["setup"] in ["classification_e2e"]:
         from models.models import ClusteringModel
         from models.models import ClassificationModel

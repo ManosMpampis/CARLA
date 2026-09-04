@@ -55,6 +55,15 @@ class SubAnomaly(object):
         self.min_budget = min_budget
         self._cycle = 0
         self.last_injections = []
+        self.last_mask = None  # bool array [T]: timesteps modified by the last call
+
+    @staticmethod
+    def _mask_from_segments(segments, window_len):
+        """Boolean mask over the window marking the injected segments."""
+        mask = np.zeros(window_len, dtype=bool)
+        for start, seg_len in segments:
+            mask[start:start + seg_len] = True
+        return mask
 
     def inject_frequency_anomaly(self, window,
                                  subsequence_length: int= None,
@@ -83,7 +92,7 @@ class SubAnomaly(object):
         """
 
         # Clone the input tensor to avoid modifying the original data
-        window = window.copy()
+        window_cp = window.copy()
 
         # Set the subsequence_length if not provided
         if subsequence_length is None:
@@ -128,9 +137,9 @@ class SubAnomaly(object):
         if shapelet_factor:
             anomalous_subsequence = window[start_index] + (np.random.rand(len(anomalous_subsequence)) * 0.1).reshape(-1, 1)
 
-        window[start_index:end_index] = anomalous_subsequence
+        window_cp[start_index:end_index] = anomalous_subsequence
 
-        return np.squeeze(window)
+        return np.squeeze(window_cp), start_index, end_index
 
     def _next_type(self):
         anomaly_type = self._cycle % self.NUM_TYPES
@@ -173,36 +182,37 @@ class SubAnomaly(object):
 
     def _apply_type(self, column, anomaly_type, segments):
         col = np.asarray(column).reshape(-1, 1)
+        out_segments = []
         for start, seg_len in segments:
             if anomaly_type == self.FREQ:
-                col = self.inject_frequency_anomaly(col,
+                col, out_start_idx, out_end_idx = self.inject_frequency_anomaly(col,
                                                     scale_factor=1,
                                                     trend_factor=0,
                                                     subsequence_length=seg_len,
                                                     start_index=start)
             elif anomaly_type == self.TREND:
-                col = self.inject_frequency_anomaly(col,
+                col, out_start_idx, out_end_idx = self.inject_frequency_anomaly(col,
                                                     compression_factor=1,
                                                     scale_factor=1,
                                                     trend_end=True,
                                                     subsequence_length=seg_len,
                                                     start_index=start)
             elif anomaly_type == self.SPIKE:
-                col = self.inject_frequency_anomaly(col,
+                col, out_start_idx, out_end_idx = self.inject_frequency_anomaly(col,
                                                     subsequence_length=seg_len,
                                                     compression_factor=1,
                                                     scale_factor=self.spike_scale,
                                                     trend_factor=0,
                                                     start_index=start)
             elif anomaly_type == self.SCALE:
-                col = self.inject_frequency_anomaly(col,
+                col, out_start_idx, out_end_idx = self.inject_frequency_anomaly(col,
                                                     subsequence_length=seg_len,
                                                     compression_factor=1,
                                                     scale_factor=self.scale_scale,
                                                     trend_factor=0,
                                                     start_index=start)
             elif anomaly_type == self.SHAPELET:
-                col = self.inject_frequency_anomaly(col,
+                col, out_start_idx, out_end_idx = self.inject_frequency_anomaly(col,
                                                     compression_factor=1,
                                                     scale_factor=1,
                                                     trend_factor=0,
@@ -210,11 +220,13 @@ class SubAnomaly(object):
                                                     subsequence_length=seg_len,
                                                     start_index=start)
             col = col.reshape(-1, 1)
-        return col.reshape(-1)
+            out_segments.append((out_start_idx, out_start_idx+out_end_idx))
+        return col.reshape(-1), out_segments
 
     def _balanced_call(self, X):
         anomalous_window = X.copy()
         self.last_injections = []
+        anomaly_mask = np.zeros(X.shape[0], dtype=bool)
 
         if anomalous_window.ndim > 1:
             num_features = anomalous_window.shape[1]
@@ -227,15 +239,18 @@ class SubAnomaly(object):
                 column = anomalous_window[:, i]
                 budget = self._budget_len(len(column))
                 segments = self._segments_for_type(anomaly_type, len(column), budget)
-                anomalous_window[:, i] = self._apply_type(column, anomaly_type, segments)
-                self.last_injections.append((anomaly_type, sum(l for _, l in segments)))
+                anomalous_window[:, i], out_segmets = self._apply_type(column, anomaly_type, segments)
+                self.last_injections.append((anomaly_type, sum(l for _, l in out_segmets)))
+                anomaly_mask |= self._mask_from_segments(out_segmets, X.shape[0])
         else:
             anomaly_type = self._next_type()
             budget = self._budget_len(len(anomalous_window))
             segments = self._segments_for_type(anomaly_type, len(anomalous_window), budget)
-            anomalous_window = self._apply_type(anomalous_window, anomaly_type, segments)
-            self.last_injections.append((anomaly_type, sum(l for _, l in segments)))
+            anomalous_window, out_segmets = self._apply_type(anomalous_window, anomaly_type, segments)
+            self.last_injections.append((anomaly_type, sum(l for _, l in out_segmets)))
+            anomaly_mask |= self._mask_from_segments(out_segmets, X.shape[0])
 
+        self.last_mask = anomaly_mask
         return anomalous_window
 
     def _legacy_call(self, X):
@@ -250,6 +265,7 @@ class SubAnomaly(object):
         max_len = int(anomalous_window.shape[0] * 0.9)
         subsequence_length = np.random.randint(min_len, max_len)
         start_index = np.random.randint(0, len(anomalous_window) - subsequence_length)
+        anomaly_mask = np.zeros(anomalous_window.shape[0], dtype=bool)
         if (anomalous_window.ndim > 1):
             num_features = anomalous_window.shape[1]
             num_dims = np.random.randint(int(num_features/10), int(num_features/2))
@@ -258,80 +274,82 @@ class SubAnomaly(object):
                 temp_win = anomalous_window[:, i].reshape((anomalous_window.shape[0], 1))
                 anomaly_type = np.random.randint(0, self.NUM_TYPES)
                 if anomaly_type == 0:
-                    anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
+                    anomalous_window[:, i], out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,
                                                                 trend_factor=0,
                                                                 subsequence_length=subsequence_length,
                                                                 start_index = start_index)
                 elif anomaly_type == 1:
-                    anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
+                    anomalous_window[:, i], out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 compression_factor=1,
                                                                 scale_factor=1,
                                                                 trend_end=True,
                                                                 subsequence_length=subsequence_length,
                                                                 start_index = start_index)
                 elif anomaly_type == 2:
-                    anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
+                    anomalous_window[:, i], out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 subsequence_length=2,
                                                                 compression_factor=1,
                                                                 scale_factor=8,
                                                                 trend_factor=0,
                                                                 start_index = start_index)
                 elif anomaly_type == 3:
-                    anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
+                    anomalous_window[:, i], out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 subsequence_length=4,
                                                                 compression_factor=1,
                                                                 scale_factor=3,
                                                                 trend_factor=0,
                                                                 start_index = start_index)
                 elif anomaly_type == 4:
-                    anomalous_window[:, i] = self.inject_frequency_anomaly(temp_win,
+                    anomalous_window[:, i], out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 compression_factor=1,
                                                                 scale_factor=1,
                                                                 trend_factor=0,
                                                                 shapelet_factor=True,
                                                                 subsequence_length=subsequence_length,
                                                                 start_index = start_index)
-
+                anomaly_mask |= self._mask_from_segments([(out_start_idx, out_start_idx+out_end_idx)], anomalous_window.shape[0])
         else:
             temp_win = anomalous_window.reshape((len(anomalous_window), 1))
             anomaly_type = np.random.randint(0, self.NUM_TYPES)
             if anomaly_type == 0:
-                anomalous_window = self.inject_frequency_anomaly(temp_win,
+                anomalous_window, out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                                 scale_factor=1,
                                                                 trend_factor=0,
                                                                 subsequence_length=subsequence_length,
                                                                 start_index = start_index)
             elif anomaly_type == 1:
-                anomalous_window = self.inject_frequency_anomaly(temp_win,
+                anomalous_window, out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                             compression_factor=1,
                                                             scale_factor=1,
                                                             trend_end=True,
                                                             subsequence_length=subsequence_length,
                                                             start_index = start_index)
             elif anomaly_type == 2:
-                anomalous_window = self.inject_frequency_anomaly(temp_win,
+                anomalous_window, out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                             subsequence_length=3,
                                                             compression_factor=1,
                                                             scale_factor=8,
                                                             trend_factor=0,
                                                             start_index = start_index)
             elif anomaly_type == 3:
-                anomalous_window = self.inject_frequency_anomaly(temp_win,
+                anomalous_window, out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                             subsequence_length=5,
                                                             compression_factor=1,
                                                             scale_factor=3,
                                                             trend_factor=0,
                                                             start_index = start_index)
             elif anomaly_type == 4:
-                anomalous_window = self.inject_frequency_anomaly(temp_win,
+                anomalous_window, out_start_idx, out_end_idx = self.inject_frequency_anomaly(temp_win,
                                                         compression_factor=1,
                                                         scale_factor=1,
                                                         trend_factor=0,
                                                         shapelet_factor=True,
                                                         subsequence_length=subsequence_length,
                                                         start_index = start_index)
+            anomaly_mask |= self._mask_from_segments([(out_start_idx, out_start_idx + out_end_idx)], anomalous_window.shape[0])
 
+        self.last_mask = anomaly_mask
         return anomalous_window
 
     def __call__(self, X):

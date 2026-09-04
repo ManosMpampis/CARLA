@@ -90,10 +90,11 @@ class SubAnomaly(_BaseSubAnomaly):
         if anomalous_window.ndim > 1:
             i = int(np.random.randint(0, anomalous_window.shape[1]))
             column = anomalous_window[:, i]
-            anomalous_window[:, i] = self._apply_type(column, anomaly_type, segments)
+            anomalous_window[:, i], out_segmets = self._apply_type(column, anomaly_type, segments)
         else:
-            anomalous_window = self._apply_type(anomalous_window, anomaly_type, segments)
+            anomalous_window, out_segmets = self._apply_type(anomalous_window, anomaly_type, segments)
 
-        self.last_injections = [(anomaly_type, sum(l for _, l in segments))]
+        self.last_injections = [(anomaly_type, sum(l for _, l in out_segmets))]
         self.last_type = anomaly_type
+        self.last_mask = self._mask_from_segments(out_segmets, window_len)
         return anomalous_window

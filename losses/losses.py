@@ -12,7 +12,9 @@ class ClassificationLoss(nn.Module):
         entropy_norm=False,
         entropy_to_all_instances=False,
         disimilar_negatives=False,
-        classification_loss_flag=True
+        classification_loss_flag=True,
+        shift_ema_momentum=0.0,
+        localization_weight=0.0
     ):
         super(ClassificationLoss, self).__init__()
         self.softmax = nn.Softmax(dim=1)
@@ -26,8 +28,11 @@ class ClassificationLoss(nn.Module):
         self.disimilar_negatives = disimilar_negatives
         self.positive_entropy_weight = 1.0
         self.classification_loss_flag = classification_loss_flag
+        self.shift_ema_momentum = shift_ema_momentum
+        self._shift_ema = None  # EMA state of the (detached) shift weight
+        self.localization_weight = localization_weight
 
-    def forward(self, anchors, nneighbors, fneighbors):
+    def forward(self, anchors, nneighbors, fneighbors, fneighbor_mask=None):
         """
         input:
             - anchors: logits for anchor ts w/ shape [b, num_classes]
@@ -138,7 +143,19 @@ class ClassificationLoss(nn.Module):
         # Entropy is subtracted from loss. We want to minim positive_entropy and maximize negative entropy.
         entropy_loss = positive_entropy - negative_entropy
         if self.entropy_norm:
-            entropy_loss /= torch.log(torch.tensor(n))  # Normalize to 1
+            entropy_loss /= torch.log(n)  # Normalize to [0, 1]
+
+        # Localization loss: FNeighbors carry injected sub-anomalies and
+        # fneighbor_mask marks the injected timesteps. The auxiliary
+        # localization head (model config: localization_head=True) must mark
+        # WHERE in the window the anomaly is (per-timestep BCE over logits).
+        localization_loss = torch.tensor(0.0)
+        if self.localization_weight > 0:
+            loc_logits = fneighbors.get("localization_logits")
+            if loc_logits is not None and fneighbor_mask is not None:
+                localization_loss = self.bce_with_logits(
+                    loc_logits, fneighbor_mask.to(dtype=loc_logits.dtype)
+                )
 
         # Total loss
         marginal_total_loss = (
@@ -147,9 +164,10 @@ class ClassificationLoss(nn.Module):
             + (self.entropy_weight * negative_per_sample_entropy)
             + (self.entropy_weight * diff_neg_sims)
             + (self.inconsistency_weight * inconsistency_loss)
+            + (self.localization_weight * localization_loss)
         )
 
-        anchor_margin_per_class = { 
+        anchor_margin_per_class = {
             f"{i+1}": anchors_prob[i] for i in range(n)
         }
         negs_margin_per_class = { 
@@ -171,12 +189,26 @@ class ClassificationLoss(nn.Module):
         # ).detach()  # Pure scheduler: no gradient through the mixing coefficient
         # total_loss = (1 - torch.clamp(shift_weight, min=-1)) * marginal_total_loss + (torch.clamp(shift_weight, max=1) * classification_loss)
 
-        shift_weight = (
+        # Shift weight in [0, 1] (clamped: it can be negative batch-wise when
+        # negatives are momentarily more peaked than anchors) and EMA-smoothed
+        # across steps: batch-wise stds of rare negatives are very noisy.
+        # shift_raw is the gate BEFORE the flag multiply: it also moves with
+        # classification_loss_flag=False (two-phase auto-switch criterion).
+        shift_batch = (
             (anchors_prob.std() - negatives_prob.std())
             * (n / torch.sqrt(n - 1))
-            * self.classification_loss_flag
         ).detach()  # Pure scheduler: no gradient through the mixing coefficient
-        total_loss = marginal_total_loss + (torch.clamp(shift_weight, max=1) *4* classification_loss)
+        shift_raw = torch.clamp(shift_batch, 0.0, 1.0)
+        shift_batch = shift_raw * self.classification_loss_flag
+        if self.shift_ema_momentum > 0:
+            prev = shift_raw if self._shift_ema is None else self._shift_ema
+            self._shift_ema = (
+                self.shift_ema_momentum * prev + (1 - self.shift_ema_momentum) * shift_batch
+            ).item()
+            shift_weight = torch.tensor(self._shift_ema)
+        else:
+            shift_weight = shift_batch
+        total_loss = ((1 - shift_weight) * marginal_total_loss) + (shift_weight * classification_loss)
 
         out = {
             "total_loss": total_loss,
@@ -189,7 +221,9 @@ class ClassificationLoss(nn.Module):
             "negative_entropy": negative_entropy,
             "negative_per_sample": negative_per_sample_entropy,
             "diff_neg_sims": diff_neg_sims,
-            "shift_weight": shift_weight
+            "shift_weight": shift_weight,
+            "shift_raw": shift_raw,
+            "localization_loss": localization_loss,
         }
         for cls in anchor_margin_per_class.keys():
             out[f"marginal_anchors_cls{cls}"] = anchor_margin_per_class[cls]
@@ -200,6 +234,14 @@ class ClassificationLoss(nn.Module):
         return out
 
 class ClassificationLossPart(nn.Module):
+    """Classification-only finetune loss (phase 2 of two-phase training).
+
+    Uses the same targets as ``ClassificationLoss`` (anchors one-hot on the
+    normal class, negatives pushed off the normal-class logit) but drops every
+    marginal (consistency/inconsistency/entropy) term: the loss floor is 0 and
+    the objective is purely discriminative.
+    """
+
     def __init__(
             self,
             entropy_weight=2.0,
@@ -208,7 +250,7 @@ class ClassificationLossPart(nn.Module):
             entropy_norm=False,
             entropy_to_all_instances=False,
             disimilar_negatives=False,
-            classification_loss_flag=True
+            classification_loss_flag=True,
         ):
             super(ClassificationLossPart, self).__init__()
             self.softmax = nn.Softmax(dim=1)
@@ -222,14 +264,13 @@ class ClassificationLossPart(nn.Module):
             self.disimilar_negatives = disimilar_negatives
             self.positive_entropy_weight = 1.0
             self.classification_loss_flag = classification_loss_flag
-    
+
     def forward(self, anchors, fneighbors):
         """
         input:
             - anchors: logits for anchor ts w/ shape [b, num_classes]
-            - k nearest neighbors: logits for neighbor ts w/ shape [b, num_classes]
-            - k furthest neighbors: logits for neighbor ts w/ shape [b, num_classes]
-        
+            - fneighbors: logits for the furthest neighbors w/ shape [b, num_classes]
+
         output:
             - Loss
         """
@@ -237,12 +278,8 @@ class ClassificationLossPart(nn.Module):
         b = torch.tensor(b)
         n = torch.tensor(n)
         anchors_prob = self.softmax(anchors["output"])
-        negatives_prob = self.softmax(fneighbors["output"])
         
         # Per-sample predicted classes (used for per-class count logging)
-        anchor_preds = torch.argmax(anchors_prob, dim=1)
-        neg_preds = torch.argmax(negatives_prob, dim=1)
-    
         pos_logits = anchors["output"]
         
         normal_class_idx = torch.argmax(anchors_prob.mean(dim=0), dim=-1)
@@ -353,7 +390,7 @@ class ClassificationLossMoCo(ClassificationLoss):
             self.queue_warmup, 1
         )
 
-    def forward(self, anchors, nneighbors, fneighbors):
+    def forward(self, anchors, nneighbors, fneighbors, fneighbor_mask=None):
         """
         input:
             - anchors: logits for anchor ts w/ shape [b, num_classes]
@@ -474,7 +511,16 @@ class ClassificationLossMoCo(ClassificationLoss):
         ) * self.positive_entropy_weight
         entropy_loss = positive_entropy - negative_entropy
         if self.entropy_norm:
-            entropy_loss /= torch.log(torch.tensor(n))  # Normalize to 1
+            entropy_loss /= torch.log(n)  # Normalize to [0, 1]
+
+        # Localization loss (see ClassificationLoss)
+        localization_loss = torch.tensor(0.0)
+        if self.localization_weight > 0:
+            loc_logits = fneighbors.get("localization_logits")
+            if loc_logits is not None and fneighbor_mask is not None:
+                localization_loss = self.bce_with_logits(
+                    loc_logits, fneighbor_mask.to(dtype=loc_logits.dtype)
+                )
 
         # Total loss
         marginal_total_loss = (
@@ -483,6 +529,7 @@ class ClassificationLossMoCo(ClassificationLoss):
             + (self.entropy_weight * negative_per_sample_entropy)
             + (self.entropy_weight * diff_neg_sims)
             + (self.inconsistency_weight * inconsistency_loss)
+            + (self.localization_weight * localization_loss)
         )
 
         anchor_margin_per_class = {
@@ -500,11 +547,21 @@ class ClassificationLossMoCo(ClassificationLoss):
             f"{i+1}": anchor_class_counts[i] for i in range(n)
         }
 
-        shift_weight = (
+        # Clamped to [0, 1] and EMA-smoothed (see ClassificationLoss).
+        shift_batch = (
             (anchors_prob.std() - negatives_prob.std())
             * (n / torch.sqrt(n - 1))
-            * self.classification_loss_flag
         ).detach()  # Pure scheduler: no gradient through the mixing coefficient
+        shift_raw = torch.clamp(shift_batch, 0.0, 1.0)
+        shift_batch = shift_raw * self.classification_loss_flag
+        if self.shift_ema_momentum > 0:
+            prev = shift_raw if self._shift_ema is None else self._shift_ema
+            self._shift_ema = (
+                self.shift_ema_momentum * prev + (1 - self.shift_ema_momentum) * shift_batch
+            ).item()
+            shift_weight = torch.tensor(self._shift_ema)
+        else:
+            shift_weight = shift_batch
         total_loss = (1 - shift_weight) * marginal_total_loss + (shift_weight * classification_loss)
 
         # FIFO update happens after the loss use: current batch is queued for future steps
@@ -525,6 +582,8 @@ class ClassificationLossMoCo(ClassificationLoss):
             "negative_per_sample": negative_per_sample_entropy,
             "diff_neg_sims": diff_neg_sims,
             "shift_weight": shift_weight,
+            "shift_raw": shift_raw,
+            "localization_loss": localization_loss,
         }
         for cls in anchor_margin_per_class.keys():
             out[f"marginal_anchors_cls{cls}"] = anchor_margin_per_class[cls]

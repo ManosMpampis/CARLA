@@ -159,7 +159,12 @@ def self_sup_classification_train(
                 model.train()
 
         # Loss for every head
-        losses = criterion(anchors_output, nneighbors_output, fneighbors_output)
+        # FNeighbor_mask: timesteps of the FNeighbor windows where a synthetic
+        # sub-anomaly was injected (target of the auxiliary localization head).
+        fneighbor_mask = batch.get("FNeighbor_mask")
+        if fneighbor_mask is not None:
+            fneighbor_mask = fneighbor_mask.to(device, non_blocking=True).float()
+        losses = criterion(anchors_output, nneighbors_output, fneighbors_output, fneighbor_mask=fneighbor_mask)
 
         # Aggregate losses and check for NaN
         for loss in losses.keys():

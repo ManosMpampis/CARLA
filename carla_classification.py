@@ -5,6 +5,7 @@ import csv
 import torch
 import numpy as np
 import pandas as pd
+from easydict import EasyDict
 from utils.config import create_config
 from utils.common_config import (
     get_train_transformations,
@@ -39,6 +40,38 @@ def set_seed(seed):
 set_seed(4)
 
 
+def build_phase_two(p, model, phase2_start):
+    """Build the phase-2 (classification finetune) criterion, optimizer and scheduler.
+
+    Restart semantics: brand-new optimizer and scheduler over the same model
+    parameters with criterion = ClassificationLossPart (pure classification
+    loss, floor 0). Optimizer/scheduler types and kwargs default to the phase-1
+    ones and can be overridden with ``phase2_optimizer``,
+    ``phase2_optimizer_kwargs``, ``phase2_scheduler`` and
+    ``phase2_scheduler_kwargs``. The scheduler epoch budget is the remaining
+    epochs (``p["epochs"] - phase2_start``).
+    """
+    budget = p["epochs"] - phase2_start
+    p2 = EasyDict({**p})
+    p2["epochs"] = budget
+    p2["optimizer"] = p.get("phase2_optimizer", p["optimizer"])
+    p2["optimizer_kwargs"] = p.get("phase2_optimizer_kwargs", p["optimizer_kwargs"])
+    p2["scheduler"] = p.get("phase2_scheduler", p["scheduler"])
+    scheduler_kwargs = dict(p.get("phase2_scheduler_kwargs", p["scheduler_kwargs"]))
+    if budget > 1:
+        scheduler_kwargs["lr_warmup_epochs"] = min(
+            int(scheduler_kwargs.get("lr_warmup_epochs", 0)), budget - 1
+        )
+    p2["scheduler_kwargs"] = scheduler_kwargs
+
+    from losses import ClassificationLossPart
+
+    criterion = ClassificationLossPart(**p.get("phase2_criterion_kwargs", {}))
+    optimizer = get_optimizer(p2, model, p["update_cluster_head_only"])
+    scheduler = get_scheduler(p2, optimizer)
+    return criterion, optimizer, scheduler
+
+
 def main(args, update_dictionary={}):
     p = create_config(args.config_env, args.config_exp, args.fname, args.version, update_dictionary=update_dictionary)
     device = torch.device("cuda:0" if torch.cuda.is_available() and p.get("device", "cuda") else "cpu")
@@ -48,6 +81,42 @@ def main(args, update_dictionary={}):
 
     logger.log("CARLA Self-supervised Classification stage --> ")
     logger.log_hyperparams(p)
+
+    # Two-phase training: phase 1 optimizes the marginal loss only (the
+    # classification path of the criterion is disabled), then the training
+    # restarts with a new optimizer/scheduler and the ClassificationLossPart
+    # criterion (pure classification finetune). `phase2_start` is an epoch
+    # number or "auto": switch when the shift gate (anchors settled on one
+    # class, negatives spread) has stabilized.
+    two_phase = bool(p.get("two_phase", False))
+    phase2_start_cfg = p.get("phase2_start", None)
+    auto_switch = two_phase and phase2_start_cfg == "auto"
+    phase2_start = (
+        p["epochs"]
+        if phase2_start_cfg is None or phase2_start_cfg == "auto"
+        else int(phase2_start_cfg)
+    )
+    # Auto-switch criterion: the per-epoch average of the shift gate
+    # (std of anchor probs - std of negative probs, in [0, 1]) must stay above
+    # `phase2_auto_threshold` for `phase2_auto_patience` consecutive epochs,
+    # but never before `phase2_auto_min_epochs` and never after
+    # `phase2_auto_max_wait`.
+    phase2_auto_threshold = float(p.get("phase2_auto_threshold", 0.9))
+    phase2_auto_patience = int(p.get("phase2_auto_patience", 5))
+    phase2_auto_min_epochs = int(p.get("phase2_auto_min_epochs", 300))
+    phase2_auto_max_wait = int(p.get("phase2_auto_max_wait", 900))
+    phase = 1
+    phase2_switch_epoch = None
+    if two_phase and not auto_switch and phase2_start >= p["epochs"]:
+        logger.log(
+            "WARNING: two_phase is enabled but phase2_start >= epochs; phase 2 will never start"
+        )
+    if auto_switch:
+        logger.log(
+            "Two-phase training: auto phase-2 switch when the shift gate >= "
+            f"{phase2_auto_threshold} for {phase2_auto_patience} consecutive epochs"
+            f" (earliest {phase2_auto_min_epochs}, latest {phase2_auto_max_wait})"
+        )
 
     # Data
     logger.log(
@@ -100,6 +169,16 @@ def main(args, update_dictionary={}):
     criterion = get_criterion(p)
     criterion.to(device)
 
+    if two_phase:
+        # Phase 1: pure marginal objective -- the dynamic shift to the
+        # classification loss is disabled until the phase switch.
+        criterion.classification_loss_flag = False
+        logger.log(
+            "Two-phase training: phase 1 = marginal loss only"
+            f" (classification_loss_flag forced to False); phase 2 (ClassificationLossPart"
+            f" finetune with a new optimizer/scheduler) starts at epoch {phase2_start}"
+        )
+
     logger.log("\n- Model initialisation")
     # Initi neighbors with the current model
     predictions = train_dataset_base.predict_and_update(model, base_dataloader, p, epoch=0, update=1)
@@ -117,11 +196,26 @@ def main(args, update_dictionary={}):
         model_checkpoint = clean_checkpoint(checkpoint["model"], p["classification_checkpoint"], checkpoint)
         model.load_state_dict(model_checkpoint)
         model.to(device)
-        if "scheduler" in checkpoint.keys():
-            scheduler.load_state_dict(checkpoint["scheduler"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
         # Resume at the next epoch; fall back to the old zero-based format.
         start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
+        if two_phase and (start_epoch >= phase2_start or checkpoint.get("phase", 1) == 2):
+            # Resuming inside (or at the start of) phase 2: rebuild the phase-2
+            # criterion/optimizer/scheduler. Optimizer/scheduler states are only
+            # restored when the checkpoint was saved during phase 2; otherwise
+            # phase 2 starts from a fresh optimizer (restart semantics).
+            phase = 2
+            phase2_switch_epoch = int(checkpoint.get("phase2_switch_epoch") or start_epoch)
+            criterion, optimizer, scheduler = build_phase_two(p, model, min(phase2_switch_epoch, start_epoch))
+            criterion.to(device)
+            if checkpoint.get("phase", 1) == 2:
+                if "scheduler" in checkpoint.keys():
+                    scheduler.load_state_dict(checkpoint["scheduler"])
+                optimizer.load_state_dict(checkpoint["optimizer"])
+                logger.log("-- Resumed phase-2 optimizer and scheduler states")
+        else:
+            if "scheduler" in checkpoint.keys():
+                scheduler.load_state_dict(checkpoint["scheduler"])
+            optimizer.load_state_dict(checkpoint["optimizer"])
         normal_label = checkpoint["normal_label"]
         best_f1 = checkpoint["best_f1"]
         best_cls_f1 = checkpoint.get("best_cls_f1", -1 * np.inf)
@@ -192,8 +286,48 @@ def main(args, update_dictionary={}):
     # Initi neighbors with the current model
     # predictions = train_dataset_base.predict_and_update(model, base_dataloader, p)
     logger.log("\n- Training:")
+    auto_consec = 0
+    loss_dict = None
     for epoch in range(start_epoch, p["epochs"]):
         logger.log("-- Epoch %d/%d" % (epoch + 1, p["epochs"]))
+
+        # Phase switch: restart training with the classification finetune
+        # criterion and a fresh optimizer/scheduler. With phase2_start: auto,
+        # the switch fires when the shift gate (normal/anomalous organization)
+        # has been stable above the threshold for `phase2_auto_patience` epochs.
+        do_switch = False
+        actual_phase2_start = phase2_start
+        if two_phase and phase == 1:
+            if auto_switch:
+                shift = loss_dict.get("shift_raw") if loss_dict is not None else None
+                if epoch + 1 >= phase2_auto_min_epochs and shift is not None and shift >= phase2_auto_threshold:
+                    auto_consec += 1
+                else:
+                    auto_consec = 0
+                if epoch + 1 >= phase2_auto_min_epochs and (
+                    auto_consec >= phase2_auto_patience or epoch + 1 >= phase2_auto_max_wait
+                ):
+                    do_switch = True
+                    actual_phase2_start = epoch + 1
+                    reason = (
+                        f"shift gate stable at {shift:.4f} (>= {phase2_auto_threshold} for "
+                        f"{auto_consec} epochs)" if auto_consec >= phase2_auto_patience
+                        else f"max wait reached ({phase2_auto_max_wait} epochs)"
+                    )
+                    logger.log(f"-- Auto phase-2 trigger: {reason}; switching at epoch {epoch + 1}")
+            elif epoch >= phase2_start:
+                do_switch = True
+        if do_switch:
+            phase = 2
+            phase2_switch_epoch = actual_phase2_start
+            criterion, optimizer, scheduler = build_phase_two(p, model, phase2_switch_epoch)
+            criterion.to(device)
+            logger.log(
+                "-- Phase 2: classification finetune starts (criterion=ClassificationLossPart,"
+                f" optimizer={p.get('phase2_optimizer', p['optimizer'])},"
+                f" scheduler={p.get('phase2_scheduler', p['scheduler'])},"
+                " optimizer state restarted)"
+            )
 
         lr = optimizer.param_groups[0]["lr"]
         loss_dict = self_sup_classification_train(
@@ -310,6 +444,8 @@ def main(args, update_dictionary={}):
                 "model": model.state_dict(),
                 "epoch": epoch,
                 "next_epoch": epoch + 1,
+                "phase": phase,
+                "phase2_switch_epoch": phase2_switch_epoch,
                 "normal_label": normal_label,
                 "best_f1": best_f1,
                 "best_cls_f1": best_cls_f1,

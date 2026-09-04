@@ -30,6 +30,9 @@ class AugmentedDataset(Dataset):
         self.ts_ss_augment = [
             np.empty(dataset.data[0].shape) for _ in range(len(dataset))
         ]  # Initialized
+        self.ts_ss_mask = [
+            np.empty(dataset.data[0].shape[0], dtype=np.float32) for _ in range(len(dataset))
+        ]  # float32 [T]: 1.0 where the synthetic sub-anomaly was injected
         self.meta = [
             {} for _ in range(len(dataset))
         ]  # Initialized
@@ -64,10 +67,19 @@ class AugmentedDataset(Dataset):
                 ts_w_augment = self.augmentation_transform(ts_org)
 
             ts_ss_augment = self.subseq_anomaly(ts_org)
+            # The injector records which timesteps it modified (see SubAnomaly.last_mask);
+            # used as the target of the auxiliary localization head.
+            last_mask = getattr(self.subseq_anomaly, "last_mask", None)
+            ss_mask = (
+                np.asarray(last_mask, dtype=np.float32)
+                if last_mask is not None
+                else np.zeros(ts_org.shape[0], dtype=np.float32)
+            )
             # During inference we do not know what inputs are anomalies and how they derived. So we normalize everything the same way.
             self.ts_org[index] = self.scaler.transform(ts_org)
             self.ts_w_augment[index] = self.scaler.transform(ts_w_augment)
             self.ts_ss_augment[index] = self.scaler.transform(ts_ss_augment)
+            self.ts_ss_mask[index] = ss_mask
             self.targets[index] = ts_trg
             self.meta[index] = item["meta"]
 
@@ -104,12 +116,15 @@ class DynamicNeighbors(Dataset):
 
         self.ts_w_augment = self.dataset.ts_w_augment
         self.ts_ss_augment = self.dataset.ts_ss_augment
+        self.ts_ss_mask = getattr(self.dataset, "ts_ss_mask", None)
         self.meta = self.dataset.meta
         if data_number is not None:
             self.data = self.data[:data_number]
             self.targets = self.targets[:data_number]
             self.ts_w_augment = self.ts_w_augment[:data_number]
             self.ts_ss_augment = self.ts_ss_augment[:data_number]
+            if self.ts_ss_mask is not None:
+                self.ts_ss_mask = self.ts_ss_mask[:data_number]
             
         self.topk = p["num_neighbors"]
         self.k_furthest_nneighbours = np.zeros((len(self.data), self.topk))
@@ -235,6 +250,8 @@ class ContrustiveDataset(Dataset):
 
         self.NNeighbor = self.dataset.ts_w_augment
         self.FNeighbor = self.dataset.ts_ss_augment
+        # Injection mask per FNeighbor window (parallel to ts_ss_augment)
+        self.FNeighbor_mask = getattr(self.dataset, "ts_ss_mask", None)
 
         self.mean = 0
         self.std = 0
@@ -249,8 +266,13 @@ class ContrustiveDataset(Dataset):
         NNeighbor = self.NNeighbor.__getitem__(NN_index)
         FN_index = np.random.choice(self.dataset.k_nearest_fneighbours[index], 1)[0]
         FNeighbor = self.FNeighbor.__getitem__(FN_index)
+        if self.FNeighbor_mask is not None:
+            FNeighbor_mask = np.asarray(self.FNeighbor_mask[FN_index], dtype=np.float32)
+        else:
+            FNeighbor_mask = np.zeros(FNeighbor.shape[0], dtype=np.float32)
 
-        return {"anchor": anchor["ts_org"], "NNeighbor": NNeighbor, "FNeighbor": FNeighbor, "target": anchor["target"], "meta": anchor["meta"]}
+        return {"anchor": anchor["ts_org"], "NNeighbor": NNeighbor, "FNeighbor": FNeighbor,
+                "FNeighbor_mask": FNeighbor_mask, "target": anchor["target"], "meta": anchor["meta"]}
 
     def concat_ds(self, new_ds):
         self.dataset.data = np.concatenate(

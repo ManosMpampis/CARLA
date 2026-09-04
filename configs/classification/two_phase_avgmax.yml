@@ -1,7 +1,7 @@
 # setup
 setup: classification
 
-tag_class: moco_ema
+tag_class: moco_ema_2p_avgmax
 
 # Loss
 criterion: classification_moco
@@ -10,34 +10,37 @@ criterion_kwargs:
   inconsistency_weight: 1.3
   consistency_weight: 1.0
   entropy_norm: False
-  entropy_to_all_instances: False
-  disimilar_negatives: False
-  classification_loss_flag: False
-  # Localization term (auxiliary per-timestep head, phase 1 only):
-  # requires `localization_head: True` in the model section below.
+  entropy_to_all_instances: True
+  disimilar_negatives: True
+  classification_loss_flag: False  # phase 1 only; phase 2 uses ClassificationLossPart
   shift_ema_momentum: 0.9
-  localization_weight: 0.0  # >0 enables the per-timestep BCE on injected sub-anomalies
+  localization_weight: 0.0
   # MoCo-style queues (FIFO over detached probabilities)
   queue_size: 8192
   queue_topk: 32        # >0: top-k hardest queued negatives per anchor; 0: full queue; <0: queue inconsistency disabled
   queue_warmup: 512     # minimum queued entries before any queue term activates
   queue_anchor: True    # estimate the normal class from the anchor queue (stable across batches)
 
-# Two-phase training (optional): phase 1 = marginal loss only (the dynamic
-# classification shift is disabled), then at `phase2_start` the training
-# restarts with a new optimizer/scheduler and the ClassificationLossPart
-# criterion (pure classification finetune). Uncomment to enable:
-# two_phase: True
-# phase2_start: 1000
-# phase2_criterion_kwargs: {}          # kwargs for ClassificationLossPart
-# phase2_optimizer: adamw              # defaults to `optimizer`
-# phase2_optimizer_kwargs:             # defaults to `optimizer_kwargs`
-#   lr: 0.0005
-#   weight_decay: 0.0005
-# phase2_scheduler: cosine             # defaults to `scheduler`
-# phase2_scheduler_kwargs:             # defaults to `scheduler_kwargs`
-#   lr_warmup_epochs: 10
-#   lr_eta_min: 0.0001
+# Two-phase training: phase 1 = marginal loss only, then restart with a new
+# optimizer/scheduler and the ClassificationLossPart criterion (classification
+# finetune). phase2_start: auto switches when the shift gate (normal/anomalous
+# class organization) has stabilized: per-epoch average >= threshold for
+# `patience` consecutive epochs, never before `min_epochs`, never after `max_wait`.
+two_phase: True
+phase2_start: auto
+phase2_auto_threshold: 0.9
+phase2_auto_patience: 5
+phase2_auto_min_epochs: 300
+phase2_auto_max_wait: 900
+phase2_criterion_kwargs: {}          # kwargs for ClassificationLossPart
+phase2_optimizer: adamw
+phase2_optimizer_kwargs:
+  lr: 0.0005
+  weight_decay: 0.0005
+phase2_scheduler: cosine
+phase2_scheduler_kwargs:
+  lr_warmup_epochs: 10
+  lr_eta_min: 0.0001
 
 # Momentum (EMA) encoder, MoCo-v2 style
 ema_momentum: 0.999
@@ -50,10 +53,9 @@ update_cluster_head_only: False # Update full network in classification
 num_heads: 1 # Only use one head
 
 # Head architecture options
-localization_head: False # Auxiliary per-timestep head: predicts WHERE the injected
-                         # sub-anomaly is (used with criterion localization_weight > 0)
-pooling: mean # Window pooling for the cluster head: mean (default) | max | avgmax
-              # avgmax keeps fine local details (concat of mean+max; doubles head input dim)
+localization_head: False
+pooling: avgmax # Window pooling for the cluster head: mean (default) | max | avgmax
+                # avgmax keeps fine local details (concat of mean+max; doubles head input dim)
 
 # Model
 backbone: resnet_ts
@@ -80,7 +82,7 @@ transformation_kwargs:
   noise_sigma: 0.01
 
 # Hyperparameters
-epochs: 2000
+epochs: 1000
 optimizer: adamw
 optimizer_kwargs:
   lr: 0.001
