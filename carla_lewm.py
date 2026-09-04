@@ -157,7 +157,22 @@ def run_adapt(p, device):
     logger.finalize()
 
 
-STAGES = {"pretrain": run_pretrain, "pretext": run_pretrain, "adapt": run_adapt}
+@torch.no_grad()
+def run_score(p, device):
+    """Score stage: same report flow as the trunk-only entry.
+
+    Builds the full assembly (heads ride along but scoring reads the trunk
+    path only), loads full weights, and emits calibration, scores, and the
+    metrics report through the shared engine.
+    """
+    from utils.reporting import score_with_model
+
+    logger = _make_logger(p)
+    score_with_model(p, device, get_full_model, logger)
+
+
+STAGES = {"pretrain": run_pretrain, "pretext": run_pretrain, "adapt": run_adapt,
+          "score": run_score}
 
 
 def main(args, update_dictionary={}):

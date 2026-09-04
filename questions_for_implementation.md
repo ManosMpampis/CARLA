@@ -95,6 +95,18 @@ Still open, mapped to tickets (foundation lands first per Q10):
   default momentum 0.99) driven per-step by a new `update_running_stats`
   Trainer hook (no-op on the bare trunk, mirrors the codebook pattern).
 
+## Round-3 reporting (2026-09-04 — implemented)
+
+- Verified `metrics/metrics.py:combine_all_evaluation_scores` is the single
+  metric engine in both entries: `carla_jepa` helpers only repackaged its
+  output, so outputs are identical by construction.
+- Moved the three helpers plus the full score flow into
+  `utils/reporting.py` (`honest_metrics`, `window_means`,
+  `series_from_dataset`, `score_with_model`); `carla_jepa.run_score` is now
+  a thin wrapper (behavior-identical, T10 re-passing with same clean-side
+  numbers); `carla_lewm.py` gained a `score` stage with the same report
+  sections, verified end-to-end on the synthetic demo run.
+
 ## Q10 — TF-Scout full trunk in this pass?
 **Doubt:** tickets 13-18 imply full dual-stream (STFT grid, FiLM, x-attn, FPN, iFFT head). One pass cannot land all of it cleanly.
 **Taken:** this pass lands the LeWM foundation + head/loss/criterion structure + open-loop wiring points (proposals as masks, action slot present but optional). Full frequency pathway + steering + FPN fusion stays behind a `tfscout` registry stub validated by shape tests, to be filled in ticket order.
