@@ -59,6 +59,7 @@ CRITERION_BUILDERS = {
     "metric": "losses.metric:MetricLoss",
     "energy": "losses.alignment:EnergyLoss",
     "viewkl": "losses.alignment:ViewKLLoss",
+    "lewm_true": "losses.lewm_true:TrueLeWMLoss",
 }
 
 

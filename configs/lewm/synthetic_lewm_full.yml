@@ -4,87 +4,121 @@
 #          --fname "" --version <name>
 # Scoring reuses carla_jepa.py with score_checkpoint pointing at the
 # exported trunk.pth.tar in the run dir.
-setup: jepa
-stage: pretrain
+setup: jepa          # path layout + stage names; keep (drives jepa_* paths)
+stage: pretrain      # pretrain | adapt | score (adapt needs pretrained_from)
 
-# Trunk: masked part-predictor (default class), disposable projector for
-# SIGReg, block masking so masked positions carry the loss.
-backbone: jepa_pyramid
-predictor: masked
-predictor_kwargs:
-  nhead: 2
-  num_layers: 1
-model_kwargs:
-  in_channels: 2
-  stem_channels: 8
-  level_channels: [8, 12]
-  kernel_size: 5
-  strides: [2, 2]
-  dropout: false
-use_projector: true
+# --- Trunk: encoder + part-predictor + anti-collapse -------------------
+backbone: jepa_pyramid   # jepa_pyramid (conv, default) | jepa_transformer
+                         # (capacity arm) | tfscout (stub: time pyramid until
+                         # the frequency pathway lands) | resnet_ts (legacy)
+predictor: masked    # masked (default: non-causal, predicts masked tokens from
+                     #   visible context on both sides; needs block masking) |
+                     # tcn (causal dilated-conv forecaster arm) |
+                     # gru (recurrent causal arm)
+predictor_kwargs:    # forwarded to the predictor class; tcn/gru ignore these
+  nhead: 2           # attention heads in the masked predictor (2 tiny / 4+ real)
+  num_layers: 1      # transformer depth (1 tiny / 2 real; predictor ~ 1/2 width)
+model_kwargs:        # PyramidEncoder structure; scalars broadcast per block
+  in_channels: 2     # sensors (2 synthetic | 38 SMD | 55 PSM)
+  stem_channels: 8   # full-resolution detail width (8 tiny / 32 real)
+  level_channels: [8, 12]  # per-level widths; len sets pyramid depth
+                           # ([8,12] tiny / [32,64,96] real)
+  kernel_size: 5     # conv kernel per block; list per block or per conv
+                     # (stem always uses stem_kernel 7 unless overridden)
+  strides: [2, 2]    # downsample per level; cumulative strides map tokens
+                     # back to input steps for scoring
+  dropout: false      # true on real data, false on tiny deterministic runs
+use_projector: true  # disposable MLP+BN before SIGReg (LeWM requirement);
+                     # never touches scoring; false only for ablations
 
-anti_collapse: sigreg
-criterion: jepa
+anti_collapse: sigreg  # sigreg (primary, lambda below) | ema (teacher,
+                       # momentum 0.99925) | codebook (prototypes + warmup) |
+                       # none (tracer/collapse demo only)
+criterion: jepa        # trunk criterion; the full run wraps it (see weights)
 criterion_kwargs:
-  lambda_sigreg: 0.1
+  lambda_sigreg: 0.1   # isotropy weight; the single effective hyperparameter
   sigreg_kwargs:
-    num_slices: 8
+    num_slices: 8      # random projection slices (8 tiny / 16 real)
 
-# Attached heads: training-only recon focus + metric head with running
-# centers. Absent members (box_aux, h1-h3) stay dormant.
+# --- Attached heads: what each member means ----------------------------
+# recon_aux: training-only focus head. Lightweight decoder trunk -> window;
+#   forces the time pathway to keep fine+global detail. Pruned at inference.
+#   kwargs: bottleneck (8 tiny / 16 real; keep small so it regularizes).
+# box_aux: training-only YOLO-1D head. Per-cell (objectness, center, length)
+#   intervals trained on synthetic boxes; doubles as proposal generator.
+#   kwargs: num_cells (grid, 16), num_types (0 = no type logit).
+# h1 (detection, PRIMARY): dense per-position logit + interval grid sharing
+#   the box geometry. The supervised detector; loss needs synthetic boxes.
+#   kwargs: num_cells.
+# h2 (reconstruction): per-level decoders -> window + spectral iFFT head
+#   (phase-reuse) + optional tiny per-level VAE (mu/logvar, temporal conv).
+#   Score = residual map. kwargs: tiny_vae (off default), vae_dim (8),
+#   vae_kernel (3).
+# h3 (energy, tournament-only): scalar energy per position; normals low,
+#   margin above for probes. Score = energy. kwargs: hidden (32), margin (5).
+# h4 (metric-learning, PRIMARY): embeddings pulled to a fixed per-machine
+#   center (running EMA, normal-only) + synthetic anomalies pushed away.
+#   Score = distance-to-center map. kwargs: embed_dim (8 tiny / 32 real).
+# Absent members stay dormant in both model and criterion, so any subset
+# (e.g. trunk-only, trunk+aux, full H1-H4) runs from this one file.
 heads:
   recon_aux:
     bottleneck: 8
   h4:
     embed_dim: 8
-center_momentum: 0.9
-head_criterion_kwargs:
-  aux_recon: {}
-  h4: {}
-  weights:
-    trunk: 1.0
-    aux: 0.5
-    h4: 0.5
+center_momentum: 0.9   # EMA for H4 running centers (0.9 demo / 0.99 real);
+                       # tracks slow normal drift, never takes gradients
+head_criterion_kwargs: # loss knobs per attached member; a member trains only
+                       # if BOTH its heads: entry and its loss entry exist
+  aux_recon: {}        # ReconLoss: lambda_shape (shape weight, 0 = MSE only),
+                       # gamma (Soft-DTW smoothing), bandwidth (None = off)
+  h4: {}               # MetricLoss: lambda_var, var_floor, eta_push (SAD push)
+  weights:             # tournament mixing; start trunk-heavy, raise heads
+    trunk: 1.0         # dense part-prediction (V-JEPA-style, always on)
+    aux: 0.5           # focus-head regularizer strength
+    h4: 0.5            # metric-head strength (raise once centers stabilize)
 
-# Data (synthetic corpus is always its own)
-train_db_name: synthetic
+# --- Data (synthetic corpus is always its own) --------------------------
+train_db_name: synthetic  # synthetic | smd | psm
 val_db_name: synthetic
-fname: ""
-wsz: 64
-stride: 4
-val_fraction: 0.15
+fname: ""            # machine file for smd/psm (e.g. machine-1-1.txt)
+wsz: 64              # window length (64 tiny / 256 SMD / 512 TF-Scout default)
+stride: 4            # sliding-window step (4 tiny / 10 smoke)
+val_fraction: 0.15   # tail of train split held out for validation
 synthetic_kwargs:
   n_steps: 4000
   n_channels: 2
   test_n_steps: 2000
 
 stage_a:
-  corpus: single
+  corpus: single     # single (official per-machine) | joint (exploratory)
   masking:
-    mode: block
-    num_blocks: 2
-    block_span: 8
+    mode: block      # block (masked predictor needs this) | none (dense loss)
+    num_blocks: 2    # masked spans per window (2 tiny / 4 real)
+    block_span: 8    # span in input steps (8 tiny / 24 real)
 stage_b:
-  mode: frozen
+  mode: frozen       # adapt stage: frozen (encoder fixed) | finetune (all)
 
-# Training
-seed: 4
-device: cpu
-amp: false
-epochs: 3
-batch_size: 32
-num_workers: 0
-optimizer: adamw
+# --- Training ------------------------------------------------------------
+seed: 4              # repo default; keep fixed for comparable runs
+device: cpu          # cpu (demos/tests) | cuda (real runs, AMP optional)
+amp: false           # bf16 autocast on CUDA only; scoring always fp32
+epochs: 3            # demo length; real runs 40+ (tracer) / 2 (smoke)
+batch_size: 32       # 32 tiny / 64 smoke
+num_workers: 0       # keep 0 (deterministic dataloading)
+optimizer: adamw     # sgd | adam | adamw
 optimizer_kwargs:
-  lr: 0.002
+  lr: 0.002          # 0.004 tracer / 0.002 tiny / 0.001 smoke
   weight_decay: 0.01
-scheduler: constant
+scheduler: constant  # constant | cosine | cosine_restart | step | linear
 scheduler_kwargs:
   lr_eta_min: 0.0
 
+# --- Calibration / scoring (train-side only, never test labels) ----------
 calibration_kwargs:
-  quantile: 0.995
+  quantile: 0.995    # clean-train quantile for the detection threshold
 probe_kwargs:
-  num_probe_windows: 100
-  portion: 0.99
-eval_window_size: 50
+  num_probe_windows: 100  # SubAnomaly probes for fusion weights (0 = off)
+  portion: 0.99      # anomaly strength kept nominal (train-side only)
+eval_window_size: 50  # checking window for event-style metrics (50 tiny /
+                      # 100 SMD)

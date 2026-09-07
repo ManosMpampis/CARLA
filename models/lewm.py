@@ -98,7 +98,7 @@ class LeWMModel(nn.Module):
     @torch.no_grad()
     def _targets_from(self, x: torch.Tensor, latents: dict) -> dict:
         if self.target_encoder is not None:
-            return self.target_encoder.encode(x)
+            return self.target_encoder.encode(x) # EMA target
         return {n: z.detach() for n, z in latents.items()}
 
     def forward(self, x: torch.Tensor, mask: dict | None = None,

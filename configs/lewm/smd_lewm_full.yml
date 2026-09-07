@@ -4,77 +4,114 @@
 #          --fname machine-1-1.txt --version <name>
 # Then score with carla_jepa.py (smd_score_smoke shape) pointing
 # score_checkpoint at this run's trunk.pth.tar. Short acceptance schedule.
-setup: jepa
-stage: pretrain
+setup: jepa          # path layout + stage names; keep (drives jepa_* paths)
+stage: pretrain      # pretrain | adapt (needs pretrained_from) | score
 
-backbone: jepa_pyramid
-predictor: masked
-predictor_kwargs:
-  nhead: 4
-  num_layers: 2
-model_kwargs:
-  in_channels: 38
-  stem_channels: 32
-  level_channels: [32, 64, 96]
-  kernel_size: 5
-  strides: [2, 2, 2]
-  dropout: true
-use_projector: true
+# --- Trunk: encoder + part-predictor + anti-collapse -------------------
+backbone: jepa_pyramid   # jepa_pyramid (conv, default) | jepa_transformer
+                         # (capacity arm) | tfscout (stub until the frequency
+                         # pathway lands) | resnet_ts (legacy)
+predictor: masked    # masked (default: non-causal, predicts masked tokens
+                     #   from visible context on both sides) |
+                     # tcn (causal dilated-conv arm) | gru (recurrent arm)
+predictor_kwargs:    # masked-predictor shape; tcn/gru ignore these
+  nhead: 4           # attention heads (4 real / 2 tiny)
+  num_layers: 2      # transformer depth (2 real / 1 tiny)
+model_kwargs:        # PyramidEncoder structure; scalars broadcast per block
+  in_channels: 38    # sensors (38 SMD | 55 PSM | 2 synthetic)
+  stem_channels: 32  # full-resolution detail width (32 real / 8 tiny)
+  level_channels: [32, 64, 96]  # per-level widths; len sets pyramid depth
+  kernel_size: 5     # conv kernel per block (stem fixed at 7 unless
+                     # stem_kernel overrides)
+  strides: [2, 2, 2]  # downsample per level; cumulative strides map tokens
+                      # back to input steps for scoring
+  dropout: true       # true on real data, false on tiny deterministic runs
+use_projector: true  # disposable MLP+BN before SIGReg (LeWM requirement);
+                     # never touches scoring; false only for ablations
 
-anti_collapse: sigreg
-criterion: jepa
+anti_collapse: sigreg  # sigreg (primary) | ema (teacher, momentum 0.99925) |
+                       # codebook (prototypes + k-means warmup) |
+                       # none (tracer/collapse demo only)
+criterion: jepa        # trunk criterion; the full run wraps it (see weights)
 criterion_kwargs:
-  lambda_sigreg: 0.1
+  lambda_sigreg: 0.1   # isotropy weight; the single effective hyperparameter
   sigreg_kwargs:
-    num_slices: 16
+    num_slices: 16     # random projection slices (16 real / 8 tiny)
 
+# --- Attached heads: what each member means ----------------------------
+# recon_aux: training-only focus head. Lightweight decoder trunk -> window;
+#   forces the time pathway to keep fine+global detail. Pruned at inference.
+#   kwargs: bottleneck (16 real / 8 tiny; keep small so it regularizes).
+# box_aux: training-only YOLO-1D head. Per-cell (objectness, center, length)
+#   intervals trained on synthetic boxes; doubles as proposal generator.
+#   kwargs: num_cells (grid, 16), num_types (0 = no type logit).
+# h1 (detection, PRIMARY): dense per-position logit + interval grid sharing
+#   the box geometry. The supervised detector; loss needs synthetic boxes.
+#   kwargs: num_cells.
+# h2 (reconstruction): per-level decoders -> window + spectral iFFT head
+#   (phase-reuse) + optional tiny per-level VAE (mu/logvar, temporal conv).
+#   Score = residual map. kwargs: tiny_vae (off default), vae_dim (8),
+#   vae_kernel (3).
+# h3 (energy, tournament-only): scalar energy per position; normals low,
+#   margin above for probes. Score = energy. kwargs: hidden (32), margin (5).
+# h4 (metric-learning, PRIMARY): embeddings pulled to a fixed per-machine
+#   center (running EMA, normal-only) + synthetic anomalies pushed away.
+#   Score = distance-to-center map. kwargs: embed_dim (32 real / 8 tiny).
+# Absent members stay dormant in both model and criterion, so any subset
+# (e.g. trunk-only, trunk+aux, full H1-H4) runs from this one file.
 heads:
   recon_aux:
     bottleneck: 16
   h4:
     embed_dim: 32
-center_momentum: 0.99
-head_criterion_kwargs:
-  aux_recon: {}
-  h4: {}
-  weights:
-    trunk: 1.0
-    aux: 0.5
-    h4: 0.5
+center_momentum: 0.99  # EMA for H4 running centers (0.99 real / 0.9 demo);
+                       # tracks slow normal drift, never takes gradients
+head_criterion_kwargs: # loss knobs per attached member; a member trains only
+                       # if BOTH its heads: entry and its loss entry exist
+  aux_recon: {}        # ReconLoss: lambda_shape (shape weight, 0 = MSE only),
+                       # gamma (Soft-DTW smoothing), bandwidth (None = off)
+  h4: {}               # MetricLoss: lambda_var, var_floor, eta_push (SAD push)
+  weights:             # tournament mixing; start trunk-heavy, raise heads
+    trunk: 1.0         # dense part-prediction (always on)
+    aux: 0.5           # focus-head regularizer strength
+    h4: 0.5            # metric-head strength (raise once centers stabilize)
 
-train_db_name: smd
+# --- Data: single-machine corpus (official SMD protocol) -----------------
+train_db_name: smd    # smd | psm | synthetic
 val_db_name: smd
-fname: machine-1-1.txt
-wsz: 256
-stride: 10
-val_fraction: 0.1
+fname: machine-1-1.txt  # target machine; one run per machine for headlines
+wsz: 256             # window length (256 SMD / 64 tiny / 512 TF-Scout)
+stride: 10           # sliding-window step (10 smoke / 4 tiny)
+val_fraction: 0.1    # tail of train split held out for validation
 
 stage_a:
-  corpus: single
+  corpus: single     # single (official per-machine) | joint (exploratory)
   masking:
-    mode: block
-    num_blocks: 4
-    block_span: 24
+    mode: block      # block (masked predictor needs this) | none (dense loss)
+    num_blocks: 4    # masked spans per window (4 real / 2 tiny)
+    block_span: 24   # span in input steps (24 real / 8 tiny)
 stage_b:
-  mode: frozen
+  mode: frozen       # adapt stage: frozen (encoder fixed) | finetune (all)
 
-seed: 4
-device: cuda
-amp: false
-epochs: 2
-batch_size: 64
-num_workers: 0
-optimizer: adamw
+# --- Training ------------------------------------------------------------
+seed: 4              # repo default; keep fixed for comparable runs
+device: cuda         # cuda (real runs, AMP optional) | cpu (demos/tests)
+amp: false           # bf16 autocast on CUDA only; scoring always fp32
+epochs: 2            # smoke length; real runs 40+ (tracer)
+batch_size: 64       # 64 smoke / 32 tiny
+num_workers: 0       # keep 0 (deterministic dataloading)
+optimizer: adamw     # sgd | adam | adamw
 optimizer_kwargs:
-  lr: 0.001
+  lr: 0.001          # 0.001 smoke / 0.002 tiny / 0.004 tracer
   weight_decay: 0.01
-scheduler: constant
+scheduler: constant  # constant | cosine | cosine_restart | step | linear
 scheduler_kwargs:
   lr_eta_min: 0.0
 
+# --- Calibration / scoring (train-side only, never test labels) ----------
 calibration_kwargs:
-  quantile: 0.995
+  quantile: 0.995    # clean-train quantile for the detection threshold
 probe_kwargs:
-  num_probe_windows: 200
-  portion: 0.99
-eval_window_size: 100
+  num_probe_windows: 200  # SubAnomaly probes for fusion weights (0 = off)
+  portion: 0.99      # anomaly strength kept nominal (train-side only)
+eval_window_size: 100  # checking window for event metrics (100 SMD / 50 tiny)
