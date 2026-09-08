@@ -1,0 +1,82 @@
+# True-LeWM full arm (T1-T7): Fourier-pyramid encoder with time→frequency
+# FiLM steering, per-layer AdaLN predictor, disposable projector, masked-MSE
+# + SIGReg. Spans from SMD machine-1-1 FFT periods (~712/1424 steps):
+# sub-period fractions of the 512 window.
+setup: jepa
+stage: pretrain
+
+# Model — T4 backbone + T5 steering
+backbone: fourier_pyramid
+model_kwargs:
+  in_channels: 38
+  stem_channels: 32
+  level_channels: [32, 64, 96]
+  kernel_size: 5
+  strides: [2, 2, 2]
+  dropout: true
+  freq_channels: 16
+  use_freq: true
+  use_film: true
+  film_hidden: 64
+
+# Predictor — T1 per-layer AdaLN decoder; action is the T3
+# [mask_ratio, mask_center, mask_span, band_id] probe quad.
+action_dim: 16
+predictor_kwargs:
+  arch: adaln
+  nhead: 4
+  num_layers: 3
+
+# T2 disposable projector (SIGReg sees it, scoring never does).
+use_projector: true
+projector_hidden: 128
+
+criterion: lewm_true
+criterion_kwargs:
+  lambda_sigreg: 0.1
+  sigreg_kwargs:
+    num_slices: 16
+
+# T6 probe-query scoring geometry (train ignores these).
+time_probes: 4
+band_probes: 3
+n_bands: 3
+
+# Data — single-machine corpus
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 512
+stride: 10
+val_fraction: 0.1
+
+stage_a:
+  corpus: single
+  masking:
+    mode: block_input
+    num_blocks: 3
+    span_choices: [64, 128, 178, 256]
+stage_b:
+  mode: frozen
+
+# Training
+seed: 4
+device: cuda
+amp: false
+epochs: 50
+batch_size: 64
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 200
+  portion: 0.99
+eval_window_size: 100
