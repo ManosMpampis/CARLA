@@ -95,6 +95,93 @@ def build_predictor(kind: str, dim: int, horizons: int, hidden=None, **kwargs):
     raise ValueError(f"Invalid predictor {kind}")
 
 
+class AdaLNTransformerPredictor(nn.Module):
+    """Per-layer AdaLN action-conditioned decoder (T1, LeWM-style).
+
+    Non-causal transformer over latent tokens where every layer norm is
+    replaced by Adaptive LayerNorm driven by the action vector: each layer
+    maps action -> (scale, shift), zero-initialized so training starts from
+    the unconditioned identity and learns conditioning progressively
+    (LeWorldModel arXiv:2603.19312). Contract matches MaskedReconPredictor:
+    (B, D, T) + optional action + optional mask_pos -> (B, 1, D, T).
+    """
+
+    def __init__(self, dim: int, action_dim: int = 16, hidden=None,
+                 nhead: int = 4, num_layers: int = 2, dropout: bool = True):
+        super().__init__()
+        hidden = hidden or dim * 2
+        drop = 0.1 if dropout else 0.0
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.layers = nn.ModuleList([
+            _AdaLNBlock(dim, hidden, nhead, action_dim, drop)
+            for _ in range(int(num_layers))])
+        self.norm = nn.LayerNorm(dim)
+        self.horizons, self.dim = 1, int(dim)
+        self.action_dim = int(action_dim)
+        nn.init.normal_(self.mask_token, std=0.02)
+
+    @staticmethod
+    def _sinusoidal_pe(tokens: int, dim: int, device, dtype):
+        """Position table so identical windows at different offsets differ."""
+        position = torch.arange(tokens, device=device, dtype=dtype).unsqueeze(1)
+        div = torch.exp(torch.arange(0, dim, 2, device=device, dtype=dtype)
+                        * (-math.log(10000.0) / dim))
+        pe = torch.zeros(tokens, dim, device=device, dtype=dtype)
+        pe[:, 0::2] = torch.sin(position * div)
+        pe[:, 1::2] = torch.cos(position * div)
+        return pe
+
+    def forward(self, z: torch.Tensor, action=None, mask_pos=None) -> torch.Tensor:
+        """Decode latents toward target latents, conditioned per-layer."""
+        b, d, t = z.shape
+        seq = z.transpose(1, 2)
+        if mask_pos is not None:
+            m = mask_pos.to(torch.bool).unsqueeze(-1).expand(-1, -1, d)
+            seq = torch.where(m, self.mask_token.expand(b, t, d), seq)
+        seq = seq + self._sinusoidal_pe(t, d, z.device, z.dtype)
+        a = action
+        if a is None:
+            a = z.new_zeros((b, self.action_dim))
+        for blk in self.layers:
+            seq = blk(seq, a)
+        out = self.norm(seq).transpose(1, 2)  # (B, D, T)
+        return out.unsqueeze(1)  # (B, 1, D, T): H=1 contract
+
+
+class _AdaLNBlock(nn.Module):
+    """One transformer block with per-sublayer AdaLN conditioning."""
+
+    def __init__(self, dim: int, hidden: int, nhead: int, action_dim: int,
+                 drop: float):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(dim, nhead, dropout=drop,
+                                          batch_first=True)
+        self.mlp = nn.Sequential(nn.Linear(dim, hidden), nn.GELU(),
+                                 nn.Dropout(drop), nn.Linear(hidden, dim),
+                                 nn.Dropout(drop))
+        self.to_ada1 = nn.Linear(action_dim, 2 * dim)
+        self.to_ada2 = nn.Linear(action_dim, 2 * dim)
+        # Zero-init: conditioning starts as the identity (LeWM requirement).
+        nn.init.zeros_(self.to_ada1.weight)
+        nn.init.zeros_(self.to_ada1.bias)
+        nn.init.zeros_(self.to_ada2.weight)
+        nn.init.zeros_(self.to_ada2.bias)
+
+    @staticmethod
+    def _adaln(x: torch.Tensor, ada: torch.Tensor) -> torch.Tensor:
+        scale, shift = ada.chunk(2, dim=-1)
+        return F.layer_norm(x, x.shape[-1:]) * (1 + scale.unsqueeze(1)) \
+            + shift.unsqueeze(1)
+
+    def forward(self, seq: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+        """Self-attend + MLP, each on AdaLN-modulated residuals."""
+        h, _ = self.attn(self._adaln(seq, self.to_ada1(action)),
+                         self._adaln(seq, self.to_ada1(action)), seq,
+                         need_weights=False)
+        seq = seq + h
+        return seq + self.mlp(self._adaln(seq, self.to_ada2(action)))
+
+
 class MaskedReconPredictor(nn.Module):
     """Non-causal masked-reconstruction predictor (default part predictor).
 

@@ -13,11 +13,19 @@ import torch.nn.functional as F
 
 
 class InputBlockMaskCollator:
-    """Contiguous-block input masking with stride-consistent token masks."""
+    """Contiguous-block input masking with stride-consistent token masks.
 
-    def __init__(self, num_blocks: int = 2, block_span: int = 32):
+    span_choices (T3): sample each block's span from a multi-scale list
+    (e.g. FFT-derived dominant periods) instead of a single span, so the
+    predictor must bridge short- and long-range gaps alike.
+    """
+
+    def __init__(self, num_blocks: int = 2, block_span: int = 32,
+                 span_choices: list | None = None):
         self.num_blocks = int(num_blocks)
         self.block_span = int(block_span)
+        self.span_choices = [int(s) for s in span_choices] \
+            if span_choices else None
 
     def __call__(self, batch_size: int, window: int, level_strides: list) -> dict:
         input_mask = np.stack(
@@ -32,10 +40,17 @@ class InputBlockMaskCollator:
 
     def _input_mask(self, window: int) -> np.ndarray:
         mask = np.zeros(window, dtype=bool)
-        span = max(1, min(self.block_span, window))
         for _ in range(self.num_blocks):
+            span = self._sample_span(window)
             s = int(np.random.randint(0, window - span + 1))
             mask[s:s + span] = True
         if mask.all():  # keep at least some context visible
             mask[int(np.random.randint(0, window))] = False
         return mask
+
+    def _sample_span(self, window: int) -> int:
+        if self.span_choices:
+            span = int(np.random.choice(self.span_choices))
+        else:
+            span = self.block_span
+        return max(1, min(span, window))

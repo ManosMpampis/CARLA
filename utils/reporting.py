@@ -11,6 +11,7 @@ import json
 import os
 
 import numpy as np
+from torchmetrics.functional.classification.precision_recall_curve import precision_recall_curve, _binary_clf_curve, _binary_precision_recall_curve_update
 import torch
 
 
@@ -30,6 +31,10 @@ def honest_metrics(metric_dict, scores, targets, starts, ends) -> dict:
         "point_recall": float(metric_dict["recall"]),
         "point_F1_no_PA": float(metric_dict["f1_score"]),
         "MCC": float(metric_dict["MCC"]),
+        "point_VUS_ROC": float(metric_dict["VUS_ROC"]),
+        "point_VUS_PR": float(metric_dict["VUS_PR"]),
+        "point_R_AUC_ROC": float(metric_dict["R_AUC_ROC"]),
+        "point_R_AUC_PR": float(metric_dict["R_AUC_PR"]),
     }
 
 
@@ -42,6 +47,30 @@ def series_from_dataset(dataset):
     """Dense series matrix backing a dataset (train-side calibration input)."""
     return np.asarray(dataset.series, dtype=np.float32)
 
+def _best_f1_threshold(scores, targets):
+    """Compute the best F1 threshold for a given set of scores and targets."""
+    state = _binary_precision_recall_curve_update(torch.from_numpy(scores), torch.from_numpy(targets), None)
+    fps, tps, thresholds = _binary_clf_curve(state[0], state[1], pos_label=1)
+    precision = tps / (tps + fps)
+    recall = tps / tps[-1]
+    if (state[1] == 0).all():  # all labels are negative, recall is undefined
+        recall = torch.ones_like(recall)
+
+    # need to call reversed explicitly, since including that to slice would
+    # introduce negative strides that are not yet supported in pytorch
+    precision = torch.cat([precision.flip(0), torch.ones(1, dtype=precision.dtype, device=precision.device)])
+    recall = torch.cat([recall.flip(0), torch.zeros(1, dtype=recall.dtype, device=recall.device)])
+    thresholds = thresholds.flip(0).detach().clone()
+    try:
+        f1_score = 2*precision*recall / (precision+recall)
+        if torch.isnan(f1_score).any():
+            f1_score = torch.nan_to_num(f1_score)   
+    except ZeroDivisionError:
+        f1_score = [0.0]
+    best_f1_index = torch.argmax(f1_score)
+    best_f1_threshold = thresholds[best_f1_index]
+    best_f1 = f1_score[best_f1_index].item()
+    return best_f1_threshold
 
 @torch.no_grad()
 def score_with_model(p, device, build_model, logger) -> dict:
@@ -72,7 +101,15 @@ def score_with_model(p, device, build_model, logger) -> dict:
     from utils.common_config import get_jepa_datasets
 
     train_dataset, _ = get_jepa_datasets(p)
-    clean_series = series_from_dataset(train_dataset)
+    # Honest option: calibrate on the held-out val TAIL of the train series
+    # (still clean-train data, never test labels). Val windows are unseen
+    # during optimization, so their score scale matches test-normal better
+    # when the model fits the train windows tightly.
+    cal_src = p.get("calibration_source", "train")
+    if cal_src == "val" and hasattr(train_dataset, "val_series"):
+        clean_series = np.asarray(train_dataset.val_series, dtype=np.float32)
+    else:
+        clean_series = series_from_dataset(train_dataset)
     clean_result = scorer.score_series(clean_series, p["wsz"], p["stride"])
     clean_channels = {"fused": clean_result["scores"], **clean_result["channels"]}
 
@@ -114,6 +151,7 @@ def score_with_model(p, device, build_model, logger) -> dict:
     calibrator.save(p["calibration_path"], extra={
         "threshold_fused": threshold,
         "inputs": "clean-train scores only (+ injected-anomaly probes for weights)",
+        "calibration_source": cal_src,
     })
     logger.log(f"Calibration saved to {p['calibration_path']} "
                f"(threshold {threshold:.6g}, fallback={calibrator.fallback})")
@@ -137,6 +175,22 @@ def score_with_model(p, device, build_model, logger) -> dict:
         if key.startswith("pa_") and isinstance(value, (int, float))
     }
     report = {"honest": honest, "point_adjust_comparability": point_adjust}
+
+    # report theoretical best threshold (fused-test quantile) for reference, but do not use it
+    best_f1_threshold = _best_f1_threshold(fused_test, targets)
+
+    best_pred_labels = (torch.from_numpy(fused_test) >= best_f1_threshold).numpy().astype(int)
+    best_metric_dict = combine_all_evaluation_scores(best_pred_labels, targets, window_size)
+
+    best_metrics = honest_metrics(best_metric_dict, fused_test, targets,
+                            test_result["start_idxs"], test_result["end_idxs"])
+    best_point_adjust = {
+        key[3:]: float(value) for key, value in best_metric_dict.items()
+        if key.startswith("pa_") and isinstance(value, (int, float))
+    }
+    report["best_possible/honest"] = best_metrics
+    report["best_possible/point_adjust_comparability"] = best_point_adjust
+    report["best_possible"] = {"threshold": float(threshold)}
 
     # mandatory no-training baseline: same scoring path with an untrained
     # model of the identical architecture

@@ -1,11 +1,12 @@
-"""True-LeWM training entry: two-stream input masking, one shared encoder.
+"""Steered-LeWM training entry: single-scale ResNet + time aux + freq predictor.
 
-Mirrors carla_jepa.py stage-for-stage (pretrain/adapt/score, checkpoint /
-resume, TensorBoard, AMP) but builds TrueLeWMModel (models/lewm_true.py)
-instead of LeWMModel: the encoder sees mask(X) and X in two forward passes
-and an action-conditioned predictor bridges the gap. Scoring reuses the
-shared engine (utils.reporting.score_with_model), so calibration, scores,
-and metrics land in the same files as every other arm.
+Mirrors carla_lewm_true.py stage-for-stage (pretrain/adapt/score, checkpoint /
+resume, TensorBoard, AMP) but builds SteeredFreqLeWMModel
+(models/steered_lewm.py) with SubAnomalyMaskCollator
+(utils/masking_steered.py): the encoder sees X_clean and X_inj in two forward
+passes with no stop-grad anywhere, the auxiliary never receives the action,
+and the mask feeds only the frequency stem. Scoring reuses the shared engine
+(utils.reporting.score_with_model).
 """
 import argparse
 import os
@@ -23,7 +24,7 @@ from utils.common_config import (
     get_val_dataloader,
 )
 from utils.config import create_config
-from utils.masking_true import InputBlockMaskCollator
+from utils.masking_steered import SubAnomalyMaskCollator
 from utils.trainer import Trainer
 from utils.utils import Logger
 
@@ -37,24 +38,26 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def get_true_model(p):
-    """Shared pyramid encoder (time or Fourier) + action predictors."""
+def get_steered_model(p):
+    """Steered ResNet encoder + time auxiliary + frequency predictor."""
     from models import get_backbone
-    from models.lewm_true import TrueLeWMModel
+    from models.steered_lewm import SteeredFreqLeWMModel
 
-    kwargs = dict(p["model_kwargs"])
-    if p.get("backbone", "jepa_pyramid") == "fourier_pyramid":
-        kwargs.setdefault("window", p["wsz"])
-    built = get_backbone(p.get("backbone", "jepa_pyramid"), **kwargs)
-    return TrueLeWMModel(
+    enc_kwargs = dict(p.get("model_kwargs", {}))
+    built = get_backbone(p.get("backbone", "steered_resnet"), **enc_kwargs)
+    aux_kwargs = dict(p.get("aux_kwargs", {}))
+    pred_kwargs = dict(p.get("predictor_kwargs", {}))
+    return SteeredFreqLeWMModel(
         encoder=built["model"],
-        action_dim=p.get("action_dim", 16),
-        predictor_kwargs=p.get("predictor_kwargs", None),
-        use_projector=p.get("use_projector", False),
-        projector_hidden=p.get("projector_hidden", None),
-        time_probes=p.get("time_probes", 4),
-        band_probes=p.get("band_probes", 0),
-        n_bands=p.get("n_bands", 3),
+        aux_channels=aux_kwargs.get("aux_channels", (32, 32, 32)),
+        stem_channels=pred_kwargs.get("stem_channels", 64),
+        neck_widths=tuple(pred_kwargs.get("neck_widths", (64, 64, 64))),
+        n_fft=int(pred_kwargs.get("n_fft", 64)),
+        hop_length=int(pred_kwargs.get("hop_length", 16)),
+        win_length=int(pred_kwargs.get("win_length", 64)),
+        aux_kernels=tuple(aux_kwargs.get("kernels", (7, 5, 3))),
+        norm=enc_kwargs.get("norm", "batch"),
+        dropout=enc_kwargs.get("dropout", True),
     )
 
 
@@ -69,21 +72,22 @@ def _make_logger(p):
     destructive = str(p.get("stage", "pretrain")).lower() != "score"
     logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
                     use_tensorboard=True, delete_files=destructive)
-    logger.log(f"CARLA true-LeWM stage '{p.get('stage', 'pretrain')}' --> ")
+    logger.log(f"CARLA steered-LeWM stage '{p.get('stage', 'pretrain')}' --> ")
     logger.log_hyperparams(p)
     return logger
 
 
 def _masking_collator(p):
     masking = p.get("stage_a", {}).get("masking", {})
-    if masking.get("mode", "none") != "block_input":
-        return None
-    kwargs = {k: v for k, v in masking.items() if k != "mode"}
-    return InputBlockMaskCollator(**kwargs)
+    mode = str(masking.get("mode", "none")).lower()
+    if mode in ("subanomaly", "sub_anomaly", "injected"):
+        kwargs = {k: v for k, v in masking.items() if k != "mode"}
+        return SubAnomalyMaskCollator(**kwargs)
+    return None
 
 
 class _GraphWrapper(torch.nn.Module):
-    """Flattens TrueLeWMModel outputs for TensorBoard graph logging only."""
+    """Flattens steered-model outputs for TensorBoard graph logging only."""
 
     def __init__(self, model):
         super().__init__()
@@ -91,16 +95,13 @@ class _GraphWrapper(torch.nn.Module):
 
     def forward(self, x):
         out = self.model(x)
-        flat = {}
-        for name, z in out["latents"].items():
-            flat[f"latent/{name}"] = z
-            flat[f"predicted/{name}"] = out["predicted"][name][:, 0]
-            flat[f"context/{name}"] = out["context"][name]
-        return flat
+        return {"latent": out["latents"]["L0"],
+                "predicted": out["predicted"]["L0"],
+                "mask_logits": out["mask_logits"]}
 
 
 def _build_run(p, device):
-    model = get_true_model(p)
+    model = get_steered_model(p)
     criterion = get_criterion(p).to(device)
     optimizer = get_optimizer(p, model)
     scheduler = get_scheduler(p, optimizer)
@@ -131,7 +132,7 @@ def run_pretrain(p, device):
                       val_collator=_masking_collator(p))
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
     best_val_loss = trainer.fit(train_loader, val_loader, start_epoch, best_val_loss)
-    logger.log(f"True-LeWM pretraining finished; best val loss {best_val_loss:.6f}")
+    logger.log(f"Steered-LeWM pretraining finished; best val loss {best_val_loss:.6f}")
     logger.finalize()
 
 
@@ -151,7 +152,7 @@ def run_adapt(p, device):
         for param in model.encoder.parameters():
             param.requires_grad = False
         model.encoder_frozen = True
-        logger.log("Adaptation mode 'frozen': encoder frozen")
+        logger.log("Adaptation mode 'frozen': encoder frozen (aux+predictor train)")
     elif mode == "finetune":
         logger.log("Adaptation mode 'finetune': all parameters update")
     else:
@@ -178,7 +179,7 @@ def run_score(p, device):
     from utils.reporting import score_with_model
 
     logger = _make_logger(p)
-    score_with_model(p, device, get_true_model, logger)
+    score_with_model(p, device, get_steered_model, logger)
 
 
 STAGES = {
@@ -200,7 +201,7 @@ def main(args, update_dictionary={}):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="True-LeWM TSAD harness")
+    parser = argparse.ArgumentParser(description="Steered-LeWM TSAD harness")
     parser.add_argument("--config_env", help="Config file for the environment")
     parser.add_argument("--config_exp", help="Config file for the experiment")
     parser.add_argument("--fname", help="File name of the dataset machine", default="")

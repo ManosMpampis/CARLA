@@ -45,8 +45,14 @@ class TrueLeWMLoss(nn.Module):
             losses[f"pred_{name}"] = lvl
             level_losses.append(lvl)
         losses["pred_loss"] = torch.stack(level_losses).mean()
-        pooled = {n: torch.cat([context[n], targets[n]], dim=-1)
-                  for n in targets}
-        losses["sigreg"] = self.sigreg(pooled)
+        if outputs.get("projected") is not None:
+            # T2: disposable projections feed SIGReg; scoring never sees them.
+            vals = [self.sigreg.statistic(t.float())
+                    for t in outputs["projected"].values()]
+            losses["sigreg"] = torch.stack(vals).mean()
+        else:
+            pooled = {n: torch.cat([context[n], targets[n]], dim=-1)
+                      for n in targets}
+            losses["sigreg"] = self.sigreg(pooled)
         losses["loss"] = losses["pred_loss"] + self.lambda_sigreg * losses["sigreg"]
         return losses

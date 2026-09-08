@@ -36,12 +36,19 @@ class Projector(nn.Module):
 
 
 class ActionEmbed(nn.Module):
-    """Embed a YOLO-style triple (objectness, center, length) to action."""
+    """Embed an action descriptor to the predictor conditioning vector.
 
-    def __init__(self, action_dim: int = 16, hidden: int = 32):
+    in_dim=3 keeps the legacy YOLO-style triple (objectness, center,
+    length); the true-LeWM path uses in_dim=4
+    [mask_ratio, mask_center, mask_span, band_id].
+    """
+
+    def __init__(self, action_dim: int = 16, hidden: int = 32,
+                 in_dim: int = 3):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(3, hidden), nn.GELU(), nn.Linear(hidden, action_dim))
+            nn.Linear(int(in_dim), hidden), nn.GELU(),
+            nn.Linear(hidden, action_dim))
         self.action_dim = action_dim
         for m in self.modules():
             if isinstance(m, nn.Linear):

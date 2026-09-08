@@ -28,6 +28,13 @@ def _build_jepa_transformer(**kwargs):
     return {"model": enc, "dim": enc.level_dims}
 
 
+def _build_fourier_pyramid(**kwargs):
+    from models.fourier_pyramid import FourierPyramidEncoder
+
+    encoder = FourierPyramidEncoder(**kwargs)
+    return {"model": encoder, "dim": encoder.level_dims}
+
+
 def _build_tfscout_stub(**kwargs):
     """Placeholder trunk entry (ticket 13): validates config plumbing.
 
@@ -41,10 +48,19 @@ def _build_tfscout_stub(**kwargs):
     return {"model": encoder, "dim": encoder.level_dims}
 
 
+def _build_steered_resnet(**kwargs):
+    from models.steered_lewm import SteeredResNetEncoder
+
+    encoder = SteeredResNetEncoder(**kwargs)
+    return {"model": encoder, "dim": encoder.level_dims}
+
+
 BACKBONE_REGISTRY = {
     "resnet_ts": _build_resnet_ts,
+    "steered_resnet": _build_steered_resnet,
     "jepa_pyramid": _build_jepa_pyramid,
     "jepa_transformer": _build_jepa_transformer,
+    "fourier_pyramid": _build_fourier_pyramid,
     "tfscout": _build_tfscout_stub,
 }
 

@@ -16,10 +16,33 @@ import numpy as np
 from sklearn.metrics import (average_precision_score, f1_score,
                              matthews_corrcoef, precision_score,
                              recall_score, roc_auc_score)
-
+import torch
+from torchmetrics.functional.classification.precision_recall_curve import _binary_clf_curve, _binary_precision_recall_curve_update
 
 def sweep(scores, labels, n_grid=2000):
     """Best point-F1 / MCC over a threshold grid spanning the score range."""
+    state = _binary_precision_recall_curve_update(torch.from_numpy(scores), torch.from_numpy(labels), None)
+    fps, tps, thresholds = _binary_clf_curve(state[0], state[1], pos_label=1)
+    precision = tps / (tps + fps)
+    recall = tps / tps[-1]
+    if (state[1] == 0).all():  # all labels are negative, recall is undefined
+        recall = torch.ones_like(recall)
+
+    # need to call reversed explicitly, since including that to slice would
+    # introduce negative strides that are not yet supported in pytorch
+    precision = torch.cat([precision.flip(0), torch.ones(1, dtype=precision.dtype, device=precision.device)])
+    recall = torch.cat([recall.flip(0), torch.zeros(1, dtype=recall.dtype, device=recall.device)])
+    thresholds = thresholds.flip(0).detach().clone()
+    try:
+        f1_score = 2*precision*recall / (precision+recall)
+        if torch.isnan(f1_score).any():
+            f1_score = torch.nan_to_num(f1_score)   
+    except ZeroDivisionError:
+        f1_score = [0.0]
+    best_f1_index = torch.argmax(f1_score)
+    best_f1_threshold = thresholds[best_f1_index]
+    best_f1 = f1_score[best_f1_index].item()
+    
     lo, hi = float(scores.min()), float(scores.max())
     grid = np.unique(np.quantile(scores, np.linspace(0, 1, n_grid)))
     grid = np.concatenate([[lo - 1e-9], grid])
@@ -54,4 +77,4 @@ def main(path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main("results/smd//lewm/configs/jepa/lewm/smd_lewm_full512_pretrain.yml/machine-1-1.txt/jepa/scores.npz")

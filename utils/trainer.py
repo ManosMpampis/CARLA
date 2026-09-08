@@ -20,7 +20,7 @@ class Trainer:
     """
 
     def __init__(self, p, model, criterion, optimizer, scheduler, device, logger,
-                 collator=None, amp: bool = False):
+                 collator=None, amp: bool = False, val_collator=None):
         self.p = p
         self.model = model
         self.criterion = criterion
@@ -30,6 +30,7 @@ class Trainer:
         self.logger = logger
         self.collator = collator
         self.amp = bool(amp)
+        self.val_collator = val_collator
         self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
         self._codebook_samples: dict[str, list] | None = None
 
@@ -44,12 +45,20 @@ class Trainer:
             ts = ts.transpose(1, 2)
         return ts.contiguous()
 
+    def _make_mask(self, collator, batch_size: int, window: int,
+                     level_strides, ts=None):
+        if collator is None:
+            return None
+        try:
+            mask = collator(batch_size, window, list(level_strides), ts)
+        except TypeError:
+            mask = collator(batch_size, window, list(level_strides))
+        return {k: v.to(self.device) for k, v in mask.items()}
+
     def _forward_loss(self, batch):
         ts = self._to_model_input(batch["ts"], self.device)
-        mask = None
-        if self.collator is not None:
-            mask = self.collator(ts.size(0), ts.size(-1), self.model.level_strides)
-            mask = {k: v.to(self.device) for k, v in mask.items()}
+        mask = self._make_mask(self.collator, ts.size(0), ts.size(-1),
+                               self.model.level_strides, ts)
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16,
                             enabled=self.amp):
             outputs = self.model(ts, mask=mask)
@@ -108,12 +117,20 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self, loader) -> float:
-        """Latent-prediction validation loss, computed strictly in eval mode."""
+        """Validation loss in eval mode; masked when val_collator is set.
+
+        Masked-prediction arms must select on the masked task (the scoring
+        task), not on dense self-reconstruction: dense val loss can collapse
+        to ~0 while probe errors on unseen windows blow up, destroying the
+        train-calibrated threshold scale. Default None = legacy dense path.
+        """
         self.model.eval()
         total, count = 0.0, 0
         for batch in loader:
             ts = self._to_model_input(batch["ts"], self.device)
-            outputs = self.model(ts)
+            mask = self._make_mask(self.val_collator, ts.size(0), ts.size(-1),
+                                   self.model.level_strides, ts)
+            outputs = self.model(ts, mask=mask)
             losses = self.criterion(outputs)
             total += losses["pred_loss"].item() * ts.size(0)
             count += ts.size(0)
