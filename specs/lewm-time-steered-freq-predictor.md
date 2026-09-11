@@ -92,8 +92,11 @@ score `mean_d|Z'-Z|` per timestep.
   keeps its distributions (`data/augment.py:94-186`); only the mask return is new.
   Dataset still yields `X_clean`; collator builds the pair. Validation collator
   identical (masks present, still train-distribution only).
-- **Predictor stem + action:** `mask (B,1,W)` concatenated to `Z_inj (B,D,W)`
-  -> `k=7` stem conv to `stem_channels` (default 64). No other action path.
+- **Predictor stem + action:** predictor input latents are mask-token-blended
+  (option 4): masked positions show a learned token (hard replacement on the
+  binary train mask, soft blend with `M_hat` at inference) instead of the
+  corrupted values. The stem takes latents alone — no mask concat. The
+  auxiliary still sees raw corrupted latents (localization needs them).
 - **Frequency body:** `STFT(n_fft=64, hop=16, win=64)` per stem channel
   (all parameterized) -> complex `(B,S,T',F)` -> stack `[real, imag]` ->
   `(B,2S,T',F)`; YOLO26-neck: 3 scales, lateral 1x1 to `neck_widths=[64,64,64]`
@@ -128,12 +131,18 @@ score `mean_d|Z'-Z|` per timestep.
   reuse `carla_lewm_true.py` flow; adapt keeps `frozen|finetune`; resume format,
   seed default 4, `amp` bf16-train only, fp32 scoring, eval-mode validation stats.
 - **Scoring (single-scale):** eval mode, fp32: `Z=Encoder(X)`,
-  `M_hat=sigmoid(Auxiliary(Z))`, `Z'=Predictor(Z, M_hat)`,
+  `M_hat=sigmoid(Auxiliary(Z))`, `Z'=Predictor(blend(Z, M_hat))`,
   per-timestep `mean_d|Z'-Z| -> (B,W)`; overlapping windows aggregated
-  cover-count-aware into `(scores, start_idxs, end_idxs)`; thresholds from
+  cover-count-aware into `(scores, start_idxs, end_idxs)`; window batches of
+  `score_batch_size` (config, default `batch_size`, fallback 256) score every
+  start exactly once — batching is plumbing only. Thresholds from
   clean-train quantiles only (`calibration_kwargs.quantile`, default 0.995);
   injected probes used only as held-out calibrator signal, never shaping the
   representation; metrics stack frozen, honest vs point-adjust split kept.
+- **Validation = inference path:** `forward` teacher-forces the collator mask
+  in train mode but lets the auxiliary propose the (detached) action in eval
+  mode, so `Trainer.validate` scores the same self-proposed path test-time
+  scoring uses. The aux-localization target stays the given GT mask.
 - **Budgets:** order 1e5-1e6 params, single-GPU training, CPU-plausible scoring;
   `W` sweep 128/256/512 is expected (D=64, S=64 defaults must fit 512).
 

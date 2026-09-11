@@ -16,7 +16,7 @@ file_list = [file for file in all_files if file.startswith('machine-')]
 file_list = sorted(file_list)
 print(file_list)
 
-experiment_dir = Path("configs/jepa/lewm/")
+experiment_dir = Path("configs/jepa/steering/")
 experiment_group = [exp for exp in experiment_dir.iterdir() if (exp.is_dir() and "normalization-strategy" not in str(exp))]
 experiments = [exp for exp in experiment_dir.iterdir()]
 
@@ -106,10 +106,32 @@ experiments = [exp for exp in experiment_dir.iterdir()]
 
 
 experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
+exp_index = 1# experiments[2].index(experiment_to_go)
+for exp in experiments[exp_index:]:
+    for norm in ["batch"]: #, "instance"]:
+        version = f"./frequency/{exp}"
+        index = file_list.index('machine-1-1.txt')
+        index_scip = file_list.index('machine-1-1.txt')
+        for filename in file_list[index:]:
+            if (exp == experiment_to_go) and (filename in file_list[:index_scip]):
+                continue
+            print(filename)
+            # Run the pretext script
+            patch = EasyDict({
+                "stage": "pretrain",
+            })
+            classification_args = EasyDict({"config_env": "configs/env.yml",
+                            "config_exp": str(exp),
+                            "fname": filename,
+                            "version": f"{version}"})
+            steered(classification_args, update_dictionary=patch)
+
+
+experiment_to_go = Path(f"{experiment_dir}/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-clamp_only_negative_loss-dynamic_weight.yml")
 exp_index = 0# experiments[2].index(experiment_to_go)
 for exp in experiments[exp_index:]:
     for norm in ["batch"]: #, "instance"]:
-        version = f"./lewm/{exp}_projector_off"
+        version = f"./frequency/{exp}"
         index = file_list.index('machine-1-1.txt')
         index_scip = file_list.index('machine-1-1.txt')
         for filename in file_list[index:]:
@@ -119,7 +141,6 @@ for exp in experiments[exp_index:]:
             # Run the pretext script
             patch = EasyDict({
                 "stage": "score",
-                "use_projector": False
             })
             classification_args = EasyDict({"config_env": "configs/env.yml",
                             "config_exp": str(exp),

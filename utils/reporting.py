@@ -87,13 +87,14 @@ def score_with_model(p, device, build_model, logger) -> dict:
     from utils.trainer import Trainer
 
     model = build_model(p).to(device)
-    weights_path = p.get("score_checkpoint") or p["jepa_model"]
+    weights_path = p["jepa_model"]
     if not os.path.exists(weights_path):
         weights_path = p["jepa_checkpoint"]
     Trainer.load_weights(weights_path, model, logger, strict=True)
     model.eval()
 
     scorer = Scorer(model, device)
+    score_bs = int(p.get("score_batch_size", p.get("batch_size", 256)))
     calibrator = Calibrator(**p.get("calibration_kwargs",
                                     {"quantile": 0.995}))
 
@@ -110,7 +111,8 @@ def score_with_model(p, device, build_model, logger) -> dict:
         clean_series = np.asarray(train_dataset.val_series, dtype=np.float32)
     else:
         clean_series = series_from_dataset(train_dataset)
-    clean_result = scorer.score_series(clean_series, p["wsz"], p["stride"])
+    clean_result = scorer.score_series(clean_series, p["wsz"], p["stride"],
+                                       batch_size=score_bs)
     clean_channels = {"fused": clean_result["scores"], **clean_result["channels"]}
 
     probe_channels = None
@@ -160,7 +162,8 @@ def score_with_model(p, device, build_model, logger) -> dict:
     test_dataset = JEPADataset(p, train=False)
     test_series = series_from_dataset(test_dataset)
     targets = np.asarray(test_dataset.targets).astype(int)
-    test_result = scorer.score_series(test_series, p["wsz"], p["stride"])
+    test_result = scorer.score_series(test_series, p["wsz"], p["stride"],
+                                      batch_size=score_bs)
     test_channels = {"fused": test_result["scores"], **test_result["channels"]}
     fused_test = calibrator.fuse(test_channels)
 
@@ -197,7 +200,7 @@ def score_with_model(p, device, build_model, logger) -> dict:
     baseline_model = build_model(p).to(device)
     baseline_model.eval()
     baseline_result = Scorer(baseline_model, device).score_series(
-        test_series, p["wsz"], p["stride"])
+        test_series, p["wsz"], p["stride"], batch_size=score_bs)
     baseline_fused = baseline_result.pop("scores")
     report["no_training_baseline"] = honest_metrics(
         combine_all_evaluation_scores((baseline_fused >= threshold).astype(int),

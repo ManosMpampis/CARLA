@@ -30,14 +30,14 @@ class ConvBlock1d(nn.Module):
     """
 
     def __init__(self, in_ch: int, out_ch: int, kernel: int = 5,
-                 stride: int = 1, norm: str = "batch", dropout: bool = True):
+                 stride: int = 1, norm: str = "batch", dropout: float = 0.0):
         super().__init__()
         # Padding preserves length at stride 1; stride > 1 downsamples by design.
         self.conv = nn.Conv1d(in_ch, out_ch, kernel, stride=stride,
                               padding=kernel // 2)
         self.norm = make_norm(norm, out_ch)
         self.act = nn.GELU()
-        self.drop = nn.Dropout(0.2) if dropout else nn.Identity()
+        self.drop = nn.Dropout(dropout) if dropout>0.0 else nn.Identity()
         _init_weights(self.conv)
         _init_weights(self.norm)
 

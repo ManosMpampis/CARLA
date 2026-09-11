@@ -29,25 +29,10 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     cfg['pretext_tag'] = ("_"+pretext_tag) if pretext_tag else ""
     pretext_dir = os.path.join(base_dir, f'pretext{cfg['pretext_tag']}')
     mkdir(base_dir)
-    mkdir(pretext_dir)
     cfg['version'] = version
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
-    cfg['pretext_checkpoint'] = os.path.join(pretext_dir, 'checkpoint.pth.tar')
-    cfg['pretext_checkpoint_last'] = os.path.join(pretext_dir, 'checkpoint_last.pth.tar')
-    cfg['pretext_model'] = os.path.join(pretext_dir, 'model.pth.tar')
-    cfg['topk_neighbors_train_path'] = os.path.join(pretext_dir, 'topk-train-neighbors.npy')
-    cfg['bottomk_neighbors_train_path'] = os.path.join(pretext_dir, 'bottomk-train-neighbors.npy')
-    cfg['aug_train_dataset'] = os.path.join(pretext_dir, 'aug_train_dataset.pth')
-    cfg['pretext_features_train_path'] = os.path.join(pretext_dir, 'pretext_features_train.npy')
-    cfg['pretext_features_test_path'] = os.path.join(pretext_dir, 'pretext_features_test.npy')
-    cfg['topk_neighbors_val_path'] = os.path.join(pretext_dir, 'topk-test-neighbors.npy')
-    cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
-    cfg['bottomk_neighbors_val_path'] = os.path.join(pretext_dir, 'bottomk-test-neighbors.npy')
-    cfg['contrastive_dataset'] = os.path.join(pretext_dir, 'con_train_dataset')
-    cfg['contrastive_dataloader'] = os.path.join(pretext_dir, 'con_train_dataset.pth')
-
 
     if cfg['setup'] == 'jepa':
         jepa_tag = cfg.get('tag_jepa', None)

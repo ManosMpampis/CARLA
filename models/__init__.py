@@ -52,7 +52,7 @@ def _build_steered_resnet(**kwargs):
     from models.steered_lewm import SteeredResNetEncoder
 
     encoder = SteeredResNetEncoder(**kwargs)
-    return {"model": encoder, "dim": encoder.level_dims}
+    return {"model": encoder, "dim": [encoder.output_dims]}
 
 
 BACKBONE_REGISTRY = {

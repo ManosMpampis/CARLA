@@ -16,9 +16,10 @@ class Scorer:
     frozen seam consumed by the untouched metrics stack.
     """
 
-    def __init__(self, model, device):
+    def __init__(self, model, device, batch_size: int = 256):
         self.model = model.to(device)
         self.device = device
+        self.batch_size = max(1, int(batch_size))
 
     @torch.no_grad()
     def score_windows(self, windows: torch.Tensor) -> dict:
@@ -31,13 +32,16 @@ class Scorer:
             "signals": {k: v.float().cpu().numpy() for k, v in out["signals"].items()},
         }
 
-    def score_series(self, series: np.ndarray, wsz: int, stride: int) -> dict:
+    def score_series(self, series: np.ndarray, wsz: int, stride: int,
+                     batch_size: int | None = None) -> dict:
         """Score a whole (N, C) series.
 
         Returns aggregated per-timestep arrays (``scores`` plus one entry
         per level/signal in ``channels``) and per-window start/end indices.
         Tail timesteps no full window reaches are forward-filled with the
-        last covered value (documented behavior).
+        last covered value (documented behavior). Windows are forwarded in
+        batches of ``batch_size`` (default: the constructor value); every
+        start index is scored exactly once regardless of the batching.
         """
         n_steps = series.shape[0]
         if n_steps < wsz:
@@ -51,8 +55,9 @@ class Scorer:
         ends = [s + wsz for s in starts]
 
         sums: dict[str, np.ndarray] = {}
-        for begin in range(0, len(starts), 256):
-            chunk = starts[begin:begin + 256]
+        bs = max(1, int(batch_size or self.batch_size))
+        for begin in range(0, len(starts), bs):
+            chunk = starts[begin:begin + bs]
             batch = torch.from_numpy(
                 np.stack([series[s:s + wsz] for s in chunk])
             ).permute(0, 2, 1).contiguous()

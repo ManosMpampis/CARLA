@@ -56,9 +56,9 @@ def aggregate_values(rows: list[dict], columns: list[str]):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--base", default="results/smd/lewm/configs/jepa/lewm",
+    ap.add_argument("--base", default="results/smd/frequency/configs/jepa/steering",
                     help="Directory containing one subdir per experiment")
-    ap.add_argument("--outdir", default="results/smd/lewm/aggregated_metrics",
+    ap.add_argument("--outdir", default="results/smd/frequency/aggregated_metrics",
                     help="Where to write per-experiment CSVs + summary_mean.csv")
     args = ap.parse_args()
 

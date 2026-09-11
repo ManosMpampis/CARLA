@@ -56,8 +56,9 @@ def get_steered_model(p):
         hop_length=int(pred_kwargs.get("hop_length", 16)),
         win_length=int(pred_kwargs.get("win_length", 64)),
         aux_kernels=tuple(aux_kwargs.get("kernels", (7, 5, 3))),
+        time_steering=pred_kwargs.get("time_steering", True),
         norm=enc_kwargs.get("norm", "batch"),
-        dropout=enc_kwargs.get("dropout", True),
+        dropout=enc_kwargs.get("dropout", 0.1),
     )
 
 

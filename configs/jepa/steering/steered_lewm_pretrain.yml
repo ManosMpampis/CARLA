@@ -8,11 +8,12 @@ model_kwargs:
   in_channels: 38
   enc_channels: [32, 32]
   norm: batch
-  dropout: true
+  dropout: 0.1
 aux_kwargs:
   aux_channels: [32, 32, 32]
   kernels: [7, 5, 3]
 predictor_kwargs:
+  time_steering: true
   stem_channels: 32
   neck_widths: [32, 32, 32]
   n_fft: 64
@@ -23,7 +24,7 @@ criterion: steered_lewm
 criterion_kwargs:
   loss2_kind: kl
   w_pred: 1.0
-  w_aux: 1.0
+  w_aux: 3.0
   lambda_sigreg: 0.1
   lambda_sigreg_tgt: 0.1
   tau: 1.0
@@ -37,6 +38,7 @@ fname: machine-1-1.txt
 wsz: 128
 stride: 10
 val_fraction: 0.1
+score_batch_size: 256
 
 stage_a:
   corpus: single
@@ -51,7 +53,7 @@ stage_b:
 seed: 4
 device: cuda
 amp: false
-epochs: 2
+epochs: 150
 batch_size: 32
 num_workers: 0
 optimizer: adamw
