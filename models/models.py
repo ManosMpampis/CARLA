@@ -85,8 +85,14 @@ class ContrastiveModel(nn.Module):
             if isinstance(module, nn.Linear):
                 _init_weights(module)
 
-    def forward(self, x):
+    def forward(self, x, forward_pass="default"):
         features = self.backbone(x)
+
+        if forward_pass == "return_all":
+            return {
+                "backbone_features": features,
+                "output": self.contrastive_head(features),
+            }
 
         return self.contrastive_head(features)
 
@@ -132,6 +138,7 @@ class ClusteringModel(nn.Module):
         elif forward_pass == "return_all":
             features = self.backbone(x)
             out = {
+                "backbone_features": features,
                 "features": self.pooling_layer(features),
                 "output": self.cluster_head(self.pooling_layer(features)),
             }

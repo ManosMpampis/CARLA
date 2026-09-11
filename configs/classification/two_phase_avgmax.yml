@@ -13,13 +13,14 @@ criterion_kwargs:
   entropy_to_all_instances: True
   disimilar_negatives: True
   classification_loss_flag: False  # phase 1 only; phase 2 uses ClassificationLossPart
-  shift_ema_momentum: 0.9
+  shift_ema_momentum: 0.0
   localization_weight: 0.0
   # MoCo-style queues (FIFO over detached probabilities)
   queue_size: 8192
   queue_topk: 32        # >0: top-k hardest queued negatives per anchor; 0: full queue; <0: queue inconsistency disabled
   queue_warmup: 512     # minimum queued entries before any queue term activates
   queue_anchor: True    # estimate the normal class from the anchor queue (stable across batches)
+  sigreg_weight: 0.0    # SigReg on the backbone output; 0 disables
 
 # Two-phase training: phase 1 = marginal loss only, then restart with a new
 # optimizer/scheduler and the ClassificationLossPart criterion (classification
@@ -30,9 +31,10 @@ two_phase: True
 phase2_start: auto
 phase2_auto_threshold: 0.9
 phase2_auto_patience: 5
-phase2_auto_min_epochs: 300
-phase2_auto_max_wait: 900
+phase2_auto_min_epochs: 100
+phase2_auto_max_wait: 400
 phase2_criterion_kwargs: {}          # kwargs for ClassificationLossPart
+                                     # e.g. sigreg_weight: 0.1 to keep SigReg in phase 2
 phase2_optimizer: adamw
 phase2_optimizer_kwargs:
   lr: 0.0005
@@ -54,7 +56,7 @@ num_heads: 1 # Only use one head
 
 # Head architecture options
 localization_head: False
-pooling: avgmax # Window pooling for the cluster head: mean (default) | max | avgmax
+pooling: mean # Window pooling for the cluster head: mean (default) | max | avgmax
                 # avgmax keeps fine local details (concat of mean+max; doubles head input dim)
 
 # Model

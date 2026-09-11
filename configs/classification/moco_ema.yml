@@ -22,6 +22,7 @@ criterion_kwargs:
   queue_topk: 32        # >0: top-k hardest queued negatives per anchor; 0: full queue; <0: queue inconsistency disabled
   queue_warmup: 512     # minimum queued entries before any queue term activates
   queue_anchor: True    # estimate the normal class from the anchor queue (stable across batches)
+  sigreg_weight: 0.0    # SigReg on the backbone output; 0 disables
 
 # Two-phase training (optional): phase 1 = marginal loss only (the dynamic
 # classification shift is disabled), then at `phase2_start` the training

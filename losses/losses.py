@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from losses.utilities import entropy
+from losses.utilities import entropy, SIGReg
 
 class ClassificationLoss(nn.Module):
     def __init__(
@@ -14,7 +14,8 @@ class ClassificationLoss(nn.Module):
         disimilar_negatives=False,
         classification_loss_flag=True,
         shift_ema_momentum=0.0,
-        localization_weight=0.0
+        localization_weight=0.0,
+        sigreg={"weight": 0.0, "num_slices": 16, "freq_nodes": 8, "freq_min": 0.2, "freq_max": 4.0, "seed": 4},
     ):
         super(ClassificationLoss, self).__init__()
         self.softmax = nn.Softmax(dim=1)
@@ -31,6 +32,14 @@ class ClassificationLoss(nn.Module):
         self.shift_ema_momentum = shift_ema_momentum
         self._shift_ema = None  # EMA state of the (detached) shift weight
         self.localization_weight = localization_weight
+        self.sigreg_weight = sigreg.get("weight", 0.0)
+        self.sigreg = SIGReg(
+            num_slices=sigreg.get("num_slices", 16),
+            freq_nodes=sigreg.get("freq_nodes", 8),
+            freq_min=sigreg.get("freq_min", 0.2),
+            freq_max=sigreg.get("freq_max", 4.0),
+            seed=sigreg.get("seed", 4)
+        ) if self.sigreg_weight != 0 else nn.Identity()
 
     def forward(self, anchors, nneighbors, fneighbors, fneighbor_mask=None):
         """
@@ -142,8 +151,14 @@ class ClassificationLoss(nn.Module):
         # Entropy closly to 0 means that inputs are classified to one class only.
         # Entropy is subtracted from loss. We want to minim positive_entropy and maximize negative entropy.
         entropy_loss = positive_entropy - negative_entropy
+        if self.entropy_to_all_instances:
+            # negative_entropy is only active in this mode: shift by +log(n) so
+            # the minimum (positive_entropy=0, negative_entropy=log(n)) maps to
+            # 0 instead of -log(n). Same gradients, aligned floors with the BCE
+            # terms (without the mode, entropy_loss >= 0 already).
+            entropy_loss = entropy_loss + torch.log(n)
         if self.entropy_norm:
-            entropy_loss /= torch.log(n)  # Normalize to [0, 1]
+            entropy_loss /= 2 * torch.log(n)  # Normalize to [0, 1]
 
         # Localization loss: FNeighbors carry injected sub-anomalies and
         # fneighbor_mask marks the injected timesteps. The auxiliary
@@ -210,6 +225,11 @@ class ClassificationLoss(nn.Module):
             shift_weight = shift_batch
         total_loss = ((1 - shift_weight) * marginal_total_loss) + (shift_weight * classification_loss)
 
+        # SigReg on the backbone output (optional, weight from config); added
+        # unscaled to the total (not mixed by the shift gate).
+        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        total_loss = total_loss + self.sigreg_weight * sigreg
+
         out = {
             "total_loss": total_loss,
             "marginal_total_loss": marginal_total_loss,
@@ -224,6 +244,7 @@ class ClassificationLoss(nn.Module):
             "shift_weight": shift_weight,
             "shift_raw": shift_raw,
             "localization_loss": localization_loss,
+            "sigreg_loss": sigreg,
         }
         for cls in anchor_margin_per_class.keys():
             out[f"marginal_anchors_cls{cls}"] = anchor_margin_per_class[cls]
@@ -251,6 +272,7 @@ class ClassificationLossPart(nn.Module):
             entropy_to_all_instances=False,
             disimilar_negatives=False,
             classification_loss_flag=True,
+            sigreg_weight=0.0,
         ):
             super(ClassificationLossPart, self).__init__()
             self.softmax = nn.Softmax(dim=1)
@@ -264,8 +286,9 @@ class ClassificationLossPart(nn.Module):
             self.disimilar_negatives = disimilar_negatives
             self.positive_entropy_weight = 1.0
             self.classification_loss_flag = classification_loss_flag
+            self.sigreg_weight = sigreg_weight
 
-    def forward(self, anchors, fneighbors):
+    def forward(self, anchors, nneighbors, fneighbors, fneighbor_mask=None):
         """
         input:
             - anchors: logits for anchor ts w/ shape [b, num_classes]
@@ -301,11 +324,16 @@ class ClassificationLossPart(nn.Module):
             neg_normal_logits, torch.zeros_like(neg_normal_logits)
         )
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
-        
+
+        # SigReg on the backbone output (optional, weight from config)
+        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        total_loss = classification_loss + self.sigreg_weight * sigreg
+
         out = {
-            "total_loss": classification_loss
+            "total_loss": total_loss,
+            "sigreg_loss": sigreg,
         }
-        
+
         return out
 
 class ClassificationLossMoCo(ClassificationLoss):
@@ -509,9 +537,12 @@ class ClassificationLossMoCo(ClassificationLoss):
         positive_entropy = entropy(
             anchors_prob, input_as_probabilities=True
         ) * self.positive_entropy_weight
+        # Shifted by +log(n) only when negative_entropy is active (see ClassificationLoss).
         entropy_loss = positive_entropy - negative_entropy
+        if self.entropy_to_all_instances:
+            entropy_loss = entropy_loss + torch.log(n)
         if self.entropy_norm:
-            entropy_loss /= torch.log(n)  # Normalize to [0, 1]
+            entropy_loss /= 2 * torch.log(n)  # Normalize to [0, 1]
 
         # Localization loss (see ClassificationLoss)
         localization_loss = torch.tensor(0.0)
@@ -564,6 +595,11 @@ class ClassificationLossMoCo(ClassificationLoss):
             shift_weight = shift_batch
         total_loss = (1 - shift_weight) * marginal_total_loss + (shift_weight * classification_loss)
 
+        # SigReg on the backbone output (optional, weight from config); added
+        # unscaled to the total (not mixed by the shift gate).
+        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        total_loss = total_loss + self.sigreg_weight * sigreg
+
         # FIFO update happens after the loss use: current batch is queued for future steps
         self._enqueue(anchors_prob_q, negatives_prob_q)
 
@@ -584,6 +620,7 @@ class ClassificationLossMoCo(ClassificationLoss):
             "shift_weight": shift_weight,
             "shift_raw": shift_raw,
             "localization_loss": localization_loss,
+            "sigreg_loss": sigreg,
         }
         for cls in anchor_margin_per_class.keys():
             out[f"marginal_anchors_cls{cls}"] = anchor_margin_per_class[cls]

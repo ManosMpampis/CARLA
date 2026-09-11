@@ -18,6 +18,7 @@ criterion_kwargs:
   queue_topk: 32        # >0: top-k hardest queued negatives per anchor; 0: full queue; <0: queue inconsistency disabled
   queue_warmup: 512     # minimum queued entries before any queue term activates
   queue_anchor: True    # estimate the normal class from the anchor queue (stable across batches)
+  sigreg_weight: 0.0    # SigReg on the backbone output; 0 disables
 
 # Momentum (EMA) encoder, MoCo-v2 style
 ema_momentum: 0.999

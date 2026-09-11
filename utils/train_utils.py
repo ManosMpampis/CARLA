@@ -45,16 +45,19 @@ def pretext_train(
 
         optimizer.zero_grad()
 
-        anch_out = model(ts_org.reshape(b, h, w))
-        nn_out = model(ts_w_augmented.reshape(b, h, w))
+        anch_out = model(ts_org.reshape(b, h, w), forward_pass="return_all")
+        nn_out = model(ts_w_augmented.reshape(b, h, w), forward_pass="return_all")
         model.eval()
-        fn_out = model(ts_ss_augmented.view(b, h, w))
+        fn_out = model(ts_ss_augmented.view(b, h, w), forward_pass="return_all")
         model.train()
 
         output: Tensor = torch.cat(
-            [anch_out, nn_out, fn_out], dim=0
+            [anch_out["output"], nn_out["output"], fn_out["output"]], dim=0
         )
-        losses = criterion(output)
+        backbone_features = torch.cat(
+            [anch_out["backbone_features"], nn_out["backbone_features"], fn_out["backbone_features"]], dim=0
+        )
+        losses = criterion(output, backbone_features=backbone_features)
 
         for loss in losses.keys():
             if f"meter_{loss}" not in avg_meters.keys():

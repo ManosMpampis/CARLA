@@ -3,7 +3,7 @@ from easydict import EasyDict
 from carla_pretext import main as main_pretext
 from carla_classification import main as main_classification
 
-fname = sys.argv[1] if len(sys.argv) > 1 else None
+fname = "machine-1-1.txt"
 
 VERSION = "./best_models/batch/avgmax-dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss"
 PRETEXT_CONFIG = "configs/pretext/new_loss/smd/dynamic_reweight_on_distance/dynamic_margin_by_neg_distance-dynamic_loss_guidance-clamp_only_negative_loss-dynamic_weight_loss.yml"
@@ -20,7 +20,7 @@ RES_KWARGS = {
 
 pretext_patch = EasyDict({
     "res_kwargs": dict(RES_KWARGS),
-    "pooling": "avgmax",
+    "pooling": "mean",
 })
 
 classification_patch = EasyDict({

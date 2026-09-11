@@ -146,7 +146,7 @@ def evaluate(experiment_cluster, ds_name="smd", big_exp_name="", base_path=None,
 
 
 if __name__ == "__main__":
-    experiment_cluster = ["batch", "instance"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
+    experiment_cluster = ["batch"]#, "instance"] #["original-dynamic_weight-loss_clamp", "ema_loss", "dynamic_reweight_on_distance"]
     ds_name = "smd"
     big_exp_name = "best_models" #"normalization-strategy" #"batch"
     evaluate(experiment_cluster, ds_name, big_exp_name, save_tag="eval_silhouette")

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from losses.utilities import find_similarity_loss
+from losses.utilities import SIGReg, find_similarity_loss
 
 EPS = 1e-8
 
@@ -30,6 +30,7 @@ class PretextLoss(nn.Module):
         ema_distance=False,
         pos_supression=False,
         re_weight=False,
+        sigreg={"weight": 0.0, "num_slices": 16, "freq_nodes": 8, "freq_min": 0.2, "freq_max": 4.0, "seed": 4},
     ):
         super(PretextLoss, self).__init__()
         self.temperature = temperature
@@ -56,6 +57,14 @@ class PretextLoss(nn.Module):
         self.adjust_factor = adjust_factor
 
         self.re_weight = re_weight
+        self.sigreg_weight = sigreg.get("weight", 0.0)
+        self.sigreg = SIGReg(
+            num_slices=sigreg.get("num_slices", 16),
+            freq_nodes=sigreg.get("freq_nodes", 8),
+            freq_min=sigreg.get("freq_min", 0.2),
+            freq_max=sigreg.get("freq_max", 4.0),
+            seed=sigreg.get("seed", 4)
+        ) if self.sigreg_weight != 0 else nn.Identity()
 
         self.prev_ema_loss = None
         self.previous_loss = None
@@ -64,7 +73,7 @@ class PretextLoss(nn.Module):
             loss_name, device=device, use_cuda=True, temperature=temperature
         )
 
-    def forward(self, features):
+    def forward(self, features, backbone_features=None):
         """
         input:
             - features: hidden feature representation of shape [b, 3, dim]
@@ -200,6 +209,11 @@ class PretextLoss(nn.Module):
 
             self.previous_loss = loss.detach()
             self.prev_ema_loss = ema_loss.detach()
+
+        # SigReg on the backbone output (optional, weight from config)
+        sigreg = self.sigreg(backbone_features)
+        loss = loss + self.sigreg_weight * sigreg
+
         return {
             "loss": loss,
             "positive_d_loss": positive_d_loss,
@@ -209,6 +223,7 @@ class PretextLoss(nn.Module):
             "loss_pos_nc": loss_pos_nc,
             "loss_neg_nc": loss_neg_nc,
             "clear_loss": clear_loss,
+            "sigreg_loss": sigreg,
         }
 
     def update_margin(self, new_margin):
