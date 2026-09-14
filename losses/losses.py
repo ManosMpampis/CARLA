@@ -227,7 +227,7 @@ class ClassificationLoss(nn.Module):
 
         # SigReg on the backbone output (optional, weight from config); added
         # unscaled to the total (not mixed by the shift gate).
-        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
         total_loss = total_loss + self.sigreg_weight * sigreg
 
         out = {
@@ -326,7 +326,7 @@ class ClassificationLossPart(nn.Module):
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
 
         # SigReg on the backbone output (optional, weight from config)
-        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
         total_loss = classification_loss + self.sigreg_weight * sigreg
 
         out = {
@@ -597,7 +597,7 @@ class ClassificationLossMoCo(ClassificationLoss):
 
         # SigReg on the backbone output (optional, weight from config); added
         # unscaled to the total (not mixed by the shift gate).
-        sigreg = compute_sigreg([anchors, nneighbors, fneighbors], self.sigreg_weight)
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
         total_loss = total_loss + self.sigreg_weight * sigreg
 
         # FIFO update happens after the loss use: current batch is queued for future steps
