@@ -1,4 +1,5 @@
 import os
+import json
 
 import numpy as np
 import pandas as pd
@@ -139,6 +140,8 @@ class JEPADataset(Dataset):
     @classmethod
     def validation_split(cls, train_dataset, p):
         """Validation windows carved out of the train series tail."""
+        if getattr(train_dataset, "_corpus", None) is not None:
+            return JEPACorpusDataset.validation_split(train_dataset._corpus)
         val = cls.__new__(cls)
         val.train = False
         val.transform = None
@@ -167,10 +170,12 @@ class JEPADataset(Dataset):
 
 
 class JEPACorpusDataset(Dataset):
-    """Joint-corpus dataset: all SMD machines' train splits in one run.
+    """Memory-bounded joint SMD dataset.
 
-    Each machine keeps its own per-machine normalization (official-protocol
-    compatible); windows are drawn from the concatenation.
+    Each machine is normalized independently and cached as a disk-backed
+    ``.npy`` array.  The dataset stores only per-machine metadata in RAM and
+    opens cached arrays with ``mmap_mode='r'``.  Windows never cross machine
+    boundaries.
     """
 
     machine_files: list
@@ -179,46 +184,101 @@ class JEPACorpusDataset(Dataset):
     def __init__(self, p, machine_files: list):
         self.wsz = p["wsz"]
         self.stride = p["stride"]
+        self.val_fraction = float(p.get("val_fraction", 0.1))
         root = MyPath.db_root_dir("smd")
-        pieces = []
+        cache_dir = p.get("joint_cache_dir",
+                          os.path.join(p["experiment_dir"], "joint_cache"))
+        os.makedirs(cache_dir, exist_ok=True)
         self.means, self.stds = [], []
-        for fname in sorted(machine_files):
-            raw = np.asarray(pd.read_csv(os.path.join(root, "train", fname))).astype(np.float32)
-            raw = np.nan_to_num(raw)
-            scaler = StandardScaler().fit(raw)
-            self.means.append(scaler.mean_)
-            self.stds.append(scaler.scale_)
-            pieces.append(scaler.transform(raw).astype(np.float32))
-        lengths = [s.shape[0] for s in pieces]
-        self.series = np.concatenate(pieces, axis=0)
-        self.offsets = np.cumsum([0] + lengths)
         self.machine_files = sorted(machine_files)
+        self.cache_paths = []
+        self.lengths = []
+        self.channels = None
+        for fname in self.machine_files:
+            cache_path = os.path.join(cache_dir, f"{fname}.normalized.npy")
+            meta_path = os.path.join(cache_dir, f"{fname}.normalized.json")
+            if not os.path.exists(cache_path) or not os.path.exists(meta_path):
+                raw = np.asarray(pd.read_csv(
+                    os.path.join(root, "train", fname), header=None
+                )).astype(np.float32)
+                raw = np.nan_to_num(raw)
+                scaler = StandardScaler().fit(raw)
+                normalized = scaler.transform(raw).astype(np.float32)
+                np.save(cache_path, normalized)
+                metadata = {"mean": scaler.mean_.tolist(),
+                            "std": scaler.scale_.tolist(),
+                            "length": int(normalized.shape[0]),
+                            "channels": int(normalized.shape[1])}
+                with open(meta_path, "w") as stream:
+                    json.dump(metadata, stream)
+                del raw, normalized
+            with open(meta_path) as stream:
+                metadata = json.load(stream)
+            self.cache_paths.append(cache_path)
+            self.lengths.append(int(metadata["length"]))
+            self.means.append(np.asarray(metadata["mean"], dtype=np.float64))
+            self.stds.append(np.asarray(metadata["std"], dtype=np.float64))
+            if self.channels is None:
+                self.channels = int(metadata["channels"])
+            elif self.channels != int(metadata["channels"]):
+                raise ValueError("Joint SMD training requires equal channel counts")
+        self._mapped = {}
+        self._set_split("train")
 
     def __getitem__(self, index):
-        start = index * self.stride
-        ts = self.series[start:start + self.wsz]
-        machine = int(np.searchsorted(self.offsets, start, side="right") - 1)
-        meta = {"start_idx": start, "end_idx": start + self.wsz, "index": index,
-                "machine": machine}
+        machine, local_index = self._locate(index)
+        cut = self._cuts[machine]
+        start = cut + local_index * self.stride
+        array = self._mapped_array(machine)
+        ts = array[start:start + self.wsz]
+        meta = {"start_idx": start, "end_idx": start + self.wsz,
+                "index": index, "machine": machine,
+                "machine_file": self.machine_files[machine]}
         return {"ts": ts.astype(np.float32), "meta": meta}
 
     def __len__(self):
-        return (self.series.shape[0] - self.wsz) // self.stride + 1
+        return int(self._cumulative[-1])
+
+    def _set_split(self, split):
+        self.split = split
+        self._cuts = []
+        counts = []
+        for length in self.lengths:
+            cut = int(length * (1.0 - self.val_fraction))
+            if split == "train":
+                start, available = 0, cut
+            else:
+                start, available = cut, length - cut
+            self._cuts.append(start)
+            counts.append(max((available - self.wsz) // self.stride + 1, 0))
+        self._cumulative = np.cumsum([0] + counts, dtype=np.int64)
+
+    def _locate(self, index):
+        index = int(index)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        machine = int(np.searchsorted(self._cumulative, index, side="right") - 1)
+        return machine, index - int(self._cumulative[machine])
+
+    def _mapped_array(self, machine):
+        if machine not in self._mapped:
+            self._mapped[machine] = np.load(self.cache_paths[machine], mmap_mode="r")
+        return self._mapped[machine]
 
     @classmethod
     def validation_split(cls, train_dataset):
-        """Validation windows from the tail of the pooled train series."""
+        """Validation windows from each machine's train-side tail."""
         val = cls.__new__(cls)
         val.wsz = train_dataset.wsz
         val.stride = train_dataset.stride
-        cut = int(train_dataset.series.shape[0] * 0.9)
-        val.series = train_dataset.series[cut:]
+        val.val_fraction = train_dataset.val_fraction
         val.machine_files = train_dataset.machine_files
-        # rebase machine offsets onto the tail so attribution stays correct
-        full_offsets = list(train_dataset.offsets)
-        rebased = [max(o - cut, 0) for o in full_offsets if o >= cut]
-        if not rebased or rebased[0] != 0:
-            rebased.insert(0, 0)
-        val.offsets = np.asarray(sorted(set(rebased)))
-        val.targets = np.zeros(val.series.shape[0], dtype=np.int64)
+        val.cache_paths = train_dataset.cache_paths
+        val.lengths = train_dataset.lengths
+        val.channels = train_dataset.channels
+        val.means = train_dataset.means
+        val.stds = train_dataset.stds
+        val._mapped = {}
+        val._set_split("val")
+        val.targets = np.zeros(len(val), dtype=np.int64)
         return val

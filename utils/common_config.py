@@ -55,6 +55,7 @@ CRITERION_BUILDERS = {
     "jepa": "losses.jepa_losses:JEPALoss",
     "dense_pred": "losses.prediction:DensePartLoss",
     "recon": "losses.reconstruction:ReconLoss",
+    "recon_l1": "losses.reconstruction:ReconL1Loss",
     "box": "losses.detection:BoxLoss",
     "metric": "losses.metric:MetricLoss",
     "energy": "losses.alignment:EnergyLoss",
@@ -146,14 +147,12 @@ def get_jepa_datasets(p):
     """
     from data.jepa_dataset import JEPADataset, JEPACorpusDataset
 
-    corpus = p.get("stage_a", {}).get("corpus", "single")
+    joint = p.get("fname", None) == "all"
     train_dataset: object
     val_dataset: object
-    if p["train_db_name"] == "smd" and corpus == "joint":
-        machine_dir = os.path.join(MyPath.db_root_dir("smd"), "train")
-        machines = sorted(f for f in os.listdir(machine_dir) if f.startswith("machine-"))
-        train_dataset = JEPACorpusDataset(p, machines)
-        val_dataset = JEPACorpusDataset.validation_split(train_dataset)
+    if p["train_db_name"] == "smd" and joint:
+        train_dataset = JEPACorpusDataset(p, train=True)
+        val_dataset = JEPACorpusDataset.validation_split(train_dataset, p)
     else:
         train_dataset = JEPADataset(p, train=True)
         val_dataset = JEPADataset.validation_split(train_dataset, p)

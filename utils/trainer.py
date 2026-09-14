@@ -138,7 +138,17 @@ class Trainer:
 
     # ------------------------------------------------------------------ #
     def fit(self, train_loader, val_loader, start_epoch: int = 0,
-            best_val_loss: float = np.inf):
+            best_val_loss: float = np.inf, eval_every: int = 0,
+            eval_fn=None):
+        """Epoch loop with best-val checkpointing.
+
+        ``eval_fn`` (when given with ``eval_every > 0``) runs after
+        validation every ``eval_every`` epochs and after the final epoch:
+        ``eval_fn(epoch_1indexed)``. It is monitoring-only by contract --
+        checkpoint selection stays on the train-tail val loss, so whatever
+        the hook observes (e.g. test labels) can never steer model
+        selection. Default (0/None) preserves the legacy loop exactly.
+        """
         epochs = self.p["epochs"]
         for epoch in range(start_epoch, epochs):
             self.logger.log(f"Epoch {epoch + 1}/{epochs}")
@@ -155,6 +165,13 @@ class Trainer:
             self.logger.metrics_summary("Train Loss", train_losses, epoch + 1)
             self.logger.log(f"Epoch [{epoch+1}] val pred_loss {val_loss:.6f} "
                             f"(best {best_val_loss:.6f})")
+
+            if eval_fn is not None and eval_every and eval_every > 0 \
+                    and ((epoch + 1) % int(eval_every) == 0 or (epoch + 1) == epochs):
+                try:
+                    eval_fn(epoch + 1)
+                except Exception as exc:
+                    self.logger.warn(f"Periodic eval skipped at epoch {epoch+1}: {exc}")
 
             if val_loss < best_val_loss or (epoch + 1) == epochs:
                 improved = val_loss < best_val_loss

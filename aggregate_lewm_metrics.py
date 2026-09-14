@@ -44,6 +44,8 @@ def aggregate_values(rows: list[dict], columns: list[str]):
     """
     means, stds, sums = {}, {}, {}
     for col in columns:
+        if "Affiliation precision" in col:
+            continue
         vals = [r[col] for r in rows if isinstance(r.get(col), (int, float))]
         if not vals:
             means[col] = stds[col] = sums[col] = ""

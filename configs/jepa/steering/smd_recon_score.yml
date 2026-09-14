@@ -1,0 +1,70 @@
+# Phase-2 recon scoring: shared engine, per-machine train-only threshold.
+# Two experiments from ONE trained recon checkpoint (Q10b):
+#   A) score_aux_crop: false -> full-window recon, score = mean_C |x - x_hat|
+#   B) score_aux_crop: true  -> aux-crop latents, zeros elsewhere, empty = all zeros
+# For B you must have trained with recon_kwargs.with_aux: true so the recon
+# checkpoint carries the frozen aux weights.
+#
+# Example:
+#   carla_recon.py --config_exp configs/jepa/steering/smd_recon_score.yml --fname machine-1-1.txt --version smd_recon
+#   (edit score_checkpoint to the step-2 model.pth.tar; run twice with
+#   score_aux_crop false/true into different --version dirs for the pair)
+setup: jepa
+stage: score
+
+# Model MUST match the recon-train config (same strides/channels/with_aux).
+backbone: steered_resnet
+model_kwargs:
+  in_channels: 38
+  enc_channels: [32, 32]
+  enc_strides: [1, 1]
+  norm: batch
+  dropout: 0.1
+aux_kwargs:
+  aux_channels: [32, 32, 32]
+  kernels: [7, 5, 3]
+recon_kwargs:
+  with_aux: false          # set true (train AND score) for experiment B
+  norm: batch
+  dropout: 0.1
+
+# Inference switch (Q10): false = experiment 1 (full), true = experiment 2 (aux-crop).
+score_aux_crop: false
+
+criterion: recon_l1
+criterion_kwargs: {}
+
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 128
+stride: 5
+val_fraction: 0.1
+
+# Threshold (Q5): per-machine clean-train quantile, 0.99 = 1% flagged normal.
+# No test labels enter here; probes disabled so fusion is plain mean.
+calibration_kwargs:
+  quantile: 0.99
+probe_kwargs:
+  num_probe_windows: 0
+eval_window_size: 100
+
+seed: 4
+device: cuda
+amp: false
+epochs: 0
+batch_size: 64
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+# Weights source: explicit pointer wins; when empty the shared engine scores
+# this run dir (run score with the recon --version). experiments_rec.py fills
+# the per-machine recon path automatically; standalone example:
+# results/smd/smd_recon/machine-1-1.txt/jepa/model.pth.tar
+score_checkpoint:

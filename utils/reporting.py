@@ -72,6 +72,55 @@ def _best_f1_threshold(scores, targets):
     best_f1 = f1_score[best_f1_index].item()
     return best_f1_threshold
 
+
+def _channel_decision(channels, clean_channels, quantile, operator="or"):
+    """Threshold each reconstructed output channel independently."""
+    names = sorted(k for k in channels if k.startswith("signal/channel/"))
+    thresholds = {
+        name: float(np.quantile(clean_channels[name], quantile))
+        for name in names
+    }
+    flags = np.stack([np.asarray(channels[name]) >= thresholds[name]
+                      for name in names])
+    decisions = np.all(flags, axis=0) if operator == "and" else np.any(flags, axis=0)
+    return decisions.astype(int), thresholds
+
+
+def _best_channel_decision(channels, targets, operator="or"):
+    names = sorted(k for k in channels if k.startswith("signal/channel/"))
+    thresholds = {}
+    for name in names:
+        threshold = _best_f1_threshold(np.asarray(channels[name]), targets)
+        thresholds[name] = float(threshold)
+    flags = np.stack([np.asarray(channels[name]) >= thresholds[name]
+                      for name in names])
+    decisions = np.all(flags, axis=0) if operator == "and" else np.any(flags, axis=0)
+    return decisions.astype(int), thresholds
+
+
+def _save_timeseries_plot(path, series, targets, predictions, scores):
+    """Save the first test channel with ground truth and detected labels."""
+    import matplotlib.pyplot as plt
+
+    steps = np.arange(len(series))
+    fig, axes = plt.subplots(3, 1, figsize=(18, 8), sharex=True,
+                             gridspec_kw={"height_ratios": [3, 1, 1]})
+    axes[0].plot(steps, series[:, 0], linewidth=0.6, color="tab:blue")
+    axes[0].set_ylabel("channel 0")
+    axes[1].plot(steps, targets, drawstyle="steps-post", linewidth=0.8,
+                 color="tab:red")
+    axes[1].set_ylabel("target")
+    axes[2].plot(steps, predictions, drawstyle="steps-post", linewidth=0.8,
+                 color="tab:orange")
+    axes[2].set_ylabel("detected")
+    axes[2].set_xlabel("timestep")
+    axes[0].set_title("Test timeseries reconstruction scoring")
+    for axis in axes:
+        axis.grid(alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
 @torch.no_grad()
 def score_with_model(p, device, build_model, logger) -> dict:
     """Full score stage for any model exposing the Scorer contract.
@@ -114,6 +163,10 @@ def score_with_model(p, device, build_model, logger) -> dict:
     clean_result = scorer.score_series(clean_series, p["wsz"], p["stride"],
                                        batch_size=score_bs)
     clean_channels = {"fused": clean_result["scores"], **clean_result["channels"]}
+    channel_mode = bool(p.get("threshold_per_channel", False))
+    channel_operator = str(p.get("threshold_channel_operator", "or")).lower()
+    if channel_operator not in {"or", "and"}:
+        raise ValueError("threshold_channel_operator must be 'or' or 'and'")
 
     probe_channels = None
     probe_cfg = p.get("probe_kwargs", {})
@@ -166,8 +219,15 @@ def score_with_model(p, device, build_model, logger) -> dict:
                                       batch_size=score_bs)
     test_channels = {"fused": test_result["scores"], **test_result["channels"]}
     fused_test = calibrator.fuse(test_channels)
-
-    pred_labels = (fused_test >= threshold).astype(int)
+    if channel_mode:
+        pred_labels, channel_thresholds = _channel_decision(
+            test_channels, clean_channels, calibrator.quantile, channel_operator)
+        calibrator.save(p["calibration_path"], extra={
+            "threshold_mode": f"per_channel_{channel_operator}",
+            "thresholds_per_channel": channel_thresholds,
+        })
+    else:
+        pred_labels = (fused_test >= threshold).astype(int)
     window_size = int(p.get("eval_window_size", 100))
     metric_dict = combine_all_evaluation_scores(pred_labels, targets, window_size)
 
@@ -182,7 +242,11 @@ def score_with_model(p, device, build_model, logger) -> dict:
     # report theoretical best threshold (fused-test quantile) for reference, but do not use it
     best_f1_threshold = _best_f1_threshold(fused_test, targets)
 
-    best_pred_labels = (torch.from_numpy(fused_test) >= best_f1_threshold).numpy().astype(int)
+    if channel_mode:
+        best_pred_labels, best_channel_thresholds = _best_channel_decision(
+            test_channels, targets, channel_operator)
+    else:
+        best_pred_labels = (torch.from_numpy(fused_test) >= best_f1_threshold).numpy().astype(int)
     best_metric_dict = combine_all_evaluation_scores(best_pred_labels, targets, window_size)
 
     best_metrics = honest_metrics(best_metric_dict, fused_test, targets,
@@ -218,13 +282,22 @@ def score_with_model(p, device, build_model, logger) -> dict:
         gt_labels=targets,
         **{f"channel/{k}": v for k, v in test_channels.items()},
     )
+    if p.get("save_timeseries_plot", True):
+        plot_path = p.get("timeseries_plot_path",
+                          os.path.join(p["jepa_dir"], "timeseries.png"))
+        _save_timeseries_plot(plot_path, test_series, targets, pred_labels,
+                              fused_test)
+        report["timeseries_plot"] = plot_path
     with open(p["metrics_path"], "w") as f:
         json.dump(report, f, indent=2)
 
     step = 1
     for section, values in report.items():
+        if not isinstance(values, dict):
+            continue
         for name, value in values.items():
-            logger.scalar_summary(section, name, value, step)
+            if isinstance(value, (int, float)):
+                logger.scalar_summary(section, name, value, step)
     logger.metrics_summary("Full metric dictionary", {
         k: float(v) for k, v in metric_dict.items()
         if isinstance(v, (int, float))

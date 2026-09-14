@@ -32,21 +32,31 @@ class IdentityFilm(nn.Module):
         return h_f
 
 class SteeredResNetBlock(nn.Module):
-    """One ResNet block: 3 main convs [7,5,3] + residual conv k=5."""
+    """One ResNet block: 3 main convs [7,5,3] + residual conv k=5.
+
+    Stride (default 1, length-preserving) is applied to the FIRST main
+    conv and to the residual branch so both paths downsample identically.
+    Stride > 1 downsamples by design (see ConvBlock1d); the caller must
+    keep ``wsz % prod(strides) == 0`` so the mirrored recon head inverts
+    shapes exactly with no crop logic (Phase-2 contract).
+    """
 
     def __init__(self, in_ch: int, out_ch: int, kernels=(7, 5, 3),
                  residual_kernel: int = 5, norm: str = "batch",
-                 dropout: float = 0.0):
+                 dropout: float = 0.0, stride: int = 1):
         super().__init__()
+        self.stride = int(stride)
         ks = list(kernels)
         chs = [in_ch] + [out_ch] * len(ks)
         self.main = nn.Sequential(
-            *[ConvBlock1d(chs[i], chs[i + 1], kernel=k, stride=1,
+            *[ConvBlock1d(chs[i], chs[i + 1], kernel=k,
+                          stride=self.stride if i == 0 else 1,
                           norm=norm, dropout=dropout)
               for i, k in enumerate(ks)]
         )
         self.residual = ConvBlock1d(in_ch, out_ch, kernel=int(residual_kernel),
-                                    stride=1, norm=norm, dropout=dropout)
+                                    stride=self.stride, norm=norm,
+                                    dropout=dropout)
         self.act = nn.GELU()
 
     def forward(self, x):
@@ -55,24 +65,49 @@ class SteeredResNetBlock(nn.Module):
 
 
 class SteeredResNetEncoder(nn.Module):
-    """Two-block time-domain encoder, length-preserving, single scale."""
+    """Two-block time-domain encoder, single scale.
+
+    ``enc_strides`` holds one stride per block (default [1, 1]: exact
+    legacy behavior, length-preserving). Total stride S = prod(enc_strides)
+    is exposed as ``level_strides=[S]`` so scorers map tokens back to input
+    steps (token i covers input [i*S, (i+1)*S)). Phase-2 contract: training
+    and inference windows must satisfy ``W % S == 0``; no crop/pad logic
+    lives in the model by design (grilled Q8a).
+    """
 
     def __init__(self, in_channels: int = 38, enc_channels=(32, 64),
                  kernels=(7, 5, 3), residual_kernel: int = 5,
-                 norm: str = "batch", dropout: bool = True):
+                 norm: str = "batch", dropout: bool = True,
+                 enc_strides=None):
         super().__init__()
         enc_channels = [in_channels] + list(enc_channels)
+        n_blocks = len(enc_channels) - 1
+        if enc_strides is None:
+            enc_strides = [1] * n_blocks
+        enc_strides = [int(s) for s in enc_strides]
+        assert len(enc_strides) == n_blocks, \
+            f"enc_strides {enc_strides} must match num blocks {n_blocks}"
+        self.enc_strides = list(enc_strides)
         self.blocks = nn.Sequential(
             *[SteeredResNetBlock(
                 int(enc_channels[i]), int(enc_channels[i + 1]),
                 kernels=kernels, residual_kernel=residual_kernel,
-                norm=norm, dropout=dropout)
-              for i in range(len(enc_channels) - 1)]
+                norm=norm, dropout=dropout, stride=int(enc_strides[i]))
+              for i in range(n_blocks)]
         )
         self.output_dims = enc_channels[-1]
+        # Channel ladder (incl. input) for the mirrored recon head.
+        self.channel_ladder = [int(c) for c in enc_channels]
+        total = 1
+        for s in self.enc_strides:
+            total *= int(s)
+        self.total_stride = int(total)
+        self.level_names = ["L0"]
+        self.level_dims = [int(self.output_dims)]
+        self.level_strides = [int(total)]
 
     def forward(self, x):
-        """Encode (B, C, W) -> (B, D, W)."""
+        """Encode (B, C, W) -> (B, D, W/S). Requires W % S == 0."""
         return self.blocks(x)
 
 
@@ -279,7 +314,7 @@ class SteeredFreqLeWMModel(nn.Module):
 
         self.level_names = ["L0"]
         self.level_dims = [int(input_dim)]
-        self.level_strides = [1]
+        self.level_strides = [int(getattr(encoder, "total_stride", 1))]
         self.target_encoder = None
         self.codebook = None
         self.anti_collapse = "sigreg"
@@ -293,7 +328,7 @@ class SteeredFreqLeWMModel(nn.Module):
         return x.masked_fill(m.expand_as(x), 0.0)
 
     def encode(self, x):
-        """Encode a window into single-scale latents (B, D, W)."""
+        """Encode a window into single-scale latents (B, D, W/S)."""
         return self.encoder(x)
 
     def _token_blend(self, z_inj, m_float):

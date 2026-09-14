@@ -1,0 +1,88 @@
+# Phase-2 recon training (steered encoder + mirrored head).
+# Run AFTER a steered pretext run; this trains ONLY the new head by default.
+#
+# Example chain (per-machine protocol):
+#   1) pretext: carla_steered.py --config_exp configs/jepa/steering/steered_lewm_pretrain.yml --fname machine-1-1.txt --version smd_steered
+#   2) recon:   carla_recon.py   --config_exp configs/jepa/steering/smd_recon_train.yml         --fname machine-1-1.txt --version smd_recon
+#                (set pretrained_from below to the step-1 model.pth.tar)
+#   3) score:   carla_recon.py   --config_exp configs/jepa/steering/smd_recon_score.yml         --fname machine-1-1.txt --version smd_recon
+setup: jepa
+stage: recon
+
+# Model: MUST match the pretext encoder exactly (else strict=False load
+# silently drops mismatched encoder keys and the head trains on a random
+# trunk -- check the "Recon init" log line). Default strides [1,1] preserve
+# legacy length-preserving behavior; total stride S = prod(enc_strides).
+backbone: steered_resnet
+model_kwargs:
+  in_channels: 38
+  enc_channels: [32, 32]
+  enc_strides: [1, 1]      # one per block; S=1 here. Try [1, 2] or [2, 2] for
+                           # downsampling; then wsz MUST be divisible by S.
+  norm: batch
+  dropout: 0.1
+aux_kwargs:                # only built when recon_kwargs.with_aux=true
+  aux_channels: [32, 32, 32]
+  kernels: [7, 5, 3]
+
+# Recon head mirrors the encoder rates in reverse (N ConvTranspose1d +
+# final 1x1 conv to C). Pure conv: any W with W % S == 0 reconstructs
+# exactly to (B, C, W); odd W raises instead of cropping (contract Q8a).
+recon_kwargs:
+  with_aux: false          # true ONLY for the aux-crop inference variant
+  norm: batch              # head norm (defaults to model_kwargs.norm)
+  dropout: 0.1
+
+# Frozen default (Q2): encoder (+aux) fixed, head trains. Set finetune to
+# update everything (tinker knob).
+stage_c:
+  mode: frozen
+  eval_every: 10       # test-set monitoring cadence (epochs); test/ goes to
+                       # TensorBoard + log.txt. Selection stays on val, so
+                       # test labels never steer training. 0 disables.
+
+# Weights: steered pretext model (encoder init). Head stays random.
+# Leave empty when sweeping with experiments_rec.py: it fills the per-machine
+# path from the saved pretext folder automatically
+# (results/<db>/<pretext-version>/<fname>/jepa/model.pth.tar).
+# For standalone runs set it explicitly, e.g.
+# results/smd/smd_steered/machine-1-1.txt/jepa/model.pth.tar
+pretrained_from:
+
+# Phase-2 loss: fixed mean L1 over C x W (Q9, no knob).
+criterion: recon_l1
+criterion_kwargs: {}
+
+# Data: single-machine corpus, normal-only windows, no masking collator.
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 128                  # MUST satisfy wsz % S == 0
+stride: 10
+val_fraction: 0.1
+score_batch_size: 256
+
+stage_a:
+  corpus: single
+
+# Training (short defaults for smoke; raise epochs for real runs)
+seed: 4
+device: cuda
+amp: false
+epochs: 20
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+# Unused in recon training, kept so score configs can share the file shape.
+calibration_kwargs:
+  quantile: 0.99
+probe_kwargs:
+  num_probe_windows: 0
+eval_window_size: 100

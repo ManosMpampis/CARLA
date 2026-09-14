@@ -91,11 +91,25 @@ def soft_dtw_divergence(a: torch.Tensor, b: torch.Tensor,
     return module(a.unsqueeze(0), b.unsqueeze(0)).squeeze(0)
 
 
+class ReconL1Loss(nn.Module):
+    """Phase-2 criterion: mean L1 |recon - target| over C x W (grilled Q9).
+
+    Reads the ReconModel trainer contract (outputs["recon/target"]).
+    Returns the `pred_loss` key the Trainer validation path reads.
+    """
+
+    def forward(self, outputs: dict) -> dict:
+        """Compare (B, C, W) recon vs target with fixed mean reduction."""
+        recon, target = outputs["recon"], outputs["target"]
+        l1 = (recon - target).abs().mean()
+        return {"loss": l1, "pred_loss": l1, "l1": l1}
+
+
 class ReconLoss(nn.Module):
     """H2/Aux-recon criterion: MSE + lambda * shape divergence per part."""
 
     def __init__(self, lambda_shape: float = 0.0, gamma: float = 0.01,
-                 max_parts: int = 4, bandwidth: int | None = None):
+                  max_parts: int = 4, bandwidth: int | None = None):
         super().__init__()
         self.lambda_shape = float(lambda_shape)
         self.gamma = float(gamma)
