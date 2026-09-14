@@ -97,6 +97,15 @@ def _model_patch():
     }
 
 
+def _joint_patch():
+    return {
+        "train_db_name": "smd",
+        "val_db_name": "smd",
+        "fname": "all",
+        "stage_a": {"corpus": "joint"},
+    }
+
+
 def machine_list():
     train_dir = os.path.join("datasets", "SMD", "train")
     files = sorted(f for f in os.listdir(train_dir) if f.startswith("machine-"))
@@ -163,6 +172,55 @@ def run_machine(fname, pretext_version, recon_version, dry_run=False,
     recon_main(score_args, update_dictionary=dict(score_patch))
 
 
+def run_all(pretext_version, recon_version, files, dry_run=False,
+            score_aux_crop=False, threshold_per_channel=False,
+            threshold_channels_and=False):
+    """Train one joint model and score each real SMD test file with it."""
+    fname = "all"
+    pretext_model = jepa_model_path(pretext_version, fname, PRETEXT_YML)
+    recon_model = jepa_model_path(recon_version, fname, RECON_TRAIN_YML)
+    pretext_patch = {"stage": "pretrain", **_joint_patch(),
+                     **_model_patch(), **_cosine_restart_patch(PRETEXT_EPOCHS)}
+    recon_patch = {
+        "stage": "recon",
+        "pretrained_from": pretext_model,
+        "recon_kwargs": {"with_aux": True, "norm": "batch", "dropout": 0.1},
+        **_joint_patch(), **_model_patch(), **_cosine_restart_patch(RECON_EPOCHS),
+    }
+    pretext_args = EasyDict({"config_env": ENV_YML, "config_exp": PRETEXT_YML,
+                             "fname": fname, "version": pretext_version})
+    recon_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_TRAIN_YML,
+                           "fname": fname, "version": recon_version})
+    if dry_run:
+        print(f"DRY joint pretext version={pretext_version} epochs={PRETEXT_EPOCHS}")
+        print(f"DRY joint recon version={recon_version} epochs={RECON_EPOCHS}")
+        print(f"  pretrained_from -> {pretext_model}")
+        print(f"  shared checkpoint -> {recon_model}")
+        print(f"DRY score {len(files)} machines with the shared checkpoint")
+        return
+
+    print(f"=== joint pretext SMD (epochs={PRETEXT_EPOCHS}) ===", flush=True)
+    steered_main(pretext_args, update_dictionary=pretext_patch)
+    print(f"=== joint recon SMD (epochs={RECON_EPOCHS}) ===", flush=True)
+    recon_main(recon_args, update_dictionary=recon_patch)
+
+    for machine in files:
+        score_patch = {
+            "stage": "score",
+            "score_checkpoint": recon_model,
+            "score_aux_crop": score_aux_crop,
+            "threshold_per_channel": threshold_per_channel,
+            "threshold_channel_operator": "and" if threshold_channels_and else "or",
+            "recon_kwargs": {"with_aux": True, "norm": "batch", "dropout": 0.1},
+            **_model_patch(),
+        }
+        score_args = EasyDict({"config_env": ENV_YML,
+                               "config_exp": RECON_SCORE_YML,
+                               "fname": machine, "version": recon_version})
+        print(f"=== score {machine} from joint checkpoint ===", flush=True)
+        recon_main(score_args, update_dictionary=score_patch)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Rec sweep: pretext->recon->score per SMD machine")
     parser.add_argument("--pretext-version", default="rec_s2")
@@ -176,23 +234,30 @@ def main():
     parser.add_argument("--threshold-channels-and", action="store_true",
                         help="require every channel threshold to be exceeded")
     parser.add_argument("--all", action="store_false",
-                        help="run experiment fitted in all sub-datasets")
+                        help="train one model over all SMD machines, then score each")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     files = machine_list()
     print(f"{len(files)} machines: {files[0]} .. {files[-1]}")
     if args.all:
-        files=["all"]
+        run_all(args.pretext_version, args.recon_version, files,
+                dry_run=args.dry_run, score_aux_crop=args.score_aux_crop,
+                threshold_per_channel=args.threshold_per_channel,
+                threshold_channels_and=args.threshold_channels_and)
+        return
     else:
         if args.start_from:
             idx = files.index(args.start_from)
             files = files[idx:]
         if args.limit and args.limit > 0:
             files = files[:args.limit]
+    score_version = args.recon_version + ("_crop" if args.score_aux_crop else "")
     for fname in files:
-        run_machine(fname, args.pretext_version, f"{args.recon_version}{"_crop" if args.score_aux_crop else ""}",
-                    dry_run=args.dry_run, score_aux_crop=args.score_aux_crop, threshold_per_channel=args.threshold_per_channel,
+        run_machine(fname, args.pretext_version, score_version,
+                    dry_run=args.dry_run,
+                    score_aux_crop=args.score_aux_crop,
+                    threshold_per_channel=args.threshold_per_channel,
                     threshold_channels_and=args.threshold_channels_and)
 
 

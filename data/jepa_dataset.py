@@ -68,6 +68,20 @@ class JEPADataset(Dataset):
         self.stride = p["stride"]
         self.seed = p.get("seed", 4)
         source = p["train_db_name"]
+        self._corpus = None
+
+        if source == "smd" and str(p.get("fname", "")).lower() in {"all", "*"}:
+            if not train:
+                raise ValueError(
+                    "JEPADataset(fname='all') is a train-corpus dataset; "
+                    "score SMD test files separately"
+                )
+            machine_dir = os.path.join(MyPath.db_root_dir("smd"), "train")
+            machines = sorted(
+                f for f in os.listdir(machine_dir) if f.startswith("machine-")
+            )
+            self._corpus = JEPACorpusDataset(p, machines, train=True)
+            return
 
         if source == "synthetic":
             kwargs = dict(p.get("synthetic_kwargs", {}))
@@ -141,7 +155,7 @@ class JEPADataset(Dataset):
     def validation_split(cls, train_dataset, p):
         """Validation windows carved out of the train series tail."""
         if getattr(train_dataset, "_corpus", None) is not None:
-            return JEPACorpusDataset.validation_split(train_dataset._corpus)
+            return JEPACorpusDataset.validation_split(train_dataset._corpus, p)
         val = cls.__new__(cls)
         val.train = False
         val.transform = None
@@ -153,6 +167,8 @@ class JEPADataset(Dataset):
         return val
 
     def __getitem__(self, index):
+        if self._corpus is not None:
+            return self._corpus[index]
         start = index * self.stride
         ts = self.series[start:start + self.wsz]
         meta = {
@@ -166,6 +182,8 @@ class JEPADataset(Dataset):
         return out
 
     def __len__(self):
+        if self._corpus is not None:
+            return len(self._corpus)
         return (self.series.shape[0] - self.wsz) // self.stride + 1
 
 
@@ -181,15 +199,22 @@ class JEPACorpusDataset(Dataset):
     machine_files: list
     targets: np.ndarray
 
-    def __init__(self, p, machine_files: list):
+    def __init__(self, p, machine_files: list | None = None, train: bool = True):
+        if not train:
+            raise ValueError("JEPACorpusDataset currently supports train splits only")
         self.wsz = p["wsz"]
         self.stride = p["stride"]
         self.val_fraction = float(p.get("val_fraction", 0.1))
         root = MyPath.db_root_dir("smd")
         cache_dir = p.get("joint_cache_dir",
-                          os.path.join(p["experiment_dir"], "joint_cache"))
+                          os.path.join(p.get("experiment_dir", "results/smd"),
+                                       "joint_cache"))
         os.makedirs(cache_dir, exist_ok=True)
         self.means, self.stds = [], []
+        if machine_files is None:
+            machine_dir = os.path.join(root, "train")
+            machine_files = [f for f in os.listdir(machine_dir)
+                             if f.startswith("machine-")]
         self.machine_files = sorted(machine_files)
         self.cache_paths = []
         self.lengths = []
@@ -266,7 +291,7 @@ class JEPACorpusDataset(Dataset):
         return self._mapped[machine]
 
     @classmethod
-    def validation_split(cls, train_dataset):
+    def validation_split(cls, train_dataset, p=None):
         """Validation windows from each machine's train-side tail."""
         val = cls.__new__(cls)
         val.wsz = train_dataset.wsz

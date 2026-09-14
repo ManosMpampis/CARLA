@@ -151,7 +151,7 @@ def get_jepa_datasets(p):
     train_dataset: object
     val_dataset: object
     if p["train_db_name"] == "smd" and joint:
-        train_dataset = JEPACorpusDataset(p, train=True)
+        train_dataset = JEPACorpusDataset(p)
         val_dataset = JEPACorpusDataset.validation_split(train_dataset, p)
     else:
         train_dataset = JEPADataset(p, train=True)
