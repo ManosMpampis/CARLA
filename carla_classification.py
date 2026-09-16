@@ -37,7 +37,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-set_seed(4)
+set_seed(99)
 
 
 def build_phase_two(p, model, phase2_start):

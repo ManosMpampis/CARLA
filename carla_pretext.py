@@ -33,7 +33,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-set_seed(4)
+set_seed(99)
 
 
 def main(args, update_dictionary={}):
