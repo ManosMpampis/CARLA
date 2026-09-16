@@ -211,7 +211,7 @@ class PretextLoss(nn.Module):
             self.prev_ema_loss = ema_loss.detach()
 
         # SigReg on the backbone output (optional, weight from config)
-        sigreg = self.sigreg(backbone_features)
+        sigreg = self.sigreg(backbone_features) if self.sigreg_weight != 0 else torch.tensor(0)
         loss = loss + self.sigreg_weight * sigreg
 
         return {
