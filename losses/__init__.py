@@ -1,14 +1,6 @@
-"""Loss registry: one import point for all criteria."""
-from losses.alignment import EnergyLoss, ViewKLLoss
-from losses.combined import CombinedAuxCriterion, CombinedHeadCriterion, FullCriterion
-from losses.detection import BoxLoss
-from losses.jepa_losses import JEPALoss
-from losses.metric import MetricLoss
-from losses.prediction import DensePartLoss
-from losses.reconstruction import ReconLoss, soft_dtw_divergence
+"""Losses used by steered pretraining and reconstruction."""
+from losses.reconstruction import ReconL1Loss
 from losses.sigreg import SIGReg
+from losses.steered_lewm import SteeredLeWMLoss
 
-__all__ = ["JEPALoss", "SIGReg", "DensePartLoss", "ReconLoss", "BoxLoss",
-           "MetricLoss", "ViewKLLoss", "EnergyLoss",
-           "CombinedAuxCriterion", "CombinedHeadCriterion", "FullCriterion",
-           "soft_dtw_divergence"]
+__all__ = ["ReconL1Loss", "SIGReg", "SteeredLeWMLoss"]
