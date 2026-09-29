@@ -138,8 +138,8 @@ class Trainer:
 
     # ------------------------------------------------------------------ #
     def fit(self, train_loader, val_loader, start_epoch: int = 0,
-            best_val_loss: float = np.inf, eval_every: int = 0,
-            eval_fn=None):
+            best_val_loss: float = np.inf, best_test_f1: float = 0.0,
+            eval_every: int = 0, eval_fn=None):
         """Epoch loop with best-val checkpointing.
 
         ``eval_fn`` (when given with ``eval_every > 0``) runs after
@@ -169,7 +169,10 @@ class Trainer:
             if eval_fn is not None and eval_every and eval_every > 0 \
                     and ((epoch + 1) % int(eval_every) == 0 or (epoch + 1) == epochs):
                 try:
-                    eval_fn(epoch + 1)
+                    test_f1 = eval_fn(epoch + 1)
+                    if test_f1 >= best_test_f1:
+                        best_test_f1 = test_f1
+                        torch.save(self.model.state_dict(), self.p["jepa_model_best"])
                 except Exception as exc:
                     self.logger.warn(f"Periodic eval skipped at epoch {epoch+1}: {exc}")
 

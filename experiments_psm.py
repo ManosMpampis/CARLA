@@ -28,12 +28,12 @@ RECON_SCORE_YML = "configs/jepa/steering/smd_recon_score.yml"
 DATASET = "psm"
 FNAME = "psm"
 IN_CHANNELS = 25
-WSZ = 1024
+WSZ = 128
 STRIDE = 10
 ENC_CHANNELS = [32, 64]
 ENC_STRIDES = [2, 2]
 PRETEXT_EPOCHS = 300
-RECON_EPOCHS = 600
+RECON_EPOCHS = 1500
 BASE_LR = 0.002
 WARMUP_EPOCHS = 10
 
@@ -123,16 +123,16 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
 
     # print(f"=== pretext PSM (epochs={PRETEXT_EPOCHS}) ===", flush=True)
     # steered_main(pretext_args, update_dictionary=pretext_patch)
-    # print(f"=== recon PSM (epochs={RECON_EPOCHS}) ===", flush=True)
-    # recon_main(recon_args, update_dictionary=recon_patch)
+    print(f"=== recon PSM (epochs={RECON_EPOCHS}) ===", flush=True)
+    recon_main(recon_args, update_dictionary=recon_patch)
     print(f"=== score PSM (aux_crop={score_aux_crop}) ===", flush=True)
     recon_main(score_args, update_dictionary=score_patch)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run reconstruction experiment on PSM")
-    parser.add_argument("--pretext-version", default="lewm_rec/psm_pretext")
-    parser.add_argument("--recon-version", default="lewm_rec/psm_recon")
+    parser.add_argument("--pretext-version", default="lewm_rec/psm_pretext_128_2")
+    parser.add_argument("--recon-version", default="lewm_rec/psm_recon_128_3")
     parser.add_argument("--score-aux-crop", action="store_true")
     parser.add_argument("--threshold-per-channel", action="store_true",
                         help="threshold each reconstructed PSM channel independently")

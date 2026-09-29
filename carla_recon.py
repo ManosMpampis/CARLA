@@ -184,7 +184,7 @@ def eval_recon_on_test(model, p, device, logger, step):
                    f"F1 {honest['point_F1_no_PA']:.4f}")
     finally:
         model.score_aux_crop = flag
-
+    return honest["point_F1_no_PA"]
 
 def run_recon(p, device):
     """Train the mirrored head on normal-only windows (dense L1)."""
@@ -258,6 +258,10 @@ def run_score(p, device):
     if override and os.path.exists(str(override)):
         p["jepa_model"] = str(override)
         p["jepa_checkpoint"] = str(override)
+        p["jepa_model_best"] = str(override)
+    if p.get("score_with_best_f1", False):
+        p["jepa_checkpoint"] = p["jepa_model_best"]
+        p["jepa_model"] = p["jepa_model_best"]
     score_with_model(p, device, get_recon_model, logger)
 
 

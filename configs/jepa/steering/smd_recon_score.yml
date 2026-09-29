@@ -49,7 +49,7 @@ probe_kwargs:
   num_probe_windows: 0
 eval_window_size: 100
 
-seed: 4
+seed: 5
 device: cuda
 amp: false
 epochs: 0

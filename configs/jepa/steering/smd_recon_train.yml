@@ -66,7 +66,7 @@ stage_a:
   corpus: single
 
 # Training (short defaults for smoke; raise epochs for real runs)
-seed: 4
+seed: 5
 device: cuda
 amp: false
 epochs: 20

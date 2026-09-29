@@ -167,7 +167,7 @@ class JEPADataset(Dataset):
         return val
 
     def __getitem__(self, index):
-        if self._corpus is not None:
+        if getattr(self, "_corpus", None) is not None:
             return self._corpus[index]
         start = index * self.stride
         ts = self.series[start:start + self.wsz]
@@ -182,7 +182,7 @@ class JEPADataset(Dataset):
         return out
 
     def __len__(self):
-        if self._corpus is not None:
+        if getattr(self, "_corpus", None) is not None:
             return len(self._corpus)
         return (self.series.shape[0] - self.wsz) // self.stride + 1
 

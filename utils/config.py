@@ -43,6 +43,7 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
         cfg['jepa_dir'] = jepa_dir
         cfg['jepa_checkpoint'] = os.path.join(jepa_dir, 'checkpoint.pth.tar')
         cfg['jepa_model'] = os.path.join(jepa_dir, 'model.pth.tar')
+        cfg['jepa_model_best'] = os.path.join(jepa_dir, "model_best_eval.pth.tar")
         cfg['calibration_path'] = os.path.join(jepa_dir, 'calibration.json')
         cfg['scores_path'] = os.path.join(jepa_dir, 'scores.npz')
         cfg['metrics_path'] = os.path.join(jepa_dir, 'metrics.json')
