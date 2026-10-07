@@ -4,21 +4,17 @@ common:
   train_db_name: psm
   val_db_name: psm
   fname: psm
-  wsz: 128
+  wsz: 1024
   stride: 10
   val_fraction: 0.1
   seed: 4
   device: cuda
   amp: false
-  batch_size: 32
+  batch_size: 64
   num_workers: 0
   score_batch_size: 256
   model_kwargs:
     in_channels: 25
-    enc_channels: [32, 32]
-    enc_strides: [1, 1]
-    norm: batch
-    dropout: 0.1
   calibration_quantile: 0.995
   calibration_kwargs: {quantile: 0.995}
   stage_c: {mode: frozen, eval_every: 0}

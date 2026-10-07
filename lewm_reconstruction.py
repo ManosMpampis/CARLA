@@ -239,6 +239,15 @@ def run_score(p, device):
                             "threshold_source": "validation and test oracle, separate"},
               "evaluation": evaluation,
               "no_training_baseline": baseline_evaluation}
+    from utils.decision_trace import write_final_decision_trace
+
+    trace_options = {"wsz": wsz, "stride": stride, **options}
+    trace_output = write_final_decision_trace(
+        model, device, test_dataset.series, p,
+        evaluation["timeseries"]["calibrated"]["threshold"],
+        options=trace_options, threshold_operator="gt")
+    if trace_output is not None:
+        report["decision_trace"] = trace_output
     with open(p["metrics_path"], "w") as stream:
         json.dump(report, stream, indent=2)
     np.savez_compressed(

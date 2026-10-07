@@ -203,6 +203,8 @@ def verify_runs(directory):
             assert checkpoint["next_epoch"] == 2
             report = run_stage(args, {**patch, "stage": "score"})
             assert report["task"]["target"] == target
+            assert Path(report["decision_trace"]["html"]).is_file()
+            assert Path(report["decision_trace"]["json"]).is_file()
             assert report["task"]["query_source"] == query_source
             scores = np.load(out_dir / "scores.npz")
             assert (scores["cover_counts"][:40] == 0).all()

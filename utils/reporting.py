@@ -313,6 +313,30 @@ def score_with_model(p, device, build_model, logger, *, input_resolution=False) 
             window_size),
         baseline_scores, baseline_targets, baseline_starts, baseline_ends)
 
+    from utils.decision_trace import write_final_decision_trace
+
+    if channel_mode:
+        names = sorted(channel_thresholds)
+
+        def trace_score(current):
+            margins = np.stack([current[name] - channel_thresholds[name]
+                                for name in names])
+            return (margins.max(axis=0) if channel_operator == "or"
+                    else margins.min(axis=0))
+
+        trace_threshold = 0.0
+        trace_label = "Channel margin"
+    else:
+        trace_score = calibrator.fuse
+        trace_threshold = threshold
+        trace_label = "Mean score"
+    trace_output = write_final_decision_trace(
+        scoring_model(model), device, test_series, p, trace_threshold,
+        options=eval_options, score_transform=trace_score,
+        score_label=trace_label)
+    if trace_output is not None:
+        report["decision_trace"] = trace_output
+
     np.savez_compressed(
         p["scores_path"],
         scores=fused_test,

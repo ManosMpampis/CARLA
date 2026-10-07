@@ -169,6 +169,8 @@ def verify_runs(directory, env):
         assert Path(report["selection"]["weights"]).name in (
             "model.pth.tar", "best_validation_loss.pth.tar")
         assert {"honest", "point_adjust_comparability", "evaluation"} <= set(report)
+        assert Path(report["decision_trace"]["html"]).is_file()
+        assert Path(report["decision_trace"]["json"]).is_file()
         assert (out / "resolved_config.yml").is_file()
         assert any(out.rglob("events.out.tfevents.*"))
         saved = np.load(out / "scores.npz")

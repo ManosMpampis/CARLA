@@ -18,7 +18,7 @@
     <svg id="decision-evolution" role="img" aria-label="Running mean anomaly score and decision history for the selected timestep"></svg>
   </div>
   <div class="decision-trace-legend" aria-label="Legend">
-    <span><i class="decision-line-key"></i> Mean score</span>
+    <span><i class="decision-line-key"></i> <span id="decision-score-label">Mean score</span></span>
     <span><i class="decision-threshold-key"></i> Threshold</span>
     <span><i class="decision-anomaly-key"></i> Anomaly</span>
     <span><i class="decision-normal-key"></i> Normal</span>
@@ -59,6 +59,8 @@
   const seriesSvg = root.querySelector('#decision-series');
   const evolutionSvg = root.querySelector('#decision-evolution');
   const updates = trace.updates || [];
+  const scoreLabel = trace.score_label || 'Mean score';
+  root.querySelector('#decision-score-label').textContent = scoreLabel;
   if (!updates.length) {
     currentLabel.textContent = 'No scored windows';
     return;
@@ -124,7 +126,7 @@
       label(svg, sx(value), plot.bottom + 17, String(Math.round(value)), anchor);
     });
     label(svg, (plot.left + plot.right) / 2, height - 3, xTitle);
-    const yTitle = label(svg, 13, (plot.top + plot.bottom) / 2, 'Mean score');
+    const yTitle = label(svg, 13, (plot.top + plot.bottom) / 2, scoreLabel);
     yTitle.setAttribute('transform', `rotate(-90 13 ${(plot.top + plot.bottom) / 2})`);
     if (trace.threshold !== null && Number.isFinite(trace.threshold)) {
       const y = sy(trace.threshold);
@@ -169,7 +171,10 @@
     const yExtent = range(trace.threshold === null ? scoreValues : [...scoreValues, trace.threshold]);
     const xExtent = [positions[0], positions[positions.length - 1]];
     const arrival = updates[step];
-    stepLabel.textContent = `${step + 1} / ${updates.length} · input [${arrival.window_start}, ${arrival.window_end})`;
+    const scope = trace.scope;
+    const total = scope?.total_windows || updates.length;
+    stepLabel.textContent = `${step + 1} / ${updates.length} · input [${arrival.window_start}, ${arrival.window_end})`
+      + (total > updates.length ? ` · first ${updates.length} of ${total} windows` : '');
     const focused = state.get(focus);
     currentLabel.textContent = focused ?
       `Score ${fmt(focused.y)} · ${focused.decision ? 'Anomaly' : 'Normal'} · ${focused.count} output${focused.count === 1 ? '' : 's'}` :

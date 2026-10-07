@@ -16,6 +16,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 from utils.scoring import RunningScorer, Scorer, evaluation_options  # noqa: E402
+from utils.decision_trace import write_final_decision_trace  # noqa: E402
 from utils.reconstruction_baselines import score_both  # noqa: E402
 
 
@@ -117,6 +118,29 @@ def main():
     final = Scorer(FlipModel(), torch.device("cpu")).score_series(
         flip_series, 4, 1)
     np.testing.assert_allclose(flipping.score_at(3), final["scores"][3])
+    transformed = RunningScorer(
+        PositionModel(), torch.device("cpu"), 4, threshold=4.0,
+        score_transform=lambda channels: channels["fused"] + channels["L0"],
+        series_length=len(series))
+    for start in range(7):
+        transformed.update(series[start:start + 4], start)
+    for timestep in range(len(series)):
+        expected = 2 * all_windows["scores"][timestep]
+        np.testing.assert_allclose(transformed.score_at(timestep), expected)
+        assert transformed.decision_at(timestep) == (expected >= 4.0)
+    with tempfile.TemporaryDirectory() as folder:
+        config = {"wsz": 4, "stride": 1, "jepa_dir": folder,
+                  "decision_trace": {"max_windows": 2}}
+        artifact = write_final_decision_trace(
+            FlipModel(), torch.device("cpu"), flip_series, config, 5.0,
+            threshold_operator="gt")
+        assert artifact["recorded_windows"] == 2
+        assert artifact["total_windows"] == 4 and artifact["truncated"]
+        assert os.path.isfile(artifact["html"])
+        with open(artifact["json"]) as stream:
+            saved = json.load(stream)
+        assert len(saved["updates"]) == 2
+        assert saved["updates"][1]["decisions"][2] is False
 
     # AE/VAE uses exactly the same mapped aggregation and window intervals.
     baseline = score_both(PositionModel(), series, 4, 1, 2, "cpu")

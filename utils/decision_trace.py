@@ -5,6 +5,60 @@ import json
 from pathlib import Path
 
 
+def write_final_decision_trace(model, device, series, config, threshold, *,
+                               options=None, score_transform=None,
+                               threshold_operator="ge",
+                               score_label="Mean score") -> dict | None:
+    """Replay a bounded prefix of final scoring and write its decision graph.
+
+    The default 256-window limit keeps a normal score run from embedding a
+    multi-gigabyte history in HTML. Set decision_trace.max_windows to null
+    to replay the complete evaluation window sequence.
+    """
+    from utils.scoring import RunningScorer, evaluation_options
+
+    setting = config.get("decision_trace", {})
+    if setting is False:
+        return None
+    if setting is None or setting is True:
+        setting = {}
+    if not isinstance(setting, dict):
+        raise ValueError("decision_trace must be a YAML mapping or false")
+    limit = setting.get("max_windows", 256)
+    if limit is not None:
+        if isinstance(limit, bool) or int(limit) != limit or int(limit) < 1:
+            raise ValueError("decision_trace.max_windows must be positive or null")
+        limit = int(limit)
+    options = dict(evaluation_options(config) if options is None else options)
+    window, stride = int(options.pop("wsz")), int(options.pop("stride"))
+    if len(series) < window:
+        raise ValueError("series is shorter than the decision trace input window")
+    starts = list(range(0, len(series) - window + 1, stride))
+    if options.get("include_last_window", stride < window) and starts[-1] != len(series) - window:
+        starts.append(len(series) - window)
+    selected = starts if limit is None else starts[:limit]
+    running = RunningScorer(
+        model, device, window, check_mask=options.get("check_mask"),
+        latency_offset=options.get("latency_offset", 0), threshold=threshold,
+        record_history=True, threshold_operator=threshold_operator,
+        score_transform=score_transform, series_length=len(series))
+    for start in selected:
+        running.update(series[start:start + window], start)
+    trace = running.decision_trace()
+    trace["score_label"] = score_label
+    trace["scope"] = {
+        "recorded_windows": len(selected), "total_windows": len(starts),
+        "first_input_start": selected[0], "last_input_start": selected[-1],
+        "truncated": len(selected) < len(starts),
+    }
+    directory = Path(config["jepa_dir"])
+    html_path = directory / "decision_trace.html"
+    json_path = directory / "decision_trace.json"
+    save_decision_trace_html(trace, html_path)
+    json_path.write_text(json.dumps(trace, indent=2, allow_nan=False))
+    return {"html": str(html_path), "json": str(json_path), **trace["scope"]}
+
+
 def render_decision_trace_fragment(trace: dict) -> str:
     """Embed a numeric RunningScorer trace in the reusable graph fragment."""
     if trace.get("threshold") is None:

@@ -17,7 +17,7 @@ from lewm_reconstruction import run_score
 from models.builders import get_recon_model
 from utils.config import create_config
 from utils.reconstruction_scores import reconstruction_score_map
-from utils.reconstruction_baselines import score_both, train_arm
+from utils.reconstruction_baselines import run_arm, score_both, train_arm
 
 
 def main():
@@ -114,6 +114,11 @@ def main():
                 assert "window" in checkpoint["evaluation"]
                 assert "timeseries" in checkpoint["evaluation"]
             assert os.path.exists(os.path.join(run_dir, "tensorboard"))
+            scored = run_arm(arm, SimpleNamespace(
+                config_env=env, config_exp=path, fname="toy", version=arm,
+                score=True, score_checkpoint=None))
+            assert os.path.isfile(scored["decision_trace"]["html"])
+            assert os.path.isfile(scored["decision_trace"]["json"])
         steering_weights = os.path.join(root, "steering_weights.pth.tar")
         torch.save(get_recon_model({"model_kwargs": kwargs,
                                    "recon_kwargs": {"dropout": 0.0}}).state_dict(),
@@ -128,6 +133,9 @@ def main():
         steering_run = create_config(env, steering_config, "toy", "steering")
         report = run_score(steering_run, torch.device("cpu"))
         assert report["score_mode"] == "mse"
+        assert os.path.isfile(report["decision_trace"]["html"])
+        assert os.path.isfile(report["decision_trace"]["json"])
+        assert report["decision_trace"]["recorded_windows"] > 0
         for protocol in ("window", "timeseries"):
             assert "calibrated" in report["evaluation"][protocol]
             assert "oracle" in report["evaluation"][protocol]

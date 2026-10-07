@@ -59,6 +59,13 @@ def main():
                                                      "stem_channels": 8, "neck_widths": [8, 8, 8]}})
         source = Path(model_path(root / "results", {**load_experiment_config(first.config_exp), **base}, "toy", "phase1"))
         assert source.is_file()
+        first.stage = "score"
+        first.score_checkpoint = str(source)
+        phase1_report = run_stage(first, {**base,
+            "predictor_kwargs": {"domain": "time", "time_steering": False,
+                                 "stem_channels": 8, "neck_widths": [8, 8, 8]},
+            "probe_kwargs": {"num_probe_windows": 0}})
+        assert Path(phase1_report["decision_trace"]["html"]).is_file()
         second = SimpleNamespace(config_env=str(env),
                                  config_exp=str(REPO / "configs/lewm_encoder/frequency_aux/reconstruction/default.yml"),
                                  fname="toy", version="phase2", stage="phase2",
@@ -86,6 +93,8 @@ def main():
         second.score_checkpoint = p["jepa_model"]
         report = run_stage(second, overrides)
         assert set(report["evaluation"]) == {"window", "timeseries"}
+        assert Path(report["decision_trace"]["html"]).is_file()
+        assert Path(report["decision_trace"]["json"]).is_file()
         assert Path(p["scores_path"]).is_file()
         calibration = json.loads(Path(p["calibration_path"]).read_text())
         assert calibration["source"] == "held-out validation tail"

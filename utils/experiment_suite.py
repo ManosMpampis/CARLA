@@ -222,6 +222,9 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
     class InputResolutionScores:
         """LEWM's native map is latent-resolution when its encoder downsamples."""
 
+        def to(self, _device):
+            return self  # the captured model is already on the requested device
+
         def eval(self):
             model.eval()
             return self
@@ -231,6 +234,12 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
             if exp.runner == "lewm":
                 step = int(model.level_strides[0])
                 output["fused"] = output["fused"].repeat_interleave(step, dim=-1)
+                output["levels"] = {
+                    name: value.repeat_interleave(step, dim=-1)
+                    for name, value in output["levels"].items()}
+                output["signals"] = {
+                    name: value.repeat_interleave(step, dim=-1)
+                    for name, value in output["signals"].items()}
             return output
 
     scorer_model = InputResolutionScores()
@@ -268,6 +277,15 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
                      "input_window": window,
                      "output_window": int(test["ends"][0] - test["starts"][0])},
     }
+    from utils.decision_trace import write_final_decision_trace
+
+    trace_output = write_final_decision_trace(
+        scorer_model, device, test_dataset.series, p,
+        thresholds["timeseries"],
+        options={"wsz": window, "stride": stride, **options},
+        threshold_operator="gt")
+    if trace_output is not None:
+        report["decision_trace"] = trace_output
     calibration = {"source": "held-out clean train tail", "quantile": quantile,
                    "window_threshold": thresholds["window"],
                    "timeseries_threshold": thresholds["timeseries"]}

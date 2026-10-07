@@ -6,6 +6,21 @@ averages scores that land on the same timestep. JEPA, reconstruction, and
 AE/VAE evaluation use the same placement and cover-count mean. Live inference
 can update that mean incrementally as windows arrive.
 
+A final `stage: score` run automatically writes `decision_trace.html` and
+`decision_trace.json` beside `scores.npz` and `metrics.json`. The metrics
+report lists both paths and how many windows were replayed. This covers
+LEWM, reconstruction, cross-attention, and AE/VAE score entries. Periodic
+training evaluations do not export a trace. By default, the graph replays
+the first 256 input windows so the output remains manageable:
+
+```yaml
+decision_trace:
+  max_windows: 512
+```
+
+Set `max_windows: null` to replay every evaluation window, or
+`decision_trace: false` to disable trace output.
+
 Add an `evaluation` block to an experiment YAML to configure this procedure
 without changing training `wsz` or training `stride`:
 

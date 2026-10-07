@@ -153,6 +153,15 @@ def run_score(p, device):
         report["point_adjust_comparability"] = {
             key.removeprefix("pa_"): float(value) for key, value in metric_dict.items()
             if key.startswith("pa_")}
+        from utils.decision_trace import write_final_decision_trace
+
+        trace_output = write_final_decision_trace(
+            model, device, test_dataset.series, p,
+            calibration["timeseries_threshold"],
+            options={"wsz": window, "stride": stride, **options},
+            threshold_operator="gt")
+        if trace_output is not None:
+            report["decision_trace"] = trace_output
         for path, payload in ((p["calibration_path"], calibration), (p["metrics_path"], report)):
             with open(path, "w") as stream:
                 json.dump(payload, stream, indent=2)
