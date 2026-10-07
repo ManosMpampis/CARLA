@@ -93,13 +93,23 @@ class MirroredReconHead(nn.Module):
 
 
 def build_mirrored_head(encoder, norm: str = "batch", dropout: float = 0.0,
-                        dilations=None):
-    """Build a MirroredReconHead from a LeWMResNetEncoder instance."""
-    ladder = list(getattr(encoder, "channel_ladder",
-                          [encoder.blocks[0].main[0].conv.in_channels,
-                           encoder.output_dims]))
+                        dilations=None, *, out_channels=None, upsample=True):
+    """Derive the decoder's hidden channel ladder from the encoder unchanged.
+
+    Defaults reconstruct raw input, exactly as the original LEWM head.
+    Latent targets can override the final output channels and keep stride 1;
+    hidden channels and decoder depth still come from the encoder.
+    """
+    if hasattr(encoder, "channel_ladder"):
+        ladder = list(encoder.channel_ladder)
+    else:
+        ladder = [encoder.blocks[0].main[0].conv.in_channels, encoder.output_dims]
     strides = list(getattr(encoder, "enc_strides", [1] * (len(ladder) - 1)))
-    enc_norm = getattr(encoder.blocks[0].main[0], "norm", None)
-    _ = enc_norm
+    if out_channels is not None:
+        if int(out_channels) < 1:
+            raise ValueError("reconstruction output channels must be positive")
+        ladder[0] = int(out_channels)
+    if not upsample:
+        strides = [1] * len(strides)
     return MirroredReconHead(ladder, strides, norm=norm, dropout=dropout,
                              dilations=dilations)

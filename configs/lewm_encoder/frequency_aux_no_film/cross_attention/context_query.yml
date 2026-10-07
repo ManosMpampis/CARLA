@@ -1,0 +1,5 @@
+# Q/K/V attention with this shared phase-one feature extractor.
+extends: [../phase1.yml, ../../_templates/cross_attention_context_query.yml]
+framework: cross_attention
+phase1_experiment: frequency_aux_no_film
+experiment_name: context_query

@@ -132,7 +132,8 @@ class JEPADataset(Dataset):
         elif source == "psm":
             from data.PSM import PSM
 
-            legacy_train = PSM(train=True, sanomaly=None, wsz=p["wsz"], stride=p["stride"])
+            root = p.get("dataset_root", MyPath.db_root_dir("psm"))
+            legacy_train = PSM(root=root, train=True, sanomaly=None, wsz=p["wsz"], stride=p["stride"])
             scaler = StandardScaler().fit(legacy_train.data)
             self.mean, self.std = scaler.mean_, scaler.scale_
             if train:
@@ -143,7 +144,7 @@ class JEPADataset(Dataset):
                 self.val_series = series[cut:]
                 self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
             else:
-                legacy_test = PSM(train=False, sanomaly=None, wsz=p["wsz"],
+                legacy_test = PSM(root=root, train=False, sanomaly=None, wsz=p["wsz"],
                                   stride=p["stride"],
                                   mean_data=scaler.mean_, std_data=scaler.scale_)
                 self.targets = legacy_test.targets

@@ -4,7 +4,6 @@ import torch
 from torch import nn
 
 from models.recon_head import build_mirrored_head
-from models.lewm import LeWMResNetEncoder
 from utils.reconstruction_scores import reconstruction_score_map, normalize_score_mode
 
 
@@ -12,9 +11,13 @@ class ReconstructionBaseline(nn.Module):
     """The same encoder/decoder in both arms; only VAE adds a posterior."""
 
     def __init__(self, model_kwargs: dict, recon_kwargs: dict, variational: bool,
-                 score_mode: str = "l1"):
+                 score_mode: str = "l1", encoder=None):
         super().__init__()
-        self.encoder = LeWMResNetEncoder(**model_kwargs)
+        if encoder is None:
+            from models import get_backbone
+
+            encoder = get_backbone("lewm_resnet", **model_kwargs)["model"]
+        self.encoder = encoder
         self.decoder = build_mirrored_head(
             self.encoder,
             norm=recon_kwargs.get("norm", model_kwargs.get("norm", "batch")),

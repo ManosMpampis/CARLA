@@ -1,0 +1,6 @@
+# Mirrored input reconstruction from this shared phase-one encoder.
+extends: [../phase1.yml, ../../_templates/reconstruction.yml]
+framework: reconstruction
+phase1_experiment: time_aux_no_film
+experiment_name: default
+tag_jepa: null

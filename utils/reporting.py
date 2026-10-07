@@ -122,7 +122,7 @@ def _save_timeseries_plot(path, series, targets, predictions, scores):
     plt.close(fig)
 
 @torch.no_grad()
-def score_with_model(p, device, build_model, logger) -> dict:
+def score_with_model(p, device, build_model, logger, *, input_resolution=False) -> dict:
     """Full score stage for any model exposing the Scorer contract.
 
     `build_model(p)` constructs the (untrained) architecture; weights load
@@ -137,13 +137,32 @@ def score_with_model(p, device, build_model, logger) -> dict:
     from utils.trainer import Trainer
 
     model = build_model(p).to(device)
-    weights_path = p["jepa_model"]
-    if not os.path.exists(weights_path):
+    weights_path = p.get("score_checkpoint") or p["jepa_model"]
+    if not p.get("score_checkpoint") and not os.path.exists(weights_path):
         weights_path = p["jepa_checkpoint"]
     Trainer.load_weights(weights_path, model, logger, strict=True)
     model.eval()
 
-    scorer = Scorer(model, device)
+    class InputResolutionScores(torch.nn.Module):
+        """Place LEWM latent-token errors back on their input timestep spans."""
+
+        def __init__(self, base):
+            super().__init__()
+            self.base = base
+
+        def score(self, x):
+            result = self.base.score(x)
+            stride = int(self.base.level_strides[0])
+            return {"fused": result["fused"].repeat_interleave(stride, dim=-1),
+                    "levels": {key: value.repeat_interleave(stride, dim=-1)
+                               for key, value in result["levels"].items()},
+                    "signals": {key: value.repeat_interleave(stride, dim=-1)
+                                for key, value in result["signals"].items()}}
+
+    def scoring_model(base):
+        return InputResolutionScores(base) if input_resolution else base
+
+    scorer = Scorer(scoring_model(model), device)
     score_bs = int(p.get("score_batch_size", p.get("batch_size", 256)))
     eval_options = evaluation_options(p)
     calibrator = Calibrator(**p.get("calibration_kwargs",
@@ -281,7 +300,7 @@ def score_with_model(p, device, build_model, logger) -> dict:
     # model of the identical architecture
     baseline_model = build_model(p).to(device)
     baseline_model.eval()
-    baseline_result = Scorer(baseline_model, device).score_series(
+    baseline_result = Scorer(scoring_model(baseline_model), device).score_series(
         test_series, batch_size=score_bs, **eval_options)
     baseline_fused = baseline_result.pop("scores")
     baseline_scores, baseline_targets, baseline_starts, baseline_ends = \

@@ -1,0 +1,61 @@
+# Phase-two reconstruction defaults. Encoder settings come from ../phase1.yml.
+setup: jepa
+stage: recon
+
+# Reconstructor mirrors the inherited encoder channels and strides.
+recon_kwargs:
+  with_aux: false          # true ONLY for the aux-crop inference variant
+  norm: batch              # head norm (defaults to model_kwargs.norm)
+  dropout: 0.1
+
+# Frozen default (Q2): encoder (+aux) fixed, head trains. Set finetune to
+# update everything (tinker knob).
+stage_c:
+  mode: frozen
+  eval_every: 10       # test-set monitoring cadence (epochs); test/ goes to
+                       # TensorBoard + log.txt. Selection stays on val, so
+                       # test labels never steer training. 0 disables.
+
+# Weights: LeWM pretraining model (encoder init). Head stays random.
+# Leave empty to resolve the shared phase1_experiment/phase1_version checkpoint.
+# Explicit paths still support external or older phase-one checkpoints.
+pretrained_from: null
+
+# Phase-2 training loss stays mean L1 over C x W.
+criterion: recon_l1
+criterion_kwargs: {}
+score_mode: l1           # l1 | l2 | mse; changes scoring, not L1 training
+
+# Data: single-machine corpus, normal-only windows, no masking collator.
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 128                  # MUST satisfy wsz % S == 0
+stride: 10
+val_fraction: 0.1
+score_batch_size: 256
+
+stage_a:
+  corpus: single
+
+# Training (short defaults for smoke; raise epochs for real runs)
+seed: 5
+device: cuda
+amp: false
+epochs: 20
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+# Validation-tail quantile used at periodic window/time-series evaluation.
+calibration_kwargs:
+  quantile: 0.99
+probe_kwargs:
+  num_probe_windows: 0
+eval_window_size: 100

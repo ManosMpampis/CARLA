@@ -13,10 +13,11 @@ from data.jepa_dataset import JEPADataset
 from metrics.affiliation.generics import convert_vector_to_events
 from metrics.f1_score_f1_pa import event_f1
 from metrics.vus.metrics import get_range_vus_roc
-from models.ae_baseline import ReconstructionBaseline, reconstruction_objective
+from models.ae_baseline import reconstruction_objective
+from models.builders import get_ae_model, get_vae_model
 from utils.common_config import (get_jepa_datasets, get_optimizer, get_scheduler,
                                  get_train_dataloader, get_val_dataloader)
-from utils.config import create_config
+from utils.config import create_config, entry_overrides, load_experiment_config
 from utils.scoring import (aggregate_score_maps, covered_evaluation_view,
                            evaluation_options)
 
@@ -204,19 +205,41 @@ def _log_evaluation(writer, evaluation, epoch):
         writer.add_scalar(f"test/{protocol}/vus_roc", metrics["vus_roc"], epoch)
 
 
-def train_arm(arm: str, args) -> dict:
+def run_arm(arm, args, update_dictionary=None):
+    """Single AE/VAE entry: train normally, or score the same saved experiment."""
+    overrides = entry_overrides(args, update_dictionary)
+    stage = overrides.get("stage", load_experiment_config(args.config_exp).get("stage", "pretrain"))
+    if str(stage).lower() == "score":
+        config = create_config(args.config_env, args.config_exp, args.fname,
+                               args.version, update_dictionary=overrides)
+        return score_arm(arm, args, config)
+    return train_arm(arm, args, overrides)
+
+
+def score_arm(arm, args, config):
+    """Evaluate validation-selected weights without creating an optimizer."""
+    from pathlib import Path
+    from utils.experiment_suite import Experiment, score_experiment
+
+    if arm not in {"ae", "vae"} or config.get("arm") != arm:
+        raise ValueError(f"config arm {config.get('arm')} does not match {arm}")
+    _seed(int(config.get("seed", 4)))
+    experiment = Experiment(config.get("framework", arm), config.get("experiment_name", "default"),
+                            arm, Path(args.config_exp), dict(config))
+    return score_experiment(experiment, args.config_env, config["version"], fname=args.fname)
+
+
+def train_arm(arm: str, args, update_dictionary=None) -> dict:
     if arm not in {"ae", "vae"}:
         raise ValueError(f"unknown reconstruction arm {arm}")
     config = create_config(args.config_env, args.config_exp, args.fname,
-                           args.version)
+                           args.version, update_dictionary=update_dictionary or {})
     if config.get("arm") != arm:
         raise ValueError(f"config arm {config.get('arm')} does not match {arm}")
     _seed(int(config.get("seed", 4)))
     device = _device(config)
-    model = ReconstructionBaseline(dict(config["model_kwargs"]),
-                                   dict(config.get("recon_kwargs", {})),
-                                   variational=arm == "vae",
-                                   score_mode=config.get("score_mode", "l1")).to(device)
+    builder = get_vae_model if arm == "vae" else get_ae_model
+    model = builder(config).to(device)
     if int(config["wsz"]) % model.total_stride:
         raise ValueError("window length must be divisible by encoder stride")
     train_dataset, val_dataset = get_jepa_datasets(config)

@@ -2,17 +2,18 @@
 """Aggregate per-machine metrics.json files into per-experiment and summary CSVs.
 
 Layout expected:
-    <base>/<experiment>/machine*/jepa/metrics.json
+    <base>/<phase1>/phase1/<version>/machine*/jepa*/metrics.json
+    <base>/<phase1>/<framework>/<phase2>/<version>/machine*/jepa*/metrics.json
 e.g.:
-    results/smd/lewm/configs/jepa/lewm/smd_lewm_full128_pretrain.yml/machine-1-1.txt/jepa/metrics.json
+    results/smd/lewm_encoder/time/reconstruction/default/smd_v1/machine-1-1.txt/jepa/metrics.json
 
 Outputs (under --outdir):
-    <outdir>/<experiment>.csv   one row per machine + MEAN/STD/SUM rows
+    <outdir>/<experiment>/<version>.csv   one row per machine + MEAN/STD/SUM rows
     <outdir>/summary_mean.csv   one row per experiment (mean across machines)
 
 Usage:
     ./venv/bin/python aggregate_lewm_metrics.py
-    ./venv/bin/python aggregate_lewm_metrics.py --base results/smd/lewm/configs/jepa/lewm --outdir results/smd/lewm/aggregated_metrics
+    ./venv/bin/python aggregate_lewm_metrics.py --base results/smd/lewm_encoder --outdir results/smd/aggregated_metrics/lewm_encoder
 """
 from __future__ import annotations
 
@@ -58,9 +59,9 @@ def aggregate_values(rows: list[dict], columns: list[str]):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--base", default="results/smd/frequency/configs/jepa/steering",
-                    help="Directory containing one subdir per experiment")
-    ap.add_argument("--outdir", default="results/smd/frequency/aggregated_metrics",
+    ap.add_argument("--base", default="results/smd/lewm_encoder",
+                    help="Shared encoder experiment tree (legacy trees also supported)")
+    ap.add_argument("--outdir", default="results/smd/aggregated_metrics/lewm_encoder",
                     help="Where to write per-experiment CSVs + summary_mean.csv")
     args = ap.parse_args()
 
@@ -75,9 +76,13 @@ def main() -> int:
         print(f"[error] base dir not found: {base}", file=sys.stderr)
         return 1
 
-    experiments = sorted(p for p in base.iterdir() if p.is_dir())
+    experiments = {}
+    for path in sorted(base.rglob("metrics.json")):
+        if path.parent.name.startswith("jepa") and path.parent.parent.name.startswith("machine-"):
+            group = path.parent.parent.parent.relative_to(base)
+            experiments.setdefault(group, []).append(path)
     if not experiments:
-        print(f"[error] no experiment subdirs in {base}", file=sys.stderr)
+        print(f"[error] no per-machine metrics in {base}", file=sys.stderr)
         return 1
 
     outdir = Path(args.outdir)
@@ -86,11 +91,7 @@ def main() -> int:
     summary_rows: list[dict] = []
     summary_columns: list[str] = []
 
-    for exp in experiments:
-        files = sorted(exp.glob("machine*/jepa/metrics.json"))
-        if not files:
-            print(f"[warn] {exp.name}: no machine*/jepa/metrics.json, skipped", file=sys.stderr)
-            continue
+    for exp, files in experiments.items():
         rows: list[dict] = []
         columns: list[str] = []
         for f in files:
@@ -105,7 +106,8 @@ def main() -> int:
         means, stds, sums = aggregate_values(rows, columns)
 
         # Per-experiment CSV: one row per machine + MEAN/STD/SUM.
-        per_exp_path = outdir / f"{exp.name}.csv"
+        per_exp_path = outdir / exp.parent / f"{exp.name}.csv"
+        per_exp_path.parent.mkdir(parents=True, exist_ok=True)
         with open(per_exp_path, "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=["machine", *columns])
             w.writeheader()
@@ -114,12 +116,12 @@ def main() -> int:
             w.writerow({"machine": "MEAN", **means})
             w.writerow({"machine": "STD", **stds})
             w.writerow({"machine": "SUM", **sums})
-        print(f"[ok] {exp.name}: {len(rows)} machines -> {per_exp_path}")
+        print(f"[ok] {exp}: {len(rows)} machines -> {per_exp_path}")
 
         for col in columns:
             if col not in summary_columns:
                 summary_columns.append(col)
-        summary_rows.append({"experiment": exp.name, **means})
+        summary_rows.append({"experiment": str(exp), **means})
 
     summary_columns.sort()
     summary_path = outdir / "summary_mean.csv"

@@ -1,0 +1,6 @@
+# Reuse the phase-one auxiliary head for crop scoring.
+extends: default.yml
+experiment_name: aux_crop
+recon_kwargs:
+  with_aux: true
+score_aux_crop: true

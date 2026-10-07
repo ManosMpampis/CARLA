@@ -1,0 +1,5 @@
+# Q/K/V attention with this shared phase-one feature extractor.
+extends: [../phase1.yml, ../../_templates/cross_attention_observed_input.yml]
+framework: cross_attention
+phase1_experiment: time
+experiment_name: observed_input

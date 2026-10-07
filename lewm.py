@@ -13,6 +13,8 @@ import random
 import numpy as np
 import torch
 
+from models.builders import get_lewm_model
+
 from utils.common_config import (
     get_criterion,
     get_jepa_datasets,
@@ -21,7 +23,7 @@ from utils.common_config import (
     get_train_dataloader,
     get_val_dataloader,
 )
-from utils.config import create_config
+from utils.config import create_config, entry_overrides
 from utils.masking_steered import SubAnomalyMaskCollator
 from utils.trainer import Trainer
 from utils.utils import Logger
@@ -36,32 +38,6 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def get_lewm_model(p):
-    """Build the configured LeWM experiment."""
-    from models import get_backbone
-    from models.lewm import LeWMModel
-
-    enc_kwargs = dict(p.get("model_kwargs", {}))
-    built = get_backbone(p.get("backbone", "lewm_resnet"), **enc_kwargs)
-    aux_kwargs = dict(p.get("aux_kwargs", {}))
-    pred_kwargs = dict(p.get("predictor_kwargs", {}))
-    return LeWMModel(
-        encoder=built["model"],
-        aux_channels=aux_kwargs.get("aux_channels", (32, 32, 32)),
-        stem_channels=pred_kwargs.get("stem_channels", 64),
-        neck_widths=tuple(pred_kwargs.get("neck_widths", (64, 64, 64))),
-        n_fft=int(pred_kwargs.get("n_fft", 64)),
-        hop_length=int(pred_kwargs.get("hop_length", 16)),
-        win_length=int(pred_kwargs.get("win_length", 64)),
-        aux_kernels=tuple(aux_kwargs.get("kernels", (7, 5, 3))),
-        time_steering=pred_kwargs.get("time_steering", True),
-        predictor_domain=pred_kwargs.get("domain", "frequency"),
-        with_aux=aux_kwargs.get("with_aux", True),
-        norm=enc_kwargs.get("norm", "batch"),
-        dropout=enc_kwargs.get("dropout", 0.1),
-    )
-
-
 def _device(p):
     want = str(p.get("device", "cpu")).lower()
     if want.startswith("cuda") and not torch.cuda.is_available():
@@ -70,9 +46,8 @@ def _device(p):
 
 
 def _make_logger(p):
-    destructive = str(p.get("stage", "pretrain")).lower() != "score"
     logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
-                    use_tensorboard=True, delete_files=destructive)
+                    use_tensorboard=True, delete_files=False)
     domain = p.get("predictor_kwargs", {}).get("domain", "frequency")
     with_aux = bool(p.get("aux_kwargs", {}).get("with_aux", True))
     steering = bool(p.get("predictor_kwargs", {}).get("time_steering", True))
@@ -188,7 +163,7 @@ def run_score(p, device):
     from utils.reporting import score_with_model
 
     logger = _make_logger(p)
-    score_with_model(p, device, get_lewm_model, logger)
+    return score_with_model(p, device, get_lewm_model, logger, input_resolution=True)
 
 
 STAGES = {
@@ -199,14 +174,14 @@ STAGES = {
 }
 
 
-def main(args, update_dictionary={}):
+def main(args, update_dictionary=None):
     p = create_config(args.config_env, args.config_exp, args.fname, args.version,
-                      update_dictionary=update_dictionary)
+                      update_dictionary=entry_overrides(args, update_dictionary))
     set_seed(int(p.get("seed", 4)))
     stage = str(p.get("stage", "pretrain")).lower()
     if stage not in STAGES:
         raise ValueError(f"Invalid stage {stage}; expected one of {sorted(STAGES)}")
-    STAGES[stage](p, _device(p))
+    return STAGES[stage](p, _device(p))
 
 
 def cli():
@@ -215,6 +190,9 @@ def cli():
     parser.add_argument("--config_exp", help="Config file for the experiment")
     parser.add_argument("--fname", help="File name of the dataset machine", default="")
     parser.add_argument("--version", help="Experiment version", type=str)
+    parser.add_argument("--score", action="store_true", help="score saved weights using this experiment config")
+    parser.add_argument("--stage", choices=sorted(STAGES))
+    parser.add_argument("--score_checkpoint", help="optional weights path; defaults to this run's weights")
     args = parser.parse_args()
     main(args)
 

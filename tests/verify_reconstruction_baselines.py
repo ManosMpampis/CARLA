@@ -13,7 +13,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
 from models.ae_baseline import ReconstructionBaseline, reconstruction_objective
-from carla_recon import get_recon_model, run_score
+from lewm_reconstruction import run_score
+from models.builders import get_recon_model
 from utils.config import create_config
 from utils.reconstruction_scores import reconstruction_score_map
 from utils.reconstruction_baselines import score_both, train_arm

@@ -1,0 +1,78 @@
+# Cross-attention phase two: conditional reconstruction of the clean second-crop encoder features.
+setup: jepa
+stage: phase2
+tag_jepa: cross_attention_observed_features
+# Query source: observed second crop; reconstruction target: features.
+# Model — frozen single-scale ResNet encoder + Q/K/V convolutions + cross-attention reconstructor
+# Crop intervals use feature token indices; multiply by encoder stride for input timesteps.
+# qk_channels and value_channels set the bottleneck; num_heads must divide both widths.
+# The reconstructor automatically mirrors model_kwargs; no head channel list is needed.
+cross_attention_kwargs:
+  freeze_encoder: true
+  target: features
+  query_source: observed
+  context_crop: null # null uses the first half at any encoder stride
+  target_crop: null # null uses the second half; explicit intervals use feature tokens
+  feature_extraction: full
+  qk_channels: 8
+  value_channels: 8
+  kernel_size: 3
+  num_heads: 1
+  attention_dropout: 0.0
+  norm: batch
+  dropout: 0.1
+
+# Weights — phase-one LEWM encoder; Q/K/V and reconstructor train from scratch
+# The shared phase1_experiment/phase1_version checkpoint is resolved automatically.
+# pretrained_from overrides it; phase-two resume uses its own checkpoint.
+pretrained_from: null
+
+# Loss — reconstruction error + dual SIGReg on the clean and injected Q/K/V streams
+criterion: lewm_cross_attention
+criterion_kwargs:
+  loss2_kind: l1
+  w_pred: 1.0
+  lambda_sigreg: 0.1
+  lambda_sigreg_tgt: 0.1
+  sigreg_kwargs:
+    num_slices: 16
+score_mode: l1
+
+# Data — single-machine corpus
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 128
+stride: 10
+val_fraction: 0.1
+score_batch_size: 256
+
+# Training views — clean targets and injected inputs; use masking.mode: none for clean-only training
+stage_a:
+  corpus: single
+stage_b:
+  masking:
+    mode: subanomaly
+    min_ratio: 0.1
+    max_ratio: 0.9
+
+# Training
+seed: 4
+device: cuda
+amp: false
+epochs: 50
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+# Calibration and evaluation — clean training-tail thresholds; score only the second crop
+# Run scoring with this same config and --score.
+calibration_kwargs:
+  quantile: 0.995
+eval_window_size: 100

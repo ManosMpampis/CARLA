@@ -8,7 +8,7 @@ import yaml
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from lewm import get_lewm_model  # noqa: E402
+from models.builders import get_lewm_model  # noqa: E402
 from losses.lewm import LeWMLoss  # noqa: E402
 from models.lewm import FreqPredictor, TimePredictor  # noqa: E402
 from utils.common_config import get_criterion  # noqa: E402
@@ -20,21 +20,22 @@ def main():
         for domain in ("frequency", "time"):
             suffix = "_time_annotation_steering" if with_aux else ""
             name = f"phase1_{domain}_predictor{suffix}.yml"
-            path = os.path.join(REPO, "configs/jepa/steering", name)
+            encoder_name = domain + ("_aux" if with_aux else "")
+            path = os.path.join(REPO, "configs/lewm_encoder", encoder_name, "phase1.yml")
             with open(path) as stream:
                 config = yaml.safe_load(stream)
             assert config["aux_kwargs"]["with_aux"] == with_aux
             assert config["predictor_kwargs"]["domain"] == domain
             assert config["predictor_kwargs"]["time_steering"] == with_aux
             assert (config["criterion_kwargs"]["w_aux"] > 0) == with_aux
-            assert domain in config["experiment_name"]
-            assert ("time annotation steering" in config["experiment_name"]) == with_aux
+            assert domain in config["experiment_description"]
+            assert ("time annotation steering" in config["experiment_description"]) == with_aux
             assert config["tag_jepa"] == f"{domain}_predictor{suffix}"
             assert config["backbone"] == "lewm_resnet"
             assert isinstance(get_criterion(config), LeWMLoss)
 
             config["model_kwargs"].update(in_channels=4, enc_channels=[8, 12],
-                                          dropout=0.0)
+                                          enc_strides=[1, 1], dropout=0.0)
             config["aux_kwargs"]["aux_channels"] = [8, 8, 8]
             config["predictor_kwargs"].update(stem_channels=8,
                                                neck_widths=[8, 8, 8])

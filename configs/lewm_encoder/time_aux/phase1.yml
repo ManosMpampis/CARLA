@@ -1,0 +1,78 @@
+# LeWM phase one: time-domain predictor with time annotation steering.
+setup: jepa
+stage: pretrain
+framework: lewm_encoder
+phase1_experiment: time_aux
+experiment_name: time_aux
+experiment_description: "LeWM phase one: time-domain predictor with time annotation steering"
+tag_jepa: time_predictor_time_annotation_steering
+tag_phase1: time_predictor_time_annotation_steering
+# Prediction domain: time; time annotation steering: true.
+# Model — single-scale ResNet encoder + time annotation auxiliary + time predictor
+backbone: lewm_resnet
+model_kwargs:
+  in_channels: 38
+  enc_channels: [32, 64, 128]
+  enc_strides: [2, 2, 2]
+  norm: batch
+  dropout: 0.1
+aux_kwargs:
+  with_aux: true
+  aux_channels: [128, 128, 128]
+  kernels: [7, 5, 3]
+predictor_kwargs:
+  domain: time
+  time_steering: true
+  stem_channels: 32
+  neck_widths: [128, 128, 128]
+
+criterion: lewm
+criterion_kwargs:
+  loss2_kind: kl
+  w_pred: 1.0
+  w_aux: 3.0
+  lambda_sigreg: 0.1
+  lambda_sigreg_tgt: 0.1
+  tau: 1.0
+  sigreg_kwargs:
+    num_slices: 16
+
+# Data — single-machine corpus
+train_db_name: smd
+val_db_name: smd
+fname: machine-1-1.txt
+wsz: 128
+stride: 10
+val_fraction: 0.1
+score_batch_size: 256
+
+stage_a:
+  corpus: single
+  masking:
+    mode: subanomaly
+    min_ratio: 0.1
+    max_ratio: 0.9
+stage_b:
+  mode: frozen
+
+# Training
+seed: 4
+device: cuda
+amp: false
+epochs: 150
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs:
+  lr: 0.002
+  weight_decay: 0.01
+scheduler: constant
+scheduler_kwargs:
+  lr_eta_min: 0.0
+
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 200
+  portion: 0.99
+eval_window_size: 100

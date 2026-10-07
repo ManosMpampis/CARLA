@@ -8,6 +8,7 @@ from utils.collate import collate_custom
 CRITERION_BUILDERS = {
     "recon_l1": "losses.reconstruction:ReconL1Loss",
     "lewm": "losses.lewm:LeWMLoss",
+    "lewm_cross_attention": "losses.lewm_cross_attention:CrossAttentionLeWMLoss",
 }
 
 

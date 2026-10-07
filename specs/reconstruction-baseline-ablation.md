@@ -8,7 +8,7 @@ detectors with the LeWM approach:
 ./venv/bin/python carla_vae.py --fname machine-1-1.txt --version vae_trial
 ```
 
-The steered reconstruction entry (`carla_recon.py`) uses the same two
+The steered reconstruction entry (`lewm_reconstruction.py`) uses the same two
 evaluation procedures and score-mode choices. Its encoder initialization
 and L1 training objective remain distinct from the from-scratch arms.
 

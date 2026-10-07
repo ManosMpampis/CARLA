@@ -1,0 +1,124 @@
+# LEWM lineage: results/psm/lewm_encoder/<phase1>/<phase2 framework>/<phase2 name>/<run>/...
+# Config paths below are relative to this manifest.
+common:
+  train_db_name: psm
+  val_db_name: psm
+  fname: psm
+  wsz: 128
+  stride: 10
+  val_fraction: 0.1
+  seed: 4
+  device: cuda
+  amp: false
+  batch_size: 32
+  num_workers: 0
+  score_batch_size: 256
+  model_kwargs:
+    in_channels: 25
+    enc_channels: [32, 32]
+    enc_strides: [1, 1]
+    norm: batch
+    dropout: 0.1
+  calibration_quantile: 0.995
+  calibration_kwargs: {quantile: 0.995}
+  stage_c: {mode: frozen, eval_every: 0}
+
+experiments:
+  - framework: ae
+    experiment_name: default
+    runner: ae
+    config: ../baselines/smd_ae.yml
+
+  - framework: vae
+    experiment_name: default
+    runner: vae
+    config: ../baselines/smd_vae.yml
+
+  # To add a named variant, copy an entry and change its overrides:
+  # - framework: vae
+  #   experiment_name: lr_0.1
+  #   runner: vae
+  #   config: ../baselines/smd_vae.yml
+  #   overrides:
+  #     optimizer_kwargs: {lr: 0.1}
+
+  - framework: lewm_encoder
+    experiment_name: time
+    runner: lewm
+    config: ../lewm_encoder/time/phase1.yml
+
+  - framework: lewm_encoder
+    experiment_name: frequency
+    runner: lewm
+    config: ../lewm_encoder/frequency/phase1.yml
+
+  - framework: lewm_encoder
+    experiment_name: time_aux
+    runner: lewm
+    config: ../lewm_encoder/time_aux/phase1.yml
+
+  - framework: lewm_encoder
+    experiment_name: frequency_aux
+    runner: lewm
+    config: ../lewm_encoder/frequency_aux/phase1.yml
+
+  - framework: lewm_encoder
+    experiment_name: time_aux_no_film
+    runner: lewm
+    config: ../lewm_encoder/time_aux_no_film/phase1.yml
+
+  - framework: lewm_encoder
+    experiment_name: frequency_aux_no_film
+    runner: lewm
+    config: ../lewm_encoder/frequency_aux_no_film/phase1.yml
+
+  - framework: reconstruction
+    experiment_name: default
+    runner: recon
+    config: ../lewm_encoder/frequency_aux/reconstruction/default.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+
+  - framework: reconstruction
+    experiment_name: aux_crop
+    runner: recon
+    config: ../lewm_encoder/frequency_aux/reconstruction/aux_crop.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+    overrides:
+      recon_kwargs: {with_aux: true}
+      score_aux_crop: true
+
+  - framework: cross_attention
+    experiment_name: observed_features
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/observed_features.yml
+    pretrained_experiment: lewm_encoder/time
+
+  - framework: cross_attention
+    experiment_name: observed_input
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/observed_input.yml
+    pretrained_experiment: lewm_encoder/time
+
+  - framework: cross_attention
+    experiment_name: observed_query
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/observed_query.yml
+    pretrained_experiment: lewm_encoder/time
+
+  - framework: cross_attention
+    experiment_name: context_features
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/context_features.yml
+    pretrained_experiment: lewm_encoder/time
+
+  - framework: cross_attention
+    experiment_name: context_input
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/context_input.yml
+    pretrained_experiment: lewm_encoder/time
+
+  - framework: cross_attention
+    experiment_name: context_query
+    runner: cross_attention
+    config: ../lewm_encoder/time/cross_attention/context_query.yml
+    pretrained_experiment: lewm_encoder/time
