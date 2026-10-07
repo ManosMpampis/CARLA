@@ -1,7 +1,7 @@
 """Phase-2 reconstruction training entry (grilled recon head).
 
-Step after the steered pretext (carla_steered.py): the SAME
-SteeredResNetEncoder (optionally strided via ``model_kwargs.enc_strides``)
+Step after LeWM pretraining (lewm.py): the same
+LeWMResNetEncoder (optionally strided via ``model_kwargs.enc_strides``)
 is reused, and a NEW mirrored head (models/recon_head.py: N
 ConvTranspose1d at the mirrored rates + final 1x1 conv to input channels)
 is trained to reconstruct the normal input with mean L1 over C x W.
@@ -9,8 +9,7 @@ is trained to reconstruct the normal input with mean L1 over C x W.
 Default inference is encoder + head only (fully convolutional,
 timestep-agnostic for any W with W % S == 0). The aux-crop variant keeps
 the frozen pretext TimeAuxiliary to propose latent crops at inference
-(see ReconModel.score); scoring is L1 recon error either way and the
-threshold is the per-machine clean-train 0.99 quantile (calibration.json).
+(see ReconModel.score); scoring uses configurable L1/L2/MSE reduction.
 """
 import argparse
 import os
@@ -42,14 +41,14 @@ def set_seed(seed: int) -> None:
 
 
 def get_recon_model(p):
-    """Steered encoder + mirrored recon head (+ optional frozen aux)."""
+    """LeWM encoder + mirrored recon head (+ optional frozen aux)."""
     from models import get_backbone
     from models.recon_head import build_mirrored_head
     from models.recon_model import ReconModel
-    from models.steered_lewm import TimeAuxiliary
+    from models.lewm import TimeAuxiliary
 
     enc_kwargs = dict(p.get("model_kwargs", {}))
-    built = get_backbone(p.get("backbone", "steered_resnet"), **enc_kwargs)
+    built = get_backbone(p.get("backbone", "lewm_resnet"), **enc_kwargs)
     encoder = built["model"]
     recon_kwargs = dict(p.get("recon_kwargs", {}))
     head = build_mirrored_head(
@@ -67,7 +66,8 @@ def get_recon_model(p):
             norm=enc_kwargs.get("norm", "batch"),
             dropout=enc_kwargs.get("dropout", 0.1),
         )
-    model = ReconModel(encoder=encoder, head=head, aux=aux)
+    model = ReconModel(encoder=encoder, head=head, aux=aux,
+                       score_mode=p.get("score_mode", "l1"))
     # Scorer path (utils/reporting.score_with_model) constructs via this
     # builder, so the flag must live on the model itself.
     model.score_aux_crop = bool(p.get("score_aux_crop", False))
@@ -96,7 +96,7 @@ def _make_logger(p):
     destructive = str(p.get("stage", "recon")).lower() != "score"
     logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
                     use_tensorboard=True, delete_files=destructive)
-    logger.log(f"CARLA recon stage '{p.get('stage', 'recon')}' --> ")
+    logger.log(f"LeWM reconstruction stage '{p.get('stage', 'recon')}' --> ")
     logger.log_hyperparams(p)
     return logger
 
@@ -110,11 +110,11 @@ def _assert_divisible(p, model):
 
 
 def _load_encoder_source(p, model, logger):
-    """Load encoder (+aux when present) from the steered pretext checkpoint."""
+    """Load encoder (+aux when present) from the LeWM pretraining checkpoint."""
     source = p.get("pretrained_from")
     if not source or not os.path.exists(source):
         raise FileNotFoundError(
-            f"recon requires 'pretrained_from' steered checkpoint; got {source}"
+            f"recon requires 'pretrained_from' LeWM checkpoint; got {source}"
         )
     # strict=False: pretext predictor/mask_token ignored, new head kept random.
     Trainer.load_weights(source, model, logger, strict=False)
@@ -131,60 +131,38 @@ def _build_run(p, device):
 
 @torch.no_grad()
 def eval_recon_on_test(model, p, device, logger, step):
-    """Monitoring-only test eval for recon training (full-window mode).
-
-    Scores the clean-train series for the 0.99 train-only threshold, then
-    the test series, and logs test L1 + honest detection metrics under
-    ``test/`` (TensorBoard + log.txt). Never touches checkpoint selection:
-    best-model saving stays on the train-tail val loss, so test labels
-    cannot steer training -- they are only observed here.
-    """
-    import numpy as np
+    """Evaluate window means and overlap-averaged series with both thresholds."""
 
     from data.jepa_dataset import JEPADataset
-    from metrics.metrics import combine_all_evaluation_scores
     from utils.common_config import get_jepa_datasets
-    from utils.reporting import honest_metrics, series_from_dataset
-    from utils.scoring import Calibrator, Scorer
+    from utils.reconstruction_baselines import evaluate
 
     flag = bool(getattr(model, "score_aux_crop", False))
     model.score_aux_crop = False
     try:
-        train_dataset, _ = get_jepa_datasets(p)
-        clean_series = series_from_dataset(train_dataset)
+        _, val_dataset = get_jepa_datasets(p)
         test_dataset = JEPADataset(p, train=False)
-        test_series = series_from_dataset(test_dataset)
-        targets = np.asarray(test_dataset.targets).astype(int)
-
-        scorer = Scorer(model, device)
-        score_bs = int(p.get("score_batch_size", p.get("batch_size", 256)))
-        clean = scorer.score_series(clean_series, p["wsz"], p["stride"],
-                                    batch_size=score_bs)["scores"]
-        calibrator = Calibrator(**p.get("calibration_kwargs", {"quantile": 0.99}))
-        calibrator.fit({"fused": clean})
-        threshold = calibrator.threshold_for(calibrator.fuse({"fused": clean}))
-
-        test_result = scorer.score_series(test_series, p["wsz"], p["stride"],
-                                            batch_size=score_bs)
-        test = test_result["scores"]
-        pred = (test >= threshold).astype(int)
-        window_size = int(p.get("eval_window_size", 100))
-        metric_dict = combine_all_evaluation_scores(pred, targets, window_size)
-        honest = honest_metrics(metric_dict, test, targets,
-                                test_result["start_idxs"], test_result["end_idxs"])
-        logger.scalar_summary("test", "l1", float(np.mean(test)), step)
-        logger.scalar_summary("test", "threshold", float(threshold), step)
-        logger.scalar_summary("test", "point_AUROC", honest["point_AUROC"], step)
-        logger.scalar_summary("test", "point_AP", honest["point_AP"], step)
-        logger.scalar_summary("test", "point_F1_no_PA", honest["point_F1_no_PA"], step)
-        logger.scalar_summary("test", "window_AUROC", honest["window_AUROC"], step)
-        logger.scalar_summary("test", "window_AP", honest["window_AP"], step)
-        logger.log(f"Test eval [{step}]: l1 {np.mean(test):.6f} thr {threshold:.6g} "
-                   f"AUROC {honest['point_AUROC']:.4f} AP {honest['point_AP']:.4f} "
-                   f"F1 {honest['point_F1_no_PA']:.4f}")
+        eval_config = dict(p)
+        eval_config["calibration_quantile"] = float(
+            p.get("calibration_kwargs", {}).get("quantile", 0.99))
+        metrics = evaluate(model, val_dataset.series, test_dataset.series,
+                           test_dataset.targets, eval_config, device)
+        for procedure, values in metrics.items():
+            for threshold_source in ("calibrated", "oracle"):
+                for name, value in values[threshold_source].items():
+                    logger.scalar_summary(f"test/{procedure}/{threshold_source}",
+                                          name, value, step)
+            logger.scalar_summary(f"test/{procedure}", "vus_pr",
+                                  values["vus_pr"], step)
+            logger.scalar_summary(f"test/{procedure}", "vus_roc",
+                                  values["vus_roc"], step)
+        logger.log(f"Test eval [{step}] window F1 "
+                   f"{metrics['window']['calibrated']['f1_no_pa']:.4f}, "
+                   f"time-series F1 "
+                   f"{metrics['timeseries']['calibrated']['f1_no_pa']:.4f}")
     finally:
         model.score_aux_crop = flag
-    return honest["point_F1_no_PA"]
+    return metrics["timeseries"]["calibrated"]["f1_no_pa"]
 
 def run_recon(p, device):
     """Train the mirrored head on normal-only windows (dense L1)."""
@@ -243,26 +221,87 @@ def run_recon(p, device):
 
 @torch.no_grad()
 def run_score(p, device):
-    """Score stage: shared engine, per-machine train-only 0.99 threshold."""
-    from utils.reporting import score_with_model
+    """Score both complete windows and overlap-averaged time series."""
+    import json
+
+    from data.jepa_dataset import JEPADataset
+    from utils.reconstruction_baselines import score_both, evaluate_from_scores
+    from utils.scoring import evaluation_options
 
     logger = _make_logger(p)
-    model_probe = get_recon_model(p)
-    _assert_divisible(p, model_probe)
-    if bool(p.get("score_aux_crop", False)) and model_probe.aux is None:
+    model = get_recon_model(p)
+    _assert_divisible(p, model)
+    if bool(p.get("score_aux_crop", False)) and model.aux is None:
         raise ValueError("score_aux_crop=true needs recon_kwargs.with_aux=true "
                          "and aux weights in the recon checkpoint")
-    # Honor an explicit weights pointer (score configs document it as
-    # score_checkpoint); otherwise the shared engine scores this run dir.
-    override = p.get("score_checkpoint")
-    if override and os.path.exists(str(override)):
-        p["jepa_model"] = str(override)
-        p["jepa_checkpoint"] = str(override)
-        p["jepa_model_best"] = str(override)
-    if p.get("score_with_best_f1", False):
-        p["jepa_checkpoint"] = p["jepa_model_best"]
-        p["jepa_model"] = p["jepa_model_best"]
-    score_with_model(p, device, get_recon_model, logger)
+    weights = p.get("score_checkpoint") or (
+        p["jepa_model_best"] if p.get("score_with_best_f1", False)
+        else p["jepa_model"])
+    if not os.path.exists(str(weights)):
+        raise FileNotFoundError(f"reconstruction weights not found: {weights}")
+    Trainer.load_weights(str(weights), model, logger, strict=True)
+    model = model.to(device).eval()
+    _, val_dataset = get_jepa_datasets(p)
+    test_dataset = JEPADataset(p, train=False)
+    options = evaluation_options(p)
+    wsz, stride = options.pop("wsz"), options.pop("stride")
+    batch_size = int(p.get("score_batch_size", p.get("batch_size", 256)))
+    clean = score_both(model, val_dataset.series, wsz, stride,
+                       batch_size, device, **options)
+    test = score_both(model, test_dataset.series, wsz, stride,
+                      batch_size, device, **options)
+    eval_config = dict(p)
+    quantile = float(p.get("calibration_kwargs", {}).get("quantile", 0.99))
+    eval_config["calibration_quantile"] = quantile
+    evaluation = evaluate_from_scores(clean, test, test_dataset.targets,
+                                      eval_config)
+    baseline_model = get_recon_model(p).to(device).eval()
+    baseline_clean = score_both(baseline_model, val_dataset.series, wsz,
+                                stride, batch_size, device, **options)
+    baseline_test = score_both(baseline_model, test_dataset.series, wsz,
+                               stride, batch_size, device, **options)
+    baseline_evaluation = evaluate_from_scores(
+        baseline_clean, baseline_test, test_dataset.targets, eval_config)
+    with open(p["calibration_path"], "w") as stream:
+        json.dump({"source": "held-out validation tail", "quantile": quantile,
+                   "score_mode": model.score_mode,
+                   "window_threshold": evaluation["window"]["calibrated"]["threshold"],
+                   "timeseries_threshold": evaluation["timeseries"]["calibrated"]["threshold"]},
+                  stream, indent=2)
+    report = {"score_mode": model.score_mode,
+              "selection": {"weights": str(weights),
+                            "threshold_source": "validation and test oracle, separate"},
+              "evaluation": evaluation,
+              "no_training_baseline": baseline_evaluation}
+    with open(p["metrics_path"], "w") as stream:
+        json.dump(report, stream, indent=2)
+    np.savez_compressed(
+        p["scores_path"],
+        window_scores=test["window_scores"],
+        timeseries_scores=test["timeseries_scores"],
+        start_idxs=test["starts"], end_idxs=test["ends"],
+        input_start_idxs=test["input_starts"],
+        input_end_idxs=test["input_ends"],
+        cover_counts=test["cover_counts"],
+        window_predictions=(test["window_scores"] >
+                            evaluation["window"]["calibrated"]["threshold"]),
+        timeseries_predictions=(test["timeseries_scores"] >
+                                evaluation["timeseries"]["calibrated"]["threshold"]),
+        window_labels=np.asarray([np.any(test_dataset.targets[s:e])
+                                  for s, e in zip(test["starts"], test["ends"])],
+                                 dtype=np.int64),
+        timestep_labels=np.asarray(test_dataset.targets, dtype=np.int64),
+    )
+    for procedure, values in evaluation.items():
+        for source in ("calibrated", "oracle"):
+            for metric, value in values[source].items():
+                logger.scalar_summary(f"test/{procedure}/{source}", metric,
+                                      value, 1)
+        logger.scalar_summary(f"test/{procedure}", "vus_pr", values["vus_pr"], 1)
+        logger.scalar_summary(f"test/{procedure}", "vus_roc", values["vus_roc"], 1)
+    logger.log(f"Reconstruction score report: {p['metrics_path']}")
+    logger.finalize()
+    return report
 
 
 STAGES = {

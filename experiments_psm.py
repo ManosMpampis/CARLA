@@ -1,4 +1,4 @@
-"""Run the steered pretext -> reconstruction -> score experiment on PSM.
+"""Run the LeWM pretrain -> reconstruction -> score experiment on PSM.
 
 PSM has one train/test series rather than SMD's per-machine files.  The
 underlying stage entry points and reconstruction setup are otherwise the same
@@ -17,11 +17,11 @@ import yaml
 from easydict import EasyDict
 
 from carla_recon import main as recon_main
-from carla_steered import main as steered_main
+from lewm import main as lewm_main
 
 
 ENV_YML = "configs/env.yml"
-PRETEXT_YML = "configs/jepa/steering/steered_lewm_pretrain.yml"
+PRETEXT_YML = "configs/jepa/steering/phase1_frequency_predictor_time_annotation_steering.yml"
 RECON_TRAIN_YML = "configs/jepa/steering/smd_recon_train.yml"
 RECON_SCORE_YML = "configs/jepa/steering/smd_recon_score.yml"
 
@@ -122,7 +122,7 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
         return
 
     # print(f"=== pretext PSM (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    # steered_main(pretext_args, update_dictionary=pretext_patch)
+    # lewm_main(pretext_args, update_dictionary=pretext_patch)
     print(f"=== recon PSM (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=recon_patch)
     print(f"=== score PSM (aux_crop={score_aux_crop}) ===", flush=True)

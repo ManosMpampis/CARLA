@@ -1,7 +1,7 @@
 """Phase-1 + Phase-2 sweep over every SMD machine: pretext -> recon -> score.
 
 Per machine, with the grilled Phase-2 contract (S=4, W=128, W % S == 0):
-  1) pretext: carla_steered.py  (steered ResNet encoder + aux + freq predictor)
+  1) pretext: lewm.py           (LeWM encoder + auxiliary + frequency predictor)
   2) recon:   carla_recon.py    (same encoder init + mirrored head, dense L1)
   3) score:   carla_recon.py    (shared engine, per-machine train-only 0.99)
 
@@ -34,10 +34,10 @@ import yaml
 from easydict import EasyDict
 
 from carla_recon import main as recon_main
-from carla_steered import main as steered_main
+from lewm import main as lewm_main
 
 ENV_YML = "configs/env.yml"
-PRETEXT_YML = "configs/jepa/steering/steered_lewm_pretrain.yml"
+PRETEXT_YML = "configs/jepa/steering/phase1_frequency_predictor_time_annotation_steering.yml"
 RECON_TRAIN_YML = "configs/jepa/steering/smd_recon_train.yml"
 RECON_SCORE_YML = "configs/jepa/steering/smd_recon_score.yml"
 
@@ -165,7 +165,7 @@ def run_machine(fname, pretext_version, recon_version, dry_run=False,
         return
 
     print(f"=== pretext {fname} (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    steered_main(pretext_args, update_dictionary=dict(pretext_patch))
+    lewm_main(pretext_args, update_dictionary=dict(pretext_patch))
     print(f"=== recon {fname} (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=dict(recon_patch))
     print(f"=== score {fname} (aux_crop={score_aux_crop}) ===", flush=True)
@@ -200,7 +200,7 @@ def run_all(pretext_version, recon_version, files, dry_run=False,
         return
 
     print(f"=== joint pretext SMD (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    steered_main(pretext_args, update_dictionary=pretext_patch)
+    lewm_main(pretext_args, update_dictionary=pretext_patch)
     print(f"=== joint recon SMD (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=recon_patch)
 
@@ -233,7 +233,7 @@ def main():
                         help="score the aux-crop variant instead of full windows")
     parser.add_argument("--threshold-channels-and", action="store_true",
                         help="require every channel threshold to be exceeded")
-    parser.add_argument("--all", action="store_false",
+    parser.add_argument("--all", action="store_true",
                         help="train one model over all SMD machines, then score each")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

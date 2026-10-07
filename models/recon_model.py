@@ -1,7 +1,7 @@
 """Phase-2 reconstruction model: frozen-able steered encoder + mirrored head.
 
 Default inference (grilled Q6) is encoder + head only: fully convolutional,
-timestep-agnostic for any W with W % S == 0, score = mean_C |x - x_hat|.
+timestep-agnostic for any W with W % S == 0. Score reduction is configurable.
 
 Aux-crop inference (grilled Q10) reuses the frozen pretext TimeAuxiliary:
 Z = encoder(X) is cropped at latent resolution where sigmoid(mask_logits)
@@ -14,6 +14,8 @@ Training is always on full normal windows (Q10b).
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from utils.reconstruction_scores import reconstruction_score_map, normalize_score_mode
 
 
 def _connected_components_1d(flags):
@@ -33,11 +35,13 @@ def _connected_components_1d(flags):
 class ReconModel(nn.Module):
     """Encoder + mirrored recon head (+ optional frozen aux for aux-crop)."""
 
-    def __init__(self, encoder: nn.Module, head: nn.Module, aux=None):
+    def __init__(self, encoder: nn.Module, head: nn.Module, aux=None,
+                 score_mode: str = "l1"):
         super().__init__()
         self.encoder = encoder
         self.head = head
         self.aux = aux
+        self.score_mode = normalize_score_mode(score_mode)
         self.level_names = ["L0"]
         lat_d = int(getattr(encoder, "output_dims", 0))
         self.level_dims = [lat_d]
@@ -91,7 +95,7 @@ class ReconModel(nn.Module):
     def score(self, x, aux_crop=None):
         """Anomaly evidence fused to (B, W).
 
-        Full mode: mean_C |x - head(encoder(x))|.
+        Full mode: configured channel reduction of reconstruction residuals.
         Aux-crop mode: latent crops from aux proposals, zeros elsewhere,
         zeros everywhere when the aux proposes nothing (Q10c).
         ``aux_crop=None`` (the Scorer path) reads ``self.score_aux_crop``.
@@ -103,8 +107,7 @@ class ReconModel(nn.Module):
         x = x.float()
         if not aux_crop:
             x_hat = self.head(self.encode(x))
-            errors = (x_hat - x).abs()
-            fused = errors.mean(dim=1)
+            fused, errors = reconstruction_score_map(x_hat, x, self.score_mode)
             out = {"fused": fused, "levels": {"L0": fused},
                    "signals": {f"channel/{i}": errors[:, i]
                                 for i in range(errors.shape[1])}}
@@ -137,9 +140,11 @@ class ReconModel(nn.Module):
                     raise RuntimeError(
                         f"recon crop len {x_hat_crop.shape[-1]} != target "
                         f"len {tgt.shape[-1]} (l={l}, r={r}, S={s})")
-                errors = (x_hat_crop - tgt).abs().squeeze(0)
+                crop_fused, crop_errors = reconstruction_score_map(
+                    x_hat_crop, tgt, self.score_mode)
+                errors = crop_errors.squeeze(0)
                 dimensions[i, :, l * s:r * s] = errors.to(dimensions.dtype)
-                fused[i, l * s:r * s] = errors.mean(dim=0).to(fused.dtype)
+                fused[i, l * s:r * s] = crop_fused.squeeze(0).to(fused.dtype)
         if was_training:
             self.train()
         fused = fused.to(torch.float32)

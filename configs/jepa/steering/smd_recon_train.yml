@@ -1,8 +1,8 @@
-# Phase-2 recon training (steered encoder + mirrored head).
-# Run AFTER a steered pretext run; this trains ONLY the new head by default.
+# Phase-2 recon training (LeWM encoder + mirrored head).
+# Run AFTER LeWM pretraining; this trains ONLY the new head by default.
 #
 # Example chain (per-machine protocol):
-#   1) pretext: carla_steered.py --config_exp configs/jepa/steering/steered_lewm_pretrain.yml --fname machine-1-1.txt --version smd_steered
+#   1) pretext: lewm.py --config_exp configs/jepa/steering/phase1_frequency_predictor_time_annotation_steering.yml --fname machine-1-1.txt --version smd_lewm
 #   2) recon:   carla_recon.py   --config_exp configs/jepa/steering/smd_recon_train.yml         --fname machine-1-1.txt --version smd_recon
 #                (set pretrained_from below to the step-1 model.pth.tar)
 #   3) score:   carla_recon.py   --config_exp configs/jepa/steering/smd_recon_score.yml         --fname machine-1-1.txt --version smd_recon
@@ -13,7 +13,7 @@ stage: recon
 # silently drops mismatched encoder keys and the head trains on a random
 # trunk -- check the "Recon init" log line). Default strides [1,1] preserve
 # legacy length-preserving behavior; total stride S = prod(enc_strides).
-backbone: steered_resnet
+backbone: lewm_resnet
 model_kwargs:
   in_channels: 38
   enc_channels: [32, 32]
@@ -41,17 +41,18 @@ stage_c:
                        # TensorBoard + log.txt. Selection stays on val, so
                        # test labels never steer training. 0 disables.
 
-# Weights: steered pretext model (encoder init). Head stays random.
+# Weights: LeWM pretraining model (encoder init). Head stays random.
 # Leave empty when sweeping with experiments_rec.py: it fills the per-machine
 # path from the saved pretext folder automatically
-# (results/<db>/<pretext-version>/<fname>/jepa/model.pth.tar).
+# (results/<db>/<pretext-version>/<fname>/jepa_<tag_jepa>/model.pth.tar).
 # For standalone runs set it explicitly, e.g.
-# results/smd/smd_steered/machine-1-1.txt/jepa/model.pth.tar
+# results/smd/smd_lewm/machine-1-1.txt/jepa_frequency_predictor_time_annotation_steering/model.pth.tar
 pretrained_from:
 
-# Phase-2 loss: fixed mean L1 over C x W (Q9, no knob).
+# Phase-2 training loss stays mean L1 over C x W.
 criterion: recon_l1
 criterion_kwargs: {}
+score_mode: l1           # l1 | l2 | mse; changes scoring, not L1 training
 
 # Data: single-machine corpus, normal-only windows, no masking collator.
 train_db_name: smd
@@ -80,7 +81,7 @@ scheduler: constant
 scheduler_kwargs:
   lr_eta_min: 0.0
 
-# Unused in recon training, kept so score configs can share the file shape.
+# Validation-tail quantile used at periodic window/time-series evaluation.
 calibration_kwargs:
   quantile: 0.99
 probe_kwargs:

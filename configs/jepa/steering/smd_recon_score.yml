@@ -1,6 +1,6 @@
 # Phase-2 recon scoring: shared engine, per-machine train-only threshold.
 # Two experiments from ONE trained recon checkpoint (Q10b):
-#   A) score_aux_crop: false -> full-window recon, score = mean_C |x - x_hat|
+#   A) score_aux_crop: false -> full-window recon with configured score_mode
 #   B) score_aux_crop: true  -> aux-crop latents, zeros elsewhere, empty = all zeros
 # For B you must have trained with recon_kwargs.with_aux: true so the recon
 # checkpoint carries the frozen aux weights.
@@ -13,7 +13,7 @@ setup: jepa
 stage: score
 
 # Model MUST match the recon-train config (same strides/channels/with_aux).
-backbone: steered_resnet
+backbone: lewm_resnet
 model_kwargs:
   in_channels: 38
   enc_channels: [32, 32]
@@ -33,16 +33,17 @@ score_aux_crop: false
 
 criterion: recon_l1
 criterion_kwargs: {}
+score_mode: l1           # l1 | l2 | mse; match your intended score metric
 
 train_db_name: smd
 val_db_name: smd
 fname: machine-1-1.txt
 wsz: 128
-stride: 5
+stride: 10                   # match recon training and AE/VAE evaluation
 val_fraction: 0.1
 
-# Threshold (Q5): per-machine clean-train quantile, 0.99 = 1% flagged normal.
-# No test labels enter here; probes disabled so fusion is plain mean.
+# Per-procedure thresholds: held-out validation-tail quantile.
+# Oracle test thresholds are reported separately and explicitly labeled.
 calibration_kwargs:
   quantile: 0.99
 probe_kwargs:

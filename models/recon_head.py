@@ -94,7 +94,7 @@ class MirroredReconHead(nn.Module):
 
 def build_mirrored_head(encoder, norm: str = "batch", dropout: float = 0.0,
                         dilations=None):
-    """Build a MirroredReconHead from a SteeredResNetEncoder instance."""
+    """Build a MirroredReconHead from a LeWMResNetEncoder instance."""
     ladder = list(getattr(encoder, "channel_ladder",
                           [encoder.blocks[0].main[0].conv.in_channels,
                            encoder.output_dims]))

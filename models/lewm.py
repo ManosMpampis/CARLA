@@ -1,0 +1,505 @@
+"""Single-scale LeWM models with time or frequency predictors.
+
+Terminology (spec `specs/lewm-time-steered-freq-predictor.md`):
+- ResNet Encoder: time-domain only, two blocks of [7,5,3] + residual k=5.
+- Convolution time auxiliary: 3-conv stack [7,5,3], sees only Encoder(X_inj).
+  Never receives the action. Emits Time_mask logits + FiLM features.
+- Predictor = a time-convolution or STFT-based frequency neck. Both accept
+  mask-token-replaced latents and optional time-varying FiLM features.
+  Predictor input latents are mask-token-replaced (option 4): masked
+  positions show a learned mask token instead of the corrupted values, so
+  the mask tells the predictor what to reconstruct. When present, the
+  auxiliary sees the raw corrupted latents to localize and steer.
+
+Single scale: level_names ["L0"], level_strides [1], latents (B, D, W).
+No stop-grad anywhere; anti-collapse is dual SIGReg in the criterion.
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from models.blocks import ConvBlock1d
+from models.convolutions import _init_weights
+
+class IdentityFilm(nn.Module):
+    """Identity FiLM: no time steering."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, h_f, aux_feat):
+        return h_f
+
+class LeWMResNetBlock(nn.Module):
+    """One ResNet block: 3 main convs [7,5,3] + residual conv k=5.
+
+    Stride (default 1, length-preserving) is applied to the FIRST main
+    conv and to the residual branch so both paths downsample identically.
+    Stride > 1 downsamples by design (see ConvBlock1d); the caller must
+    keep ``wsz % prod(strides) == 0`` so the mirrored recon head inverts
+    shapes exactly with no crop logic (Phase-2 contract).
+    """
+
+    def __init__(self, in_ch: int, out_ch: int, kernels=(7, 5, 3),
+                 residual_kernel: int = 5, norm: str = "batch",
+                 dropout: float = 0.0, stride: int = 1):
+        super().__init__()
+        self.stride = int(stride)
+        ks = list(kernels)
+        chs = [in_ch] + [out_ch] * len(ks)
+        self.main = nn.Sequential(
+            *[ConvBlock1d(chs[i], chs[i + 1], kernel=k,
+                          stride=self.stride if i == 0 else 1,
+                          norm=norm, dropout=dropout)
+              for i, k in enumerate(ks)]
+        )
+        self.residual = ConvBlock1d(in_ch, out_ch, kernel=int(residual_kernel),
+                                    stride=self.stride, norm=norm,
+                                    dropout=dropout)
+        self.act = nn.GELU()
+
+    def forward(self, x):
+        """Add residual branch to main branch, then activate."""
+        return self.act(self.main(x) + self.residual(x))
+
+
+class LeWMResNetEncoder(nn.Module):
+    """Two-block time-domain encoder, single scale.
+
+    ``enc_strides`` holds one stride per block (default [1, 1]: exact
+    legacy behavior, length-preserving). Total stride S = prod(enc_strides)
+    is exposed as ``level_strides=[S]`` so scorers map tokens back to input
+    steps (token i covers input [i*S, (i+1)*S)). Phase-2 contract: training
+    and inference windows must satisfy ``W % S == 0``; no crop/pad logic
+    lives in the model by design (grilled Q8a).
+    """
+
+    def __init__(self, in_channels: int = 38, enc_channels=(32, 64),
+                 kernels=(7, 5, 3), residual_kernel: int = 5,
+                 norm: str = "batch", dropout: bool = True,
+                 enc_strides=None):
+        super().__init__()
+        enc_channels = [in_channels] + list(enc_channels)
+        n_blocks = len(enc_channels) - 1
+        if enc_strides is None:
+            enc_strides = [1] * n_blocks
+        enc_strides = [int(s) for s in enc_strides]
+        assert len(enc_strides) == n_blocks, \
+            f"enc_strides {enc_strides} must match num blocks {n_blocks}"
+        self.enc_strides = list(enc_strides)
+        self.blocks = nn.Sequential(
+            *[LeWMResNetBlock(
+                int(enc_channels[i]), int(enc_channels[i + 1]),
+                kernels=kernels, residual_kernel=residual_kernel,
+                norm=norm, dropout=dropout, stride=int(enc_strides[i]))
+              for i in range(n_blocks)]
+        )
+        self.output_dims = enc_channels[-1]
+        # Channel ladder (incl. input) for the mirrored recon head.
+        self.channel_ladder = [int(c) for c in enc_channels]
+        total = 1
+        for s in self.enc_strides:
+            total *= int(s)
+        self.total_stride = int(total)
+        self.level_names = ["L0"]
+        self.level_dims = [int(self.output_dims)]
+        self.level_strides = [int(total)]
+
+    def forward(self, x):
+        """Encode (B, C, W) -> (B, D, W/S). Requires W % S == 0."""
+        return self.blocks(x)
+
+
+class TimeAuxiliary(nn.Module):
+    """Convolution time auxiliary: localizes mask, feeds FiLM features.
+
+    Action is never an input here (LeWM requirement); the mask head learns
+    purely from Encoder(X_inj).
+    """
+
+    def __init__(self, in_dim: int, aux_channels=(32, 32, 32),
+                 kernels=(7, 5, 3), norm: str = "batch",
+                 dropout: bool = True):
+        super().__init__()
+        ks = list(kernels)
+        chs = [in_dim] + list(aux_channels)
+        self.convs = nn.Sequential(
+            *[ConvBlock1d(chs[i], chs[i + 1], kernel=ks[i], stride=1,
+                          norm=norm, dropout=dropout)
+              for i in range(len(chs) - 1)]
+        )
+        self.mask_head = nn.Conv1d(chs[-1], 1, kernel_size=1)
+        _init_weights(self.mask_head)
+        self.feat_dim = int(chs[-1])
+
+    def forward(self, z):
+        """Return (mask_logits (B, W), film_features (B, Da, W))."""
+        h = self.convs(z)
+        logits = self.mask_head(h).squeeze(1)
+        return logits, h
+
+
+class _Conv2dBlock(nn.Module):
+    """Conv2d + BatchNorm2d + GELU block for the TF-grid neck."""
+
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 3,
+                 stride: int = 1, dropout: float = 0.0):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel, stride=stride,
+                      padding=kernel // 2),
+            nn.BatchNorm2d(out_ch),
+            nn.GELU(),
+            nn.Dropout2d(p=dropout, inplace=True) if dropout > 0.0 else nn.Identity()
+        )
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                _init_weights(m)
+            elif isinstance(m, nn.BatchNorm2d):
+                _init_weights(m)
+
+    def forward(self, x):
+        """Apply conv block."""
+        return self.net(x)
+
+
+class TimeVaryingFiLM(nn.Module):
+    """Per-timestep FiLM: aux time features -> gamma/beta broadcast over F."""
+
+    def __init__(self, aux_dim: int, freq_dim: int):
+        super().__init__()
+        self.to_gamma = nn.Conv1d(aux_dim, freq_dim, kernel_size=1)
+        self.to_beta = nn.Conv1d(aux_dim, freq_dim, kernel_size=1)
+        nn.init.zeros_(self.to_gamma.weight)
+        nn.init.zeros_(self.to_gamma.bias)
+        nn.init.zeros_(self.to_beta.weight)
+        nn.init.zeros_(self.to_beta.bias)
+        self.freq_dim = int(freq_dim)
+
+    def forward(self, h_f, aux_feat):
+        """Modulate (B, Df, T', F) by time-indexed (B, Da, W) features."""
+        t_prime = h_f.size(2)
+        a = F.interpolate(aux_feat.float(), size=t_prime, mode="linear",
+                          align_corners=False)
+        gamma = self.to_gamma(a).unsqueeze(-1)
+        beta = self.to_beta(a).unsqueeze(-1)
+        return (1 + gamma) * h_f + beta
+
+
+class TimeFiLM(nn.Module):
+    """Per-position FiLM for a 1D temporal feature map."""
+
+    def __init__(self, aux_dim: int, channels: int):
+        super().__init__()
+        self.to_gamma = nn.Conv1d(aux_dim, channels, 1)
+        self.to_beta = nn.Conv1d(aux_dim, channels, 1)
+        for layer in (self.to_gamma, self.to_beta):
+            nn.init.zeros_(layer.weight)
+            nn.init.zeros_(layer.bias)
+
+    def forward(self, h, aux_feat):
+        a = F.interpolate(aux_feat.float(), size=h.size(-1), mode="linear",
+                          align_corners=False)
+        return (1 + self.to_gamma(a)) * h + self.to_beta(a)
+
+
+class TimePredictor(nn.Module):
+    """Temporal convolution neck with the same three-scale FiLM interface."""
+
+    def __init__(self, in_dim: int, stem_channels: int = 64,
+                 neck_widths=(64, 64, 64), aux_dim: int = 32,
+                 time_steering: bool = True, dropout: float = 0.1):
+        super().__init__()
+        widths = [int(c) for c in neck_widths]
+        if len(widths) != 3:
+            raise ValueError("neck_widths must contain three channel counts")
+        w0, w1, w2 = widths
+        self.time_steering = bool(time_steering)
+        self.stem_conv = ConvBlock1d(in_dim, stem_channels, kernel=7,
+                                     dropout=dropout)
+        self.in_proj = ConvBlock1d(stem_channels, w0, kernel=3)
+        self.c0 = ConvBlock1d(w0, w1, kernel=3, stride=2)
+        self.c1 = ConvBlock1d(w1, w2, kernel=3, stride=2)
+        self.c2 = ConvBlock1d(w2, w2, kernel=3)
+        self.up2 = ConvBlock1d(w2 + w1, w1, kernel=3)
+        self.up1 = ConvBlock1d(w1 + w0, w0, kernel=3)
+        self.down_p0 = ConvBlock1d(w0, w0, kernel=3, stride=2)
+        self.pan1 = ConvBlock1d(w0 + w1, w1, kernel=3)
+        self.final = ConvBlock1d(w1 + w0, w0, kernel=3)
+        self.to_latent = nn.Conv1d(w0, in_dim, kernel_size=1)
+        _init_weights(self.to_latent)
+        self.film0 = TimeFiLM(aux_dim, w1) if time_steering else IdentityFilm()
+        self.film1 = TimeFiLM(aux_dim, w2) if time_steering else IdentityFilm()
+        self.film2 = TimeFiLM(aux_dim, w2) if time_steering else IdentityFilm()
+
+    def forward(self, z_tok, aux_feat):
+        g = self.in_proj(self.stem_conv(z_tok))
+        d1 = self.film0(self.c0(g), aux_feat)
+        d2 = self.film1(self.c1(d1), aux_feat)
+        p2 = self.film2(self.c2(d2), aux_feat)
+        p1 = self.up2(torch.cat([
+            F.interpolate(p2, size=d1.size(-1), mode="nearest"), d1], dim=1))
+        p0 = self.up1(torch.cat([
+            F.interpolate(p1, size=g.size(-1), mode="nearest"), g], dim=1))
+        n1 = self.pan1(torch.cat([self.down_p0(p0), p1], dim=1))
+        n0 = self.final(torch.cat([
+            F.interpolate(n1, size=p0.size(-1), mode="nearest"), p0], dim=1))
+        return self.to_latent(n0)
+
+
+class FreqPredictor(nn.Module):
+    """Frequency-only predictor: token-masked latents -> STFT -> neck -> iSTFT.
+
+    The what-to-reconstruct signal is mask-token replacement applied by the
+    model before entry (option 4): masked latent positions already show the
+    learned token, so the stem takes latents alone with no mask concat.
+    STFT/iSTFT run in float32 for AMP safety; the neck is real-valued 2D
+    convs on stacked real/imag channels with YOLO-style concat fusion:
+    strided down path, top-down upsample+concat path, bottom-up PAN path.
+    """
+
+    def __init__(self, in_dim: int, stem_channels: int = 64,
+                 neck_widths=(64, 64, 64), aux_dim: int = 32,
+                 n_fft: int = 64, hop_length: int = 16, time_steering: bool = True,
+                 win_length: int = 64, dropout: float = 0.1):
+        super().__init__()
+        self.time_steering = time_steering
+        self.in_dim = int(in_dim)
+        self.stem_channels = int(stem_channels)
+        self.stem_conv = ConvBlock1d(self.in_dim, self.stem_channels,
+                                     kernel=7, stride=1, norm="batch",
+                                     dropout=dropout)
+
+        w = [int(c) for c in neck_widths]
+        assert len(w) == 3
+        self.neck_widths = w
+        self.in_proj = _Conv2dBlock(2 * self.stem_channels, w[0])
+        self.c0 = _Conv2dBlock(w[0], w[1], stride=2, dropout=0.0)
+        self.c1 = _Conv2dBlock(w[1], w[2], stride=2, dropout=0.0)
+        self.c2 = _Conv2dBlock(w[2], w[2], dropout=0.0)
+        self.up2 = _Conv2dBlock(w[2] + w[1], w[1], dropout=0.0)
+        self.up1 = _Conv2dBlock(w[1] + w[0], w[0], dropout=0.0)
+        self.down_p0 = _Conv2dBlock(w[0], w[0], stride=2, dropout=0.0)
+        self.pan1 = _Conv2dBlock(w[0] + w[1], w[1], dropout=0.0)
+        self.final = _Conv2dBlock(w[1] + w[0], w[0], dropout=0.0)
+        self.out_proj = nn.Conv2d(w[0], 2 * self.stem_channels, kernel_size=1)
+        _init_weights(self.out_proj)
+        self.to_latent = nn.Conv1d(self.stem_channels, self.in_dim,
+                                   kernel_size=1)
+        _init_weights(self.to_latent)
+        self.film0 = TimeVaryingFiLM(aux_dim, w[0]) if self.time_steering else IdentityFilm()
+        self.film1 = TimeVaryingFiLM(aux_dim, w[1]) if self.time_steering else IdentityFilm()
+        self.film2 = TimeVaryingFiLM(aux_dim, w[2]) if self.time_steering else IdentityFilm()
+
+        self.n_fft = int(n_fft)
+        self.hop_length = int(hop_length)
+        self.win_length = int(win_length)
+
+    def _resolve_stft(self, w: int):
+        n_fft = max(8, min(self.n_fft, int(w)))
+        win = max(4, min(self.win_length, n_fft))
+        hop = max(1, min(self.hop_length, max(n_fft // 4, 1)))
+        return n_fft, hop, win
+
+    def forward(self, z_tok, aux_feat):
+        """Map token-blended latents (B,D,W) + aux (B,Da,W) -> Z' (B,D,W)."""
+        b, _, w = z_tok.shape
+        h = self.stem_conv(z_tok)
+
+        n_fft, hop, win = self._resolve_stft(w)
+        window = torch.hann_window(win, device=h.device, dtype=torch.float32)
+        hf = h.float().reshape(b * self.stem_channels, w)
+
+        spec = torch.stft(hf, n_fft=n_fft, hop_length=hop, win_length=win,
+                          window=window, center=True, return_complex=True)
+        # spec: (B*S, F, T') -> (B, 2S, T', F)
+        spec = spec.permute(0, 2, 1).contiguous()
+        t_prime, n_freq = spec.size(1), spec.size(2)
+        tf = torch.stack([spec.real, spec.imag], dim=2).reshape(
+            b, 2 * self.stem_channels, t_prime, n_freq)
+
+        # Down path (full -> /2 -> /4 -> /4), FiLM-steered per scale.
+        g = self.in_proj(tf)
+        d1 = self.film0(self.c0(g), aux_feat)
+        d2 = self.film1(self.c1(d1), aux_feat)
+        p2 = self.film2(self.c2(d2), aux_feat)
+        # Top-down path with concats.
+        p1 = self.up2(torch.cat(
+            [F.interpolate(p2, size=d1.shape[2:], mode="nearest"), d1], dim=1))
+        p0 = self.up1(torch.cat(
+            [F.interpolate(p1, size=g.shape[2:], mode="nearest"), g], dim=1))
+        # Bottom-up PAN path with concats, fused back to full resolution.
+        n1 = self.pan1(torch.cat([self.down_p0(p0), p1], dim=1))
+        n0 = self.final(torch.cat(
+            [F.interpolate(n1, size=p0.shape[2:], mode="nearest"), p0], dim=1))
+        out = self.out_proj(n0)
+
+        real, imag = out.chunk(2, dim=1)
+        cout = torch.complex(real, imag).reshape(b * self.stem_channels,
+                                                 t_prime, n_freq)
+        cout = cout.permute(0, 2, 1).contiguous()
+        rec = torch.istft(cout, n_fft=n_fft, hop_length=hop, win_length=win,
+                          window=window, center=True, length=w)
+        rec = rec.reshape(b, self.stem_channels, w).to(z_tok.dtype)
+        return self.to_latent(rec)
+
+
+class LeWMModel(nn.Module):
+    """Shared-encoder LeWM with selectable predictor and optional auxiliary."""
+
+    def __init__(self, encoder: nn.Module, aux_channels=(32, 32, 32),
+                 stem_channels: int = 64, neck_widths=(64, 64, 64),
+                 n_fft: int = 64, hop_length: int = 16,
+                 win_length: int = 64, aux_kernels=(7, 5, 3), time_steering: bool = True,
+                 norm: str = "batch", dropout: float = 0.1,
+                 predictor_domain: str = "frequency", with_aux: bool = True):
+        super().__init__()
+        self.encoder = encoder
+        input_dim = encoder.output_dims
+
+        if predictor_domain not in ("frequency", "time"):
+            raise ValueError(f"Invalid predictor_domain {predictor_domain}")
+        if time_steering and not with_aux:
+            raise ValueError("time_steering requires with_aux=true")
+        self.predictor_domain = predictor_domain
+        self.aux = TimeAuxiliary(input_dim, aux_channels=aux_channels,
+                                 kernels=tuple(aux_kernels), norm=norm,
+                                 dropout=dropout) if with_aux else None
+        predictor_cls = FreqPredictor if predictor_domain == "frequency" else TimePredictor
+        predictor_kwargs = dict(
+            in_dim=input_dim, stem_channels=int(stem_channels),
+            neck_widths=tuple(neck_widths),
+            aux_dim=self.aux.feat_dim if self.aux is not None else 0,
+            time_steering=time_steering, dropout=dropout)
+        if predictor_domain == "frequency":
+            predictor_kwargs.update(n_fft=int(n_fft), hop_length=int(hop_length),
+                                    win_length=int(win_length))
+        self.predictor = predictor_cls(**predictor_kwargs)
+
+        # Learned unknown-token (option 4): marks what-to-reconstruct
+        # positions in the predictor input. When present, the auxiliary
+        # still sees raw corrupted latents.
+        self.mask_token = nn.Parameter(torch.zeros(1, input_dim, 1))
+        nn.init.normal_(self.mask_token, std=0.02)
+
+        self.level_names = ["L0"]
+        self.level_dims = [int(input_dim)]
+        self.level_strides = [int(getattr(encoder, "total_stride", 1))]
+        self.target_encoder = None
+        self.codebook = None
+        self.anti_collapse = "sigreg"
+        self.encoder_frozen = False
+
+    @staticmethod
+    def _zero_mask_input(x, input_mask):
+        m = input_mask.to(torch.bool)
+        while m.ndim < x.ndim:
+            m = m.unsqueeze(1)
+        return x.masked_fill(m.expand_as(x), 0.0)
+
+    def encode(self, x):
+        """Encode a window into single-scale latents (B, D, W/S)."""
+        return self.encoder(x)
+
+    def _token_blend(self, z_inj, m_float):
+        """Blend learned token into masked positions (hard if binary)."""
+        blend = m_float.unsqueeze(1).expand_as(z_inj)
+        tok = self.mask_token.expand_as(z_inj)
+        return blend * tok + (1 - blend) * z_inj
+
+    def forward(self, x, mask=None, action=None):
+        """Two streams, one encoder; no stop-grad on either stream.
+
+        Predictor input latents are mask-token-blended: hard replacement on
+        the binary train mask, soft blend with the proposed mask at
+        inference. When present, the auxiliary sees raw corrupted latents.
+
+        Action source follows the mode: train mode teacher-forces the given
+        mask (learning signal); eval mode lets the auxiliary propose the
+        action (detached), or uses an empty action without an auxiliary.
+        Validation follows the same action path as scoring. The mask target
+        (mask_target) always stays the given mask when one exists.
+        """
+        # Check for injected input mask (X_inj) first, then input mask, then action.
+        if mask is not None and isinstance(mask, dict) and "X_inj" in mask:
+            x_inj = mask["X_inj"].to(x.device, dtype=x.dtype)
+            m = mask.get("input")
+            m = torch.zeros(x.size(0), x.size(-1), device=x.device) \
+                if m is None else m.to(x.device)
+        elif mask is not None and isinstance(mask, dict) and "input" in mask:
+            m = mask["input"].to(x.device)
+            x_inj = self._zero_mask_input(x, m)
+        elif action is not None:
+            m = action.to(x.device) if torch.is_tensor(action) \
+                else torch.zeros(x.size(0), x.size(-1), device=x.device)
+            x_inj = x
+        else:
+            m = torch.zeros(x.size(0), x.size(-1), device=x.device)
+            x_inj = x
+        m_bool = m.to(torch.bool) if m.dtype == torch.bool \
+            else (m > 0.5)
+
+        z = self.encode(x)
+        z_inj = self.encode(x_inj)
+        mask_logits, film_feat = self.aux(z_inj) if self.aux is not None else (None, None)
+
+        m_float = m.to(z.dtype).float()
+        if m_float.ndim == 1:
+            m_float = m_float.unsqueeze(0)
+        if m_float.size(-1) != z.size(-1):
+            m_float = F.interpolate(m_float.unsqueeze(1).float(),
+                                    size=z.size(-1),
+                                    mode="nearest").squeeze(1).to(z.dtype)
+
+        z_tok = self._token_blend(z_inj, m_float)
+        if not self.training:
+            # Validation follows scoring: the auxiliary proposes the action,
+            # or the no-aux ablation uses an empty action.
+            prop = torch.sigmoid(mask_logits).detach().to(z.dtype) if mask_logits is not None \
+                else z.new_zeros(z.size(0), z.size(-1))
+            if prop.size(-1) != z.size(-1):
+                prop = F.interpolate(prop.unsqueeze(1).float(),
+                                     size=z.size(-1),
+                                     mode="nearest").squeeze(1).to(z.dtype)
+            z_tok = self._token_blend(z_inj, prop)
+        z_pred = self.predictor(z_tok, film_feat)
+        m_target = m_float.detach()
+        return {
+            "context": {"L0": z_inj},
+            "latents": {"L0": z},
+            "targets": {"L0": z},
+            "predicted": {"L0": z_pred},
+            "mask_logits": mask_logits,
+            "mask_target": m_target,
+            "mask": {"input": m_bool},
+            "action": m_target,
+        }
+
+    def update_ema(self):
+        """No teacher: no-op satisfying the Trainer contract."""
+
+    def update_running_stats(self, latents):
+        """No running statistics on the bare trunk."""
+
+    def latent_variance(self, latents):
+        """Collapse diagnostic: mean per-dim variance."""
+        z = latents["L0"]
+        return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0).mean().item()
+
+    @torch.no_grad()
+    def score(self, x):
+        """Self-proposed-action anomaly evidence fused to (B, W)."""
+        was_training = self.training
+        self.eval()
+        z = self.encode(x.float())
+        if self.aux is None:
+            feat = None
+            m_hat = z.new_zeros(z.size(0), z.size(-1))
+        else:
+            logits, feat = self.aux(z)
+            m_hat = torch.sigmoid(logits)
+        zp = self.predictor(self._token_blend(z, m_hat), feat)
+        fused = (zp - z).abs().mean(dim=1)
+        if was_training:
+            self.train()
+        return {"fused": fused, "levels": {"L0": fused}, "signals": {}}

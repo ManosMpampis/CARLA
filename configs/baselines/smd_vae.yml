@@ -1,0 +1,32 @@
+# Same encoder/decoder as smd_ae; 1x1 mu/logvar heads add Gaussian bottleneck.
+setup: jepa
+tag_jepa: vae
+arm: vae
+train_db_name: smd
+val_db_name: smd
+stage_a: {corpus: single}
+model_kwargs:
+  in_channels: 38
+  enc_channels: [32, 64]
+  enc_strides: [2, 2]
+  norm: batch
+  dropout: 0.1
+recon_kwargs: {norm: batch, dropout: 0.1}
+wsz: 128
+stride: 10
+val_fraction: 0.1
+score_mode: l1           # l1 | l2 | mse; changes scoring, not MSE+KL training
+calibration_quantile: 0.99
+eval_window_size: 100
+eval_every: 1
+score_batch_size: 256
+seed: 5
+device: cuda
+epochs: 50
+batch_size: 32
+num_workers: 0
+optimizer: adamw
+optimizer_kwargs: {lr: 0.002, weight_decay: 0.01}
+scheduler: constant
+scheduler_kwargs: {lr_eta_min: 0.0}
+beta: 0.3
