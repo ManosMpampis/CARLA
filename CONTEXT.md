@@ -1,4 +1,4 @@
-# CARLA TSAD
+# Time-series anomaly detection glossary
 
 Time-series anomaly detection research. The main line is a convolutional-pyramid JEPA; a novel dual-stream (time + frequency) architecture is under design alongside it.
 
@@ -61,3 +61,19 @@ _Avoid_: bounding boxes, event proposals
 **Normal-only training**:
 The supervision regime: training and calibration data are assumed nominal; thresholds are derived without test labels.
 _Avoid_: semi-supervised (ambiguous), one-class (a specific method family)
+
+**From-scratch reconstruction control**:
+The deterministic encoder–decoder comparison arm trained end to end on normal windows using reconstruction MSE.
+_Avoid_: pretrained reconstruction arm
+
+**Variational reconstruction arm**:
+The from-scratch encoder–decoder comparison arm whose bottleneck is a Gaussian posterior regularized toward a standard normal prior alongside reconstruction MSE.
+_Avoid_: KL autoencoder (ambiguous with latent-view KL)
+
+**Window anomaly score**:
+One scalar for an input window, formed by averaging its configured per-timestep reconstruction scores across the window.
+_Avoid_: window confidence
+
+**Test-oracle evaluation**:
+An explicitly labeled analysis that uses test labels to choose a threshold or training epoch; it is separate from normal-only calibration and validation-selected comparison.
+_Avoid_: validation result

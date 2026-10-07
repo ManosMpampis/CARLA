@@ -123,10 +123,10 @@ score `mean_d|Z'-Z|` per timestep.
     with `w_pred=1.0, w_aux=1.0, lam=0.1, l_=0.1` defaults; criterion returns
     `loss` plus `pred_loss` (Loss2, the Trainer checkpoint-selection key),
     `aux_loss`, `sigreg`, `sigreg_tgt` for TensorBoard.
-- **Model/criterion wiring:** new `SteeredFreqLeWMModel`
+- **Model/criterion wiring:** new `LeWMModel`
   (`encode/predict/score` methods, `target_encoder=None`, `anti_collapse=sigreg`)
-  plus `SteeredLeWMLoss`; register backbone/criterion names
-  (`steered_resnet`, `steered_lewm`) in `models/__init__.py` and
+  plus `LeWMLoss`; register backbone/criterion names
+  (`lewm_resnet`, `lewm`) in `models/__init__.py` and
   `utils/common_config.py:CRITERION_BUILDERS`. Stages `pretrain/adapt/score`
   reuse `carla_lewm_true.py` flow; adapt keeps `frozen|finetune`; resume format,
   seed default 4, `amp` bf16-train only, fp32 scoring, eval-mode validation stats.
@@ -150,7 +150,7 @@ score `mean_d|Z'-Z|` per timestep.
 
 - Repo convention only: plain-python assertion scripts under `tests/`
   (no pytest), plus YAML smoke chain on `machine-1-1.txt`.
-- New `tests/verify_steered_lewm.py`: synthetic tiny config exercises
+- New `tests/verify_lewm_frequency_steering.py`: synthetic tiny config exercises
   pretrain->adapt->score; asserts (a) checkpoint resume bit-identical loss
   drop, (b) `Time_mask` shape `(B,W)` and `Loss1` finite, (c) each
   `loss2_kind` runs, (d) `score()` returns `(B,W)` fused with no NaN and
