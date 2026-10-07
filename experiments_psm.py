@@ -16,22 +16,19 @@ import os
 import yaml
 from easydict import EasyDict
 
-from carla_recon import main as recon_main
-from lewm import main as lewm_main
+from lewm_reconstruction import main as recon_main
+from utils.config import load_experiment_config, model_path
 
 
 ENV_YML = "configs/env.yml"
-PRETEXT_YML = "configs/jepa/steering/phase1_frequency_predictor_time_annotation_steering.yml"
-RECON_TRAIN_YML = "configs/jepa/steering/smd_recon_train.yml"
-RECON_SCORE_YML = "configs/jepa/steering/smd_recon_score.yml"
+PRETEXT_YML = "configs/lewm_encoder/frequency_aux/phase1.yml"
+RECON_TRAIN_YML = "configs/lewm_encoder/frequency_aux/reconstruction/default.yml"
 
 DATASET = "psm"
 FNAME = "psm"
 IN_CHANNELS = 25
 WSZ = 128
 STRIDE = 10
-ENC_CHANNELS = [32, 64]
-ENC_STRIDES = [2, 2]
 PRETEXT_EPOCHS = 300
 RECON_EPOCHS = 1500
 BASE_LR = 0.002
@@ -39,8 +36,7 @@ WARMUP_EPOCHS = 10
 
 
 def _load_yml(path):
-    with open(path) as stream:
-        return yaml.safe_load(stream)
+    return load_experiment_config(path)
 
 
 def _model_patch():
@@ -50,13 +46,9 @@ def _model_patch():
         "fname": FNAME,
         "wsz": WSZ,
         "stride": STRIDE,
-        "model_kwargs": {
-            "in_channels": IN_CHANNELS,
-            "enc_channels": list(ENC_CHANNELS),
-            "enc_strides": list(ENC_STRIDES),
-            "norm": "batch",
-            "dropout": 0.1,
-        },
+        "aux_kwargs": dict(_load_yml(PRETEXT_YML).get("aux_kwargs", {})),
+        "model_kwargs": {**_load_yml(PRETEXT_YML)["model_kwargs"],
+                         "in_channels": IN_CHANNELS},
     }
 
 
@@ -75,10 +67,8 @@ def _schedule_patch(epochs):
 
 def _model_path(version, config_path, env_path=ENV_YML):
     cfg = _load_yml(config_path)
-    tag = cfg.get("tag_jepa")
-    dirname = f"jepa_{tag}" if tag else "jepa"
     root = _load_yml(env_path)["root_dir"]
-    return os.path.join(root, DATASET, version, FNAME, dirname, "model.pth.tar")
+    return model_path(root, {**cfg, "train_db_name": DATASET}, FNAME, version)
 
 
 def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
@@ -91,6 +81,7 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
     recon_patch = {
         "stage": "recon",
         "pretrained_from": pretext_model,
+        "phase1_version": pretext_version,
         "recon_kwargs": {"with_aux": True, "norm": "batch", "dropout": 0.1},
         **_model_patch(),
         **_schedule_patch(RECON_EPOCHS),
@@ -98,6 +89,7 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
     score_patch = {
         "stage": "score",
         "score_checkpoint": recon_model,
+        "phase1_version": pretext_version,
         "score_aux_crop": score_aux_crop,
         "threshold_per_channel": threshold_per_channel,
         "threshold_channel_operator": "and" if threshold_channels_and else "or",
@@ -109,8 +101,8 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
                              "fname": FNAME, "version": pretext_version})
     recon_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_TRAIN_YML,
                            "fname": FNAME, "version": recon_version})
-    score_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_SCORE_YML,
-                           "fname": FNAME, "version": recon_version})
+    score_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_TRAIN_YML,
+                           "fname": FNAME, "version": recon_version, "score": True})
 
     if dry_run:
         print(f"DRY pretext: {PRETEXT_EPOCHS} epochs")
@@ -121,8 +113,8 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
         print(f"score_checkpoint -> {recon_model}")
         return
 
-    # print(f"=== pretext PSM (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    # lewm_main(pretext_args, update_dictionary=pretext_patch)
+    print(f"=== pretext PSM (epochs={PRETEXT_EPOCHS}) ===", flush=True)
+    recon_main(pretext_args, update_dictionary=pretext_patch)
     print(f"=== recon PSM (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=recon_patch)
     print(f"=== score PSM (aux_crop={score_aux_crop}) ===", flush=True)
@@ -131,8 +123,8 @@ def run(pretext_version, recon_version, dry_run=False, score_aux_crop=False,
 
 def main():
     parser = argparse.ArgumentParser(description="Run reconstruction experiment on PSM")
-    parser.add_argument("--pretext-version", default="lewm_rec/psm_pretext_128_2")
-    parser.add_argument("--recon-version", default="lewm_rec/psm_recon_128_3")
+    parser.add_argument("--pretext-version", default="psm_v1")
+    parser.add_argument("--recon-version", default="psm_v1")
     parser.add_argument("--score-aux-crop", action="store_true")
     parser.add_argument("--threshold-per-channel", action="store_true",
                         help="threshold each reconstructed PSM channel independently")

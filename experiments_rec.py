@@ -1,13 +1,12 @@
 """Phase-1 + Phase-2 sweep over every SMD machine: pretext -> recon -> score.
 
-Per machine, with the grilled Phase-2 contract (S=4, W=128, W % S == 0):
-  1) pretext: lewm.py           (LeWM encoder + auxiliary + frequency predictor)
-  2) recon:   carla_recon.py    (same encoder init + mirrored head, dense L1)
-  3) score:   carla_recon.py    (shared engine, per-machine train-only 0.99)
+Per machine, with W=128 and W divisible by the configured encoder stride:
+  1) pretext: lewm_reconstruction.py (LeWM encoder + auxiliary + frequency predictor)
+  2) recon:   lewm_reconstruction.py (same encoder init + mirrored head, dense L1)
+  3) score:   lewm_reconstruction.py (shared engine, per-machine train-only 0.99)
 
-Fixed sweep geometry (overrides whatever the base configs say):
-  model_kwargs = {in_channels: 38, enc_channels: [32, 64], enc_strides: [2, 2]}
-  wsz = 128  (128 % 4 == 0, exact transpose round-trip, no crop logic)
+The shared phase-one config defines encoder and auxiliary geometry.
+  in_channels = 38 and wsz = 128 for SMD.
   pretext epochs = 150 (aux head convergence), recon epochs = 50.
   scheduler = warmup (10 epochs, LinearLR) + cosine_restart with
   lr_eta_min = lr / 10, T_period = epochs - 10 (one cosine cycle).
@@ -33,18 +32,15 @@ import os
 import yaml
 from easydict import EasyDict
 
-from carla_recon import main as recon_main
-from lewm import main as lewm_main
+from lewm_reconstruction import main as recon_main
+from utils.config import load_experiment_config, model_path
 
 ENV_YML = "configs/env.yml"
-PRETEXT_YML = "configs/jepa/steering/phase1_frequency_predictor_time_annotation_steering.yml"
-RECON_TRAIN_YML = "configs/jepa/steering/smd_recon_train.yml"
-RECON_SCORE_YML = "configs/jepa/steering/smd_recon_score.yml"
+PRETEXT_YML = "configs/lewm_encoder/frequency_aux/phase1.yml"
+RECON_TRAIN_YML = "configs/lewm_encoder/frequency_aux/reconstruction/default.yml"
 
-# Sweep geometry (grilled contract: S = 2*2 = 4, W = 128 divisible by S).
+# Dataset geometry; encoder architecture comes from the shared phase-one config.
 IN_CHANNELS = 38
-ENC_CHANNELS = [32, 64]
-ENC_STRIDES = [2, 2]
 WSZ = 128
 PRETEXT_EPOCHS = 300
 RECON_EPOCHS = 300
@@ -53,8 +49,7 @@ BASE_LR = 0.002
 
 
 def _load_yml(path):
-    with open(path) as f:
-        return yaml.safe_load(f)
+    return load_experiment_config(path)
 
 
 def _root_dir(env_yml=ENV_YML):
@@ -64,10 +59,7 @@ def _root_dir(env_yml=ENV_YML):
 def jepa_model_path(version, fname, exp_yml, env_yml=ENV_YML):
     """Saved-folder convention: results/<db>/<version>/<fname>/jepa[tag]/model.pth.tar."""
     cfg = _load_yml(exp_yml)
-    tag = cfg.get("tag_jepa")
-    jepa_dirname = f"jepa_{tag}" if tag else "jepa"
-    return os.path.join(_root_dir(env_yml), cfg.get("train_db_name", "smd"),
-                        version, fname, jepa_dirname, "model.pth.tar")
+    return model_path(_root_dir(env_yml), cfg, fname, version)
 
 
 def _cosine_restart_patch(epochs, lr=BASE_LR):
@@ -87,13 +79,10 @@ def _cosine_restart_patch(epochs, lr=BASE_LR):
 def _model_patch():
     return {
         "wsz": int(WSZ),
-        "model_kwargs": {
-            "in_channels": int(IN_CHANNELS),
-            "enc_channels": list(ENC_CHANNELS),
-            "enc_strides": list(ENC_STRIDES),
-            "norm": "batch",
-            "dropout": 0.1,
-        },
+        # Keep the transferred auxiliary architecture identical at every stage.
+        "aux_kwargs": dict(_load_yml(PRETEXT_YML).get("aux_kwargs", {})),
+        "model_kwargs": {**_load_yml(PRETEXT_YML)["model_kwargs"],
+                         "in_channels": int(IN_CHANNELS)},
     }
 
 
@@ -129,6 +118,7 @@ def run_machine(fname, pretext_version, recon_version, dry_run=False,
     recon_cfg = _load_yml(RECON_TRAIN_YML)
     pretrained_from = recon_cfg.get("pretrained_from") or pretext_model
     recon_patch = {"stage": "recon", "pretrained_from": pretrained_from,
+                   "phase1_version": pretext_version,
                    "recon_kwargs": {"with_aux": True, "norm": "batch",
                                     "dropout": 0.1}}
     recon_patch.update(_model_patch())
@@ -140,17 +130,18 @@ def run_machine(fname, pretext_version, recon_version, dry_run=False,
     # -- 3) score --------------------------------------------------------
     # Fallback: score_checkpoint comes from the saved recon folder unless
     # the score base config already specifies it.
-    score_cfg = _load_yml(RECON_SCORE_YML)
+    score_cfg = _load_yml(RECON_TRAIN_YML)
     score_checkpoint = score_cfg.get("score_checkpoint") or recon_model
     score_patch = {"stage": "score", "score_checkpoint": score_checkpoint,
+                   "phase1_version": pretext_version,
                    "score_aux_crop": score_aux_crop,
                    "threshold_per_channel": threshold_per_channel,
                    "threshold_channel_operator": "and" if threshold_channels_and else "or",
                    "recon_kwargs": {"with_aux": True, "norm": "batch",
                                     "dropout": 0.1}}
     score_patch.update(_model_patch())
-    score_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_SCORE_YML,
-                           "fname": fname, "version": recon_version})
+    score_args = EasyDict({"config_env": ENV_YML, "config_exp": RECON_TRAIN_YML,
+                           "fname": fname, "version": recon_version, "score": True})
 
     plan = [(f"pretext [{fname}]", pretext_args, pretext_patch),
             (f"recon   [{fname}]", recon_args, recon_patch),
@@ -165,7 +156,7 @@ def run_machine(fname, pretext_version, recon_version, dry_run=False,
         return
 
     print(f"=== pretext {fname} (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    lewm_main(pretext_args, update_dictionary=dict(pretext_patch))
+    recon_main(pretext_args, update_dictionary=dict(pretext_patch))
     print(f"=== recon {fname} (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=dict(recon_patch))
     print(f"=== score {fname} (aux_crop={score_aux_crop}) ===", flush=True)
@@ -184,6 +175,7 @@ def run_all(pretext_version, recon_version, files, dry_run=False,
     recon_patch = {
         "stage": "recon",
         "pretrained_from": pretext_model,
+        "phase1_version": pretext_version,
         "recon_kwargs": {"with_aux": True, "norm": "batch", "dropout": 0.1},
         **_joint_patch(), **_model_patch(), **_cosine_restart_patch(RECON_EPOCHS),
     }
@@ -200,7 +192,7 @@ def run_all(pretext_version, recon_version, files, dry_run=False,
         return
 
     print(f"=== joint pretext SMD (epochs={PRETEXT_EPOCHS}) ===", flush=True)
-    lewm_main(pretext_args, update_dictionary=pretext_patch)
+    recon_main(pretext_args, update_dictionary=pretext_patch)
     print(f"=== joint recon SMD (epochs={RECON_EPOCHS}) ===", flush=True)
     recon_main(recon_args, update_dictionary=recon_patch)
 
@@ -208,6 +200,7 @@ def run_all(pretext_version, recon_version, files, dry_run=False,
         score_patch = {
             "stage": "score",
             "score_checkpoint": recon_model,
+            "phase1_version": pretext_version,
             "score_aux_crop": score_aux_crop,
             "threshold_per_channel": threshold_per_channel,
             "threshold_channel_operator": "and" if threshold_channels_and else "or",
@@ -215,8 +208,8 @@ def run_all(pretext_version, recon_version, files, dry_run=False,
             **_model_patch(),
         }
         score_args = EasyDict({"config_env": ENV_YML,
-                               "config_exp": RECON_SCORE_YML,
-                               "fname": machine, "version": recon_version})
+                               "config_exp": RECON_TRAIN_YML,
+                               "fname": machine, "version": recon_version, "score": True})
         print(f"=== score {machine} from joint checkpoint ===", flush=True)
         recon_main(score_args, update_dictionary=score_patch)
 
