@@ -12,7 +12,9 @@ def cli():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config-env", default="configs/env.yml")
     parser.add_argument("--manifest", default=str(Path(__file__).resolve().parent / "configs/psm/experiments.yml"))
-    parser.add_argument("--version", help="run name; reuse to resume, change for a fresh run")
+    runs = parser.add_mutually_exclusive_group()
+    runs.add_argument("--version", help="select a specific run; otherwise resume each experiment's latest checkpoint")
+    runs.add_argument("--fresh", action="store_true", help="start a new timestamped run instead of resuming")
     parser.add_argument("--frameworks", nargs="+", help="ae vae lewm_encoder reconstruction cross_attention")
     parser.add_argument("--experiments", nargs="+", help="exact keys, e.g. lewm_encoder/time/cross_attention/context_input")
     parser.add_argument("--epochs", type=int, help="override training epochs for every selected experiment")
@@ -25,7 +27,9 @@ def cli():
     version = args.version or datetime.now(ZoneInfo("Europe/Athens")).strftime("%Y-%m-%d-%H-%M-%S")
     plan, root = build_plan(args.manifest, args.config_env, version,
                             frameworks=args.frameworks, experiments=args.experiments,
-                            epochs=args.epochs, device=args.device)
+                            epochs=args.epochs, device=args.device,
+                            auto_resume=args.version is None and not args.fresh,
+                            reuse_saved_sources=args.fresh)
     print(f"PSM run {version}: {len(plan)} experiments (including dependencies)")
     if args.dry_run:
         for exp in plan:
@@ -33,6 +37,7 @@ def cli():
             if exp.dependency:
                 print(f"  source: {exp.dependency} -> {exp.config['pretrained_from']}")
             print(f"  selected weights: {checkpoint_path(exp, root, version)}")
+            print(f"  {'resume' if exp.run_version else 'run'}: {exp.run_version or version}")
         return
     if args.cpu_threads is not None:
         if args.cpu_threads < 1:

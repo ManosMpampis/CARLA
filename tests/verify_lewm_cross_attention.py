@@ -98,7 +98,19 @@ def verify_models():
                 assert model.score(x)["fused"].shape == (3, 6*s)
                 for mode in ("l1", "l2", "mse"):
                     model.score_mode = mode
-                    assert torch.isfinite(model.score(x)["fused"]).all()
+                    clean = model(x)
+                    residual = clean["recon"].float() - clean["target"].float()
+                    expected_score = (residual.abs().mean(dim=1) if mode == "l1"
+                                      else residual.square().mean(dim=1))
+                    if mode == "l2":
+                        expected_score = expected_score.sqrt()
+                    if target != "input":
+                        expected_score = expected_score.repeat_interleave(s, dim=-1)
+                    scored = model.score(x)
+                    assert torch.isfinite(scored["fused"]).all()
+                    assert torch.allclose(scored["fused"], expected_score, atol=1e-6), (
+                        source, target, mode, "score must contain only reconstruction residual")
+                    assert scored["signals"] == {}
                 model.train()
                 model.score(x)
                 assert model.training and not model.encoder.training
@@ -143,6 +155,29 @@ def verify_models():
     assert result["ends"][-1] == 150
     assert np.array_equal(result["starts"] - result["input_starts"],
                           np.full(len(result["starts"]), 40))
+    # Non-overlapping windows expose incorrect context or tail coverage.
+    # An interior observed target must cover only [40, 56), not [40, 64).
+    for target in ("features", "input", "query"):
+        for extraction in ("separate", "full"):
+            p = config(target, "observed")
+            p["cross_attention_kwargs"].update(target_crop=[10, 14],
+                                                feature_extraction=extraction)
+            model = get_cross_attention_model(p).eval()
+            options = scoring_options(p, model)
+            options.pop("wsz")
+            options.pop("stride")
+            series = np.random.default_rng(4).normal(size=(128, 4)).astype(np.float32)
+            result = score_both(model, series, 64, 64, 2, torch.device("cpu"), **options)
+            expected_counts = np.zeros(128, dtype=np.int64)
+            expected_counts[40:56] = expected_counts[104:120] = 1
+            assert np.array_equal(result["cover_counts"], expected_counts)
+            assert np.array_equal(result["starts"], [40, 104])
+            assert np.array_equal(result["ends"], [56, 120])
+            windows = torch.from_numpy(series.reshape(2, 64, 4)).transpose(1, 2)
+            crop_scores = model.score(windows)["fused"].numpy()
+            assert np.allclose(result["timeseries_scores"][40:56], crop_scores[0])
+            assert np.allclose(result["timeseries_scores"][104:120], crop_scores[1])
+            assert np.allclose(result["window_scores"], crop_scores.mean(axis=1))
     print("Model gradients, attention, leakage, and crop scoring: OK")
 
 

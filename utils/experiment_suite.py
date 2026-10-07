@@ -1,5 +1,6 @@
 """Named experiment planning, native training, and comparable PSM reporting."""
 
+import os
 import copy
 import csv
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ class Experiment:
     config_path: Path
     config: dict
     dependency: str | None = None
+    run_version: str | None = None
 
     @property
     def key(self):
@@ -53,6 +55,7 @@ def _load_yaml(path):
 
 
 def experiment_dir(exp, root_dir, version):
+    version = exp.run_version or version
     base = Path(experiment_base_dir(root_dir, exp.config, "psm", version))
     tag = exp.config.get("tag_jepa")
     return base / (f"jepa_{tag}" if tag else "jepa")
@@ -62,8 +65,21 @@ def checkpoint_path(exp, root_dir, version):
     return experiment_dir(exp, root_dir, version) / RUNNERS[exp.runner][2]
 
 
+def resume_latest(exp, root_dir, version):
+    """Select the most recently saved training state for this exact experiment."""
+    directory = experiment_dir(exp, root_dir, version)
+    run_parent = directory.parents[2]
+    filename = "last.pth.tar" if exp.runner in ("ae", "vae") else "checkpoint.pth.tar"
+    candidates = list(run_parent.glob(f"*/psm/{directory.name}/{filename}"))
+    if candidates:
+        latest = max(candidates, key=lambda path: (path.stat().st_mtime_ns, str(path)))
+        exp.run_version = latest.parents[2].name
+    return exp
+
+
 def build_plan(manifest_path, env_path, version, *, frameworks=None,
-               experiments=None, epochs=None, device=None):
+               experiments=None, epochs=None, device=None, auto_resume=False,
+               reuse_saved_sources=False):
     """Resolve a manifest without writing directories; order source LEWM first."""
     manifest_path = Path(manifest_path).resolve()
     manifest = _load_yaml(manifest_path)
@@ -140,12 +156,31 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
         if key in visited:
             return
         if key not in all_experiments:
-            raise ValueError(f"missing pretrained_experiment {key}")
+            if os.path.exists(f"{root_dir}/psm/{key}"):
+                return
+            else:
+                raise ValueError(f"missing pretrained_experiment {key}")
         exp = all_experiments[key]
+        if auto_resume:
+            resume_latest(exp, root_dir, version)
         visiting.add(key)
         if exp.dependency:
             if exp.runner not in ("recon", "cross_attention"):
                 raise ValueError(f"{key}: only phase-two runners accept pretrained_experiment")
+            if exp.dependency not in all_experiments:
+                # An omitted phase-one entry can supply saved weights without
+                # being retrained. Resolve its actual tag from the saved path.
+                source_dir = Path(root_dir) / "psm" / exp.dependency / "phase1"
+                run = "*" if auto_resume or reuse_saved_sources else version
+                weights = list(source_dir.glob(f"{run}/psm/jepa*/model.pth.tar"))
+                if not weights:
+                    raise ValueError(f"missing pretrained_experiment checkpoint {exp.dependency}")
+                exp.config["pretrained_from"] = str(max(
+                    weights, key=lambda path: (path.stat().st_mtime_ns, str(path))))
+                visiting.remove(key)
+                visited.add(key)
+                plan.append(exp)
+                return
             visit(exp.dependency)
             source = all_experiments[exp.dependency]
             if source.runner != "lewm":
@@ -165,6 +200,16 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
 
     for key in selected:
         visit(key)
+    if auto_resume:
+        for exp in plan:
+            if exp.run_version and exp.dependency:
+                saved = experiment_dir(exp, root_dir, version) / "resolved_config.yml"
+                if saved.is_file():
+                    # Continue the same encoder lineage, even if its source
+                    # has since produced a newer run.
+                    source = _load_yaml(saved).get("pretrained_from")
+                    if source:
+                        exp.config["pretrained_from"] = source
     return plan, root_dir
 
 
@@ -174,6 +219,7 @@ def _function(reference):
 
 
 def train_experiment(exp, env_path, version):
+    version = exp.run_version or version
     args = SimpleNamespace(config_env=str(env_path), config_exp=str(exp.config_path),
                            fname="psm", version=version)
     trainer = _function(RUNNERS[exp.runner][0])
@@ -198,6 +244,7 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
     from utils.scoring import covered_evaluation_view, evaluation_options
     from utils.trainer import Trainer
 
+    version = exp.run_version or version
     p = create_config(env_path, exp.config_path, fname, version,
                       update_dictionary=exp.config)
     requested_device = str(p.get("device", "cpu"))
@@ -349,6 +396,7 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
               fail_fast=False):
     """Run dependencies once, save partial summaries, and isolate failed experiments."""
     rows, statuses = [], {}
+    planned_keys = {exp.key for exp in plan}
     summary_dir = Path(root_dir) / "psm" / "summaries" / version
     summary_path = summary_dir / "summary.json"
     existing = json.loads(summary_path.read_text()) if summary_path.exists() else []
@@ -357,13 +405,19 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
         directory = experiment_dir(exp, root_dir, version)
         row = {"framework": exp.framework, "experiment_name": exp.name,
                "experiment_key": exp.key, "phase1_experiment": exp.config.get("phase1_experiment"),
-               "runner": exp.runner, "run": version,
+               "runner": exp.runner, "run": exp.run_version or version,
                "checkpoint": str(checkpoint_path(exp, root_dir, version)),
                "metrics_path": str(directory / "metrics.json")}
         started = time.monotonic()
         print(f"{'SCORE' if score_only else 'RUN'} {exp.key} -> {directory}", flush=True)
+        if not score_only:
+            filename = "last.pth.tar" if exp.runner in ("ae", "vae") else "checkpoint.pth.tar"
+            state = directory / filename
+            print(f"  {'Resume from ' + str(state) if state.is_file() else 'Start fresh'}", flush=True)
         try:
-            if exp.dependency and statuses.get(exp.dependency) != "completed":
+            if (exp.dependency and statuses.get(exp.dependency) != "completed"
+                    and not (exp.dependency not in planned_keys
+                             and Path(exp.config.get("pretrained_from", "")).is_file())):
                 row.update(status="blocked", error=f"source experiment {exp.dependency} failed")
             else:
                 directory.mkdir(parents=True, exist_ok=True)

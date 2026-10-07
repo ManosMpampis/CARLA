@@ -40,8 +40,7 @@ def write_final_decision_trace(model, device, series, config, threshold, *,
     running = RunningScorer(
         model, device, window, check_mask=options.get("check_mask"),
         latency_offset=options.get("latency_offset", 0), threshold=threshold,
-        record_history=True, threshold_operator=threshold_operator,
-        score_transform=score_transform, series_length=len(series))
+        record_history=True)#, threshold_operator=threshold_operator, score_transform=score_transform, series_length=len(series))
     for start in selected:
         running.update(series[start:start + window], start)
     trace = running.decision_trace()

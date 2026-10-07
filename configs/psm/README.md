@@ -6,6 +6,15 @@ Run every currently implemented framework and its configured arms:
 ./venv/bin/python experiments_psm_all.py --version psm_v1
 ```
 
+Without `--version`, the launcher checks each experiment's run folders and
+resumes the most recently modified training checkpoint (`last.pth.tar` for
+AE/VAE, `checkpoint.pth.tar` for LEWM and phase two). Experiments without a
+checkpoint start in a new timestamped run. Use `--fresh` to start new runs,
+or `--version NAME` to select a specific run. `--dry-run` shows the selected
+paths without training. Resuming restores model, optimizer, scheduler, and
+epoch; `--epochs` is the total epoch target. Saved phase-one weights can also
+supply dependencies whose entries are omitted from the manifest.
+
 The default manifest, `configs/psm/experiments.yml`, includes 16 experiments:
 
 | Framework directory | Experiments |
