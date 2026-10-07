@@ -44,7 +44,7 @@ criterion_kwargs:
 train_db_name: smd
 val_db_name: smd
 fname: machine-1-1.txt
-wsz: 128
+wsz: 1024
 stride: 10
 val_fraction: 0.1
 score_batch_size: 256

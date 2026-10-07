@@ -8,7 +8,7 @@ stage_a: {corpus: single}
 model_kwargs:
   in_channels: 38
   enc_channels: [32, 64, 128]
-  enc_strides: [1, 1, 1]
+  enc_strides: [2, 2, 2]
   norm: batch
   dropout: 0.1
 recon_kwargs: {norm: batch, dropout: 0.1}

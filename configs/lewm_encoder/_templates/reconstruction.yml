@@ -30,7 +30,7 @@ score_mode: l1           # l1 | l2 | mse; changes scoring, not L1 training
 train_db_name: smd
 val_db_name: smd
 fname: machine-1-1.txt
-wsz: 128                  # MUST satisfy wsz % S == 0
+wsz: 1024                  # MUST satisfy wsz % S == 0
 stride: 10
 val_fraction: 0.1
 score_batch_size: 256
