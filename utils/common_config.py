@@ -1,4 +1,4 @@
-"""Factories shared by steered pretraining and reconstruction."""
+"""Factories shared by LeWM pretraining and reconstruction."""
 import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 
@@ -7,7 +7,7 @@ from utils.collate import collate_custom
 
 CRITERION_BUILDERS = {
     "recon_l1": "losses.reconstruction:ReconL1Loss",
-    "steered_lewm": "losses.steered_lewm:SteeredLeWMLoss",
+    "lewm": "losses.lewm:LeWMLoss",
 }
 
 

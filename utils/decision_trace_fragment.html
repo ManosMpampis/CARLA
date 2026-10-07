@@ -1,0 +1,185 @@
+<div id="decision-trace" class="decision-trace">
+  <h2>Decision dynamics</h2>
+  <div class="viz-controls">
+    <label class="form-label" for="decision-step">Window arrival <span id="decision-step-label" class="tabular-nums"></span></label>
+    <input id="decision-step" class="form-range" type="range" min="0" value="0" aria-label="Window arrival">
+  </div>
+  <div class="decision-trace-focus">
+    <label class="form-label" for="decision-focus">Timestep</label>
+    <input id="decision-focus" class="form-control" type="number" min="0" step="1" aria-label="Focused timestep">
+    <span id="decision-current" aria-live="polite" class="tabular-nums"></span>
+  </div>
+  <div class="decision-trace-chart">
+    <h3>Current mean by timestep</h3>
+    <svg id="decision-series" role="img" aria-label="Current mean anomaly score by timestep at the selected window arrival"></svg>
+  </div>
+  <div class="decision-trace-chart">
+    <h3>Selected timestep as windows arrive</h3>
+    <svg id="decision-evolution" role="img" aria-label="Running mean anomaly score and decision history for the selected timestep"></svg>
+  </div>
+  <div class="decision-trace-legend" aria-label="Legend">
+    <span><i class="decision-line-key"></i> Mean score</span>
+    <span><i class="decision-threshold-key"></i> Threshold</span>
+    <span><i class="decision-anomaly-key"></i> Anomaly</span>
+    <span><i class="decision-normal-key"></i> Normal</span>
+  </div>
+</div>
+<style>
+  #decision-trace { color: var(--foreground); width: 100%; }
+  #decision-trace h2 { margin: 0 0 12px; font-weight: 500; }
+  #decision-trace h3 { margin: 14px 0 5px; font-weight: 500; }
+  #decision-trace #decision-step-label { font-weight: 500; }
+  #decision-trace .viz-controls { display: grid; gap: 4px; }
+  #decision-trace .decision-trace-focus { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  #decision-trace .decision-trace-focus input { width: 85px; }
+  #decision-trace #decision-current { color: var(--foreground); }
+  #decision-trace .decision-trace-chart { width: 100%; }
+  #decision-trace svg { display: block; width: 100%; height: 210px; }
+  #decision-trace svg text { fill: var(--foreground); font-size: 12px; }
+  #decision-trace .decision-trace-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted-foreground); }
+  #decision-trace .decision-trace-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  #decision-trace .decision-trace-legend i { display: inline-block; width: 16px; height: 3px; background: var(--viz-series-1); }
+  #decision-trace .decision-trace-legend .decision-threshold-key { background: var(--viz-series-2); }
+  #decision-trace .decision-trace-legend .decision-anomaly-key { width: 8px; height: 8px; border-radius: 50%; background: var(--viz-series-4); }
+  #decision-trace .decision-trace-legend .decision-normal-key { width: 8px; height: 8px; border-radius: 50%; background: var(--viz-series-3); }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('decision-trace');
+  const encodedTrace = '__TRACE_BASE64__';
+  if (encodedTrace === '__TRACE_BASE64__') {
+    root.innerHTML = '<h2>Decision dynamics</h2><p>This is the graph template. Generate a populated page with <code>RunningScorer.save_decision_trace_html(path)</code>.</p>';
+    return;
+  }
+  const trace = JSON.parse(atob(encodedTrace));
+  const slider = root.querySelector('#decision-step');
+  const stepLabel = root.querySelector('#decision-step-label');
+  const focusInput = root.querySelector('#decision-focus');
+  const currentLabel = root.querySelector('#decision-current');
+  const seriesSvg = root.querySelector('#decision-series');
+  const evolutionSvg = root.querySelector('#decision-evolution');
+  const updates = trace.updates || [];
+  if (!updates.length) {
+    currentLabel.textContent = 'No scored windows';
+    return;
+  }
+  const positions = [...new Set(updates.flatMap(update => update.indices))].sort((a, b) => a - b);
+  const changes = trace.decision_changes || [];
+  const changeCounts = new Map();
+  for (const event of changes) {
+    if (event.previous !== null) changeCounts.set(event.timestep, (changeCounts.get(event.timestep) || 0) + 1);
+  }
+  const mostChanged = positions.reduce((best, position) =>
+    (changeCounts.get(position) || 0) > (changeCounts.get(best) || 0) ? position : best,
+    positions[Math.floor(positions.length / 2)]);
+  slider.max = String(updates.length - 1);
+  slider.value = String(updates.length - 1);
+  focusInput.min = String(positions[0]);
+  focusInput.max = String(positions[positions.length - 1]);
+  focusInput.value = String(mostChanged);
+
+  const color = name => getComputedStyle(root).getPropertyValue(name).trim();
+  const svgElement = (tag, attributes = {}, parent) => {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+    if (parent) parent.appendChild(element);
+    return element;
+  };
+  const label = (parent, x, y, text, anchor = 'middle') => {
+    const node = svgElement('text', {x, y, 'text-anchor': anchor}, parent);
+    node.textContent = text;
+    return node;
+  };
+  const range = values => {
+    const finite = values.filter(Number.isFinite);
+    const lo = Math.min(...finite), hi = Math.max(...finite);
+    const pad = Math.max((hi - lo) * .1, .5);
+    return [lo - pad, hi + pad];
+  };
+  const scale = (value, low, high, pixelLow, pixelHigh) =>
+    pixelLow + (value - low) * (pixelHigh - pixelLow) / Math.max(high - low, 1e-9);
+  const fmt = value => Number(value).toFixed(2);
+
+  function draw(svg, points, xExtent, yExtent, xTitle, selectedX) {
+    svg.replaceChildren();
+    const width = Math.max(320, Math.floor(svg.getBoundingClientRect().width));
+    const height = 210;
+    const plot = {left: 64, right: width - 18, top: 16, bottom: height - 38};
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const sx = value => scale(value, xExtent[0], xExtent[1], plot.left + 5, plot.right - 5);
+    const sy = value => scale(value, yExtent[0], yExtent[1], plot.bottom - 5, plot.top + 5);
+    svgElement('rect', {x: plot.left, y: plot.top, width: plot.right - plot.left,
+      height: plot.bottom - plot.top, fill: 'none', stroke: color('--border')}, svg);
+    for (let i = 0; i <= 3; i++) {
+      const value = yExtent[0] + (yExtent[1] - yExtent[0]) * i / 3;
+      const y = sy(value);
+      svgElement('line', {x1: plot.left, x2: plot.right, y1: y, y2: y,
+        stroke: color('--border'), 'stroke-opacity': .6}, svg);
+      label(svg, plot.left - 7, y + 4, fmt(value), 'end');
+    }
+    const xTicks = xExtent[0] === xExtent[1] ? [xExtent[0]] :
+      Array.from({length: 4}, (_, i) => xExtent[0] + (xExtent[1] - xExtent[0]) * i / 3);
+    xTicks.forEach((value, index) => {
+      const anchor = index === 0 ? 'start' : index === xTicks.length - 1 ? 'end' : 'middle';
+      label(svg, sx(value), plot.bottom + 17, String(Math.round(value)), anchor);
+    });
+    label(svg, (plot.left + plot.right) / 2, height - 3, xTitle);
+    const yTitle = label(svg, 13, (plot.top + plot.bottom) / 2, 'Mean score');
+    yTitle.setAttribute('transform', `rotate(-90 13 ${(plot.top + plot.bottom) / 2})`);
+    if (trace.threshold !== null && Number.isFinite(trace.threshold)) {
+      const y = sy(trace.threshold);
+      svgElement('line', {x1: plot.left, x2: plot.right, y1: y, y2: y,
+        stroke: color('--viz-series-2'), 'stroke-width': 2, 'stroke-dasharray': '5 4'}, svg);
+    }
+    if (selectedX !== null) {
+      svgElement('line', {x1: sx(selectedX), x2: sx(selectedX), y1: plot.top,
+        y2: plot.bottom, stroke: color('--muted-foreground'), 'stroke-width': 1}, svg);
+    }
+    if (points.length) {
+      const path = points.map((point, index) =>
+        `${index && point.x - points[index - 1].x === 1 ? 'L' : 'M'}${sx(point.x).toFixed(2)},${sy(point.y).toFixed(2)}`).join(' ');
+      svgElement('path', {d: path, fill: 'none', stroke: color('--viz-series-1'),
+        'stroke-width': 2}, svg);
+      for (const point of points) {
+        const mark = svgElement('circle', {cx: sx(point.x), cy: sy(point.y), r: 4,
+          fill: color(point.decision ? '--viz-series-4' : '--viz-series-3')}, svg);
+        const tooltip = svgElement('title', {}, mark);
+        tooltip.textContent = `${xTitle} ${point.x}: score ${fmt(point.y)}, ${point.decision ? 'anomaly' : 'normal'}, ${point.count} output${point.count === 1 ? '' : 's'}`;
+      }
+    }
+    return {sx, sy, plot};
+  }
+
+  function render() {
+    const step = Number(slider.value);
+    const focus = Number(focusInput.value);
+    const state = new Map();
+    const evolution = [];
+    for (let i = 0; i <= step; i++) {
+      const update = updates[i];
+      update.indices.forEach((index, offset) => {
+        const point = {x: index, y: update.scores[offset],
+          count: update.counts[offset], decision: update.decisions?.[offset] || false};
+        state.set(index, point);
+        if (index === focus) evolution.push({...point, x: i + 1});
+      });
+    }
+    const current = [...state.values()].sort((a, b) => a.x - b.x);
+    const scoreValues = updates.flatMap(update => update.scores);
+    const yExtent = range(trace.threshold === null ? scoreValues : [...scoreValues, trace.threshold]);
+    const xExtent = [positions[0], positions[positions.length - 1]];
+    const arrival = updates[step];
+    stepLabel.textContent = `${step + 1} / ${updates.length} · input [${arrival.window_start}, ${arrival.window_end})`;
+    const focused = state.get(focus);
+    currentLabel.textContent = focused ?
+      `Score ${fmt(focused.y)} · ${focused.decision ? 'Anomaly' : 'Normal'} · ${focused.count} output${focused.count === 1 ? '' : 's'}` :
+      'No output yet';
+    draw(seriesSvg, current, xExtent, yExtent, 'Timestep', focus);
+    draw(evolutionSvg, evolution, [1, updates.length], yExtent, 'Window arrival', null);
+  }
+  slider.addEventListener('input', render);
+  focusInput.addEventListener('input', render);
+  new ResizeObserver(render).observe(root);
+  render();
+})();
+</script>

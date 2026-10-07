@@ -1,17 +1,17 @@
-"""Backbone registry for the steered anomaly detector."""
+"""Backbone registry for LeWM experiments."""
 
 __all__ = ["BACKBONE_REGISTRY", "get_backbone"]
 
 
-def _build_steered_resnet(**kwargs):
-    from models.steered_lewm import SteeredResNetEncoder
+def _build_lewm_resnet(**kwargs):
+    from models.lewm import LeWMResNetEncoder
 
-    encoder = SteeredResNetEncoder(**kwargs)
+    encoder = LeWMResNetEncoder(**kwargs)
     return {"model": encoder, "dim": [encoder.output_dims]}
 
 
 BACKBONE_REGISTRY = {
-    "steered_resnet": _build_steered_resnet,
+    "lewm_resnet": _build_lewm_resnet,
 }
 
 

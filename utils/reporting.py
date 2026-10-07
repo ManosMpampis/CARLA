@@ -132,7 +132,8 @@ def score_with_model(p, device, build_model, logger) -> dict:
     """
     from data.jepa_dataset import JEPADataset
     from metrics.metrics import combine_all_evaluation_scores
-    from utils.scoring import Calibrator, Scorer
+    from utils.scoring import (Calibrator, Scorer, covered_evaluation_view,
+                               evaluation_options)
     from utils.trainer import Trainer
 
     model = build_model(p).to(device)
@@ -144,6 +145,7 @@ def score_with_model(p, device, build_model, logger) -> dict:
 
     scorer = Scorer(model, device)
     score_bs = int(p.get("score_batch_size", p.get("batch_size", 256)))
+    eval_options = evaluation_options(p)
     calibrator = Calibrator(**p.get("calibration_kwargs",
                                     {"quantile": 0.995}))
 
@@ -160,8 +162,8 @@ def score_with_model(p, device, build_model, logger) -> dict:
         clean_series = np.asarray(train_dataset.val_series, dtype=np.float32)
     else:
         clean_series = series_from_dataset(train_dataset)
-    clean_result = scorer.score_series(clean_series, p["wsz"], p["stride"],
-                                       batch_size=score_bs)
+    clean_result = scorer.score_series(clean_series, batch_size=score_bs,
+                                       **eval_options)
     clean_channels = {"fused": clean_result["scores"], **clean_result["channels"]}
     channel_mode = bool(p.get("threshold_per_channel", False))
     channel_operator = str(p.get("threshold_channel_operator", "or")).lower()
@@ -176,11 +178,20 @@ def score_with_model(p, device, build_model, logger) -> dict:
         sanomaly = SubAnomaly(probe_cfg.get("portion", 0.99))
         n_probes = int(probe_cfg["num_probe_windows"])
         rng = np.random.default_rng(p.get("seed", 4))
-        idxs = rng.integers(0, len(train_dataset), size=n_probes)
-        windows = np.stack([
-            sanomaly(train_dataset[int(i)]["ts"]).astype(np.float32)
-            for i in idxs
-        ])
+        eval_wsz = eval_options["wsz"]
+        if eval_wsz == int(p["wsz"]):
+            idxs = rng.integers(0, len(train_dataset), size=n_probes)
+            windows = np.stack([
+                sanomaly(train_dataset[int(i)]["ts"]).astype(np.float32)
+                for i in idxs
+            ])
+        else:
+            idxs = rng.integers(0, len(clean_series) - eval_wsz + 1,
+                                size=n_probes)
+            windows = np.stack([
+                sanomaly(clean_series[int(i):int(i) + eval_wsz]).astype(np.float32)
+                for i in idxs
+            ])
         batch = torch.from_numpy(windows).permute(0, 2, 1).contiguous()
         probe_scores = scorer.score_windows(batch)
         probe_maps = {
@@ -188,21 +199,19 @@ def score_with_model(p, device, build_model, logger) -> dict:
             **probe_scores.pop("levels"),
             **{f"signal/{k}": v for k, v in probe_scores.pop("signals").items()},
         }
-        # comparable statistics on both sides: per-window means
+        # Comparable statistics on both sides: per-window means.
         probe_channels = {k: v.mean(axis=1) for k, v in probe_maps.items()}
-        clean_window_starts = clean_result["start_idxs"]
-        clean_window_ends = clean_result["end_idxs"]
-        fit_clean_channels = {
-            k: window_means(v, clean_window_starts, clean_window_ends)
-            for k, v in clean_channels.items()
-        }
+        fit_clean_channels = clean_result["window_scores"]
     else:
-        fit_clean_channels = clean_channels
+        covered_clean = clean_result["cover_counts"] > 0
+        fit_clean_channels = {k: v[covered_clean]
+                              for k, v in clean_channels.items()}
 
     calibrator.fit(fit_clean_channels, probes=probe_channels)
 
     fused_clean = calibrator.fuse(clean_channels)
-    threshold = calibrator.threshold_for(fused_clean)
+    threshold = calibrator.threshold_for(
+        fused_clean[clean_result["cover_counts"] > 0])
     calibrator.save(p["calibration_path"], extra={
         "threshold_fused": threshold,
         "inputs": "clean-train scores only (+ injected-anomaly probes for weights)",
@@ -215,13 +224,20 @@ def score_with_model(p, device, build_model, logger) -> dict:
     test_dataset = JEPADataset(p, train=False)
     test_series = series_from_dataset(test_dataset)
     targets = np.asarray(test_dataset.targets).astype(int)
-    test_result = scorer.score_series(test_series, p["wsz"], p["stride"],
-                                      batch_size=score_bs)
+    test_result = scorer.score_series(test_series, batch_size=score_bs,
+                                      **eval_options)
     test_channels = {"fused": test_result["scores"], **test_result["channels"]}
     fused_test = calibrator.fuse(test_channels)
+    covered_clean = clean_result["cover_counts"] > 0
+    covered_test = test_result["cover_counts"] > 0
+    eval_scores, eval_targets, eval_starts, eval_ends = covered_evaluation_view(
+        fused_test, targets, test_result["start_idxs"],
+        test_result["end_idxs"], test_result["cover_counts"])
     if channel_mode:
         pred_labels, channel_thresholds = _channel_decision(
-            test_channels, clean_channels, calibrator.quantile, channel_operator)
+            test_channels,
+            {k: v[covered_clean] for k, v in clean_channels.items()},
+            calibrator.quantile, channel_operator)
         calibrator.save(p["calibration_path"], extra={
             "threshold_mode": f"per_channel_{channel_operator}",
             "thresholds_per_channel": channel_thresholds,
@@ -229,10 +245,11 @@ def score_with_model(p, device, build_model, logger) -> dict:
     else:
         pred_labels = (fused_test >= threshold).astype(int)
     window_size = int(p.get("eval_window_size", 100))
-    metric_dict = combine_all_evaluation_scores(pred_labels, targets, window_size)
+    metric_dict = combine_all_evaluation_scores(
+        pred_labels[covered_test], eval_targets, window_size)
 
-    honest = honest_metrics(metric_dict, fused_test, targets,
-                            test_result["start_idxs"], test_result["end_idxs"])
+    honest = honest_metrics(metric_dict, eval_scores, eval_targets,
+                            eval_starts, eval_ends)
     point_adjust = {
         key[3:]: float(value) for key, value in metric_dict.items()
         if key.startswith("pa_") and isinstance(value, (int, float))
@@ -240,17 +257,18 @@ def score_with_model(p, device, build_model, logger) -> dict:
     report = {"honest": honest, "point_adjust_comparability": point_adjust}
 
     # report theoretical best threshold (fused-test quantile) for reference, but do not use it
-    best_f1_threshold = _best_f1_threshold(fused_test, targets)
+    best_f1_threshold = _best_f1_threshold(eval_scores, eval_targets)
 
     if channel_mode:
         best_pred_labels, best_channel_thresholds = _best_channel_decision(
-            test_channels, targets, channel_operator)
+            {k: v[covered_test] for k, v in test_channels.items()},
+            eval_targets, channel_operator)
     else:
-        best_pred_labels = (torch.from_numpy(fused_test) >= best_f1_threshold).numpy().astype(int)
-    best_metric_dict = combine_all_evaluation_scores(best_pred_labels, targets, window_size)
+        best_pred_labels = (torch.from_numpy(eval_scores) >= best_f1_threshold).numpy().astype(int)
+    best_metric_dict = combine_all_evaluation_scores(best_pred_labels, eval_targets, window_size)
 
-    best_metrics = honest_metrics(best_metric_dict, fused_test, targets,
-                            test_result["start_idxs"], test_result["end_idxs"])
+    best_metrics = honest_metrics(best_metric_dict, eval_scores, eval_targets,
+                                 eval_starts, eval_ends)
     best_point_adjust = {
         key[3:]: float(value) for key, value in best_metric_dict.items()
         if key.startswith("pa_") and isinstance(value, (int, float))
@@ -264,19 +282,25 @@ def score_with_model(p, device, build_model, logger) -> dict:
     baseline_model = build_model(p).to(device)
     baseline_model.eval()
     baseline_result = Scorer(baseline_model, device).score_series(
-        test_series, p["wsz"], p["stride"], batch_size=score_bs)
+        test_series, batch_size=score_bs, **eval_options)
     baseline_fused = baseline_result.pop("scores")
+    baseline_scores, baseline_targets, baseline_starts, baseline_ends = \
+        covered_evaluation_view(
+            baseline_fused, targets, baseline_result["start_idxs"],
+            baseline_result["end_idxs"], baseline_result["cover_counts"])
     report["no_training_baseline"] = honest_metrics(
-        combine_all_evaluation_scores((baseline_fused >= threshold).astype(int),
-                                      targets, window_size),
-        baseline_fused, targets,
-        baseline_result["start_idxs"], baseline_result["end_idxs"])
+        combine_all_evaluation_scores(
+            (baseline_scores >= threshold).astype(int), baseline_targets,
+            window_size),
+        baseline_scores, baseline_targets, baseline_starts, baseline_ends)
 
     np.savez_compressed(
         p["scores_path"],
         scores=fused_test,
         start_idxs=test_result["start_idxs"],
         end_idxs=test_result["end_idxs"],
+        input_start_idxs=test_result["input_start_idxs"],
+        input_end_idxs=test_result["input_end_idxs"],
         cover_counts=test_result["cover_counts"],
         pred_labels=pred_labels,
         gt_labels=targets,

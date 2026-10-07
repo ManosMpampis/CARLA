@@ -1,6 +1,6 @@
-"""Losses used by steered pretraining and reconstruction."""
+"""Losses used by LeWM pretraining and reconstruction."""
 from losses.reconstruction import ReconL1Loss
 from losses.sigreg import SIGReg
-from losses.steered_lewm import SteeredLeWMLoss
+from losses.lewm import LeWMLoss
 
-__all__ = ["ReconL1Loss", "SIGReg", "SteeredLeWMLoss"]
+__all__ = ["ReconL1Loss", "SIGReg", "LeWMLoss"]
