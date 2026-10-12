@@ -18,7 +18,7 @@ val_fraction: 0.1
 score_mode: l1           # l1 | l2 | mse; changes scoring, not MSE training
 calibration_quantile: 0.99
 eval_window_size: 100
-eval_every: 1
+eval_every: 10
 score_batch_size: 256
 seed: 5
 device: cuda

@@ -131,9 +131,11 @@ def main():
     with tempfile.TemporaryDirectory() as folder:
         config = {"wsz": 4, "stride": 1, "jepa_dir": folder,
                   "decision_trace": {"max_windows": 2}}
+        labels = np.zeros(len(flip_series), dtype=np.int64)
+        labels[3:5] = 1
         artifact = write_final_decision_trace(
             FlipModel(), torch.device("cpu"), flip_series, config, 5.0,
-            threshold_operator="gt")
+            threshold_operator="gt", labels=labels)
         assert artifact["recorded_windows"] == 2
         assert artifact["total_windows"] == 4 and artifact["truncated"]
         assert os.path.isfile(artifact["html"])
@@ -141,6 +143,16 @@ def main():
             saved = json.load(stream)
         assert len(saved["updates"]) == 2
         assert saved["updates"][1]["decisions"][2] is False
+        assert saved["ground_truth_intervals"] == [[3, 5]]
+        assert saved["series_length"] == len(flip_series)
+        assert saved["threshold_operator"] == "gt"
+        assert saved["updates"][1]["checking_start"] == 1
+        assert saved["updates"][1]["checking_end"] == 5
+        # Equality must agree with the strict > operator used by AE/VAE scoring.
+        equal = RunningScorer(PositionModel(), "cpu", 4, threshold=2.0,
+                              threshold_operator="gt")
+        result = equal.update(series[:4], 0)
+        assert result["decisions"].tolist() == [False, False, False, True]
 
     # AE/VAE uses exactly the same mapped aggregation and window intervals.
     baseline = score_both(PositionModel(), series, 4, 1, 2, "cpu")

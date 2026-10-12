@@ -25,20 +25,82 @@ with an auxiliary head also have `reconstruction/aux_crop.yml`.
 
 ```text
 results/<dataset>/lewm_encoder/<phase1 experiment>/
-  phase1/<version>/<machine>/jepa_<phase1 tag>/
-  reconstruction/<phase2 experiment>/<version>/<machine>/jepa/
-  cross_attention/<phase2 experiment>/<version>/<machine>/jepa_<phase2 tag>/
+  phase1/[<version>/]<machine>/jepa_<phase1 tag>/
+  reconstruction/<phase2 experiment>/[<version>/]<machine>/jepa/
+  cross_attention/<phase2 experiment>/[<version>/]<machine>/jepa_<phase2 tag>/
 ```
 
 Checkpoints, TensorBoard logs, calibration, scores, and metrics live in each
 final `jepa*` directory. AE/VAE keep their framework/experiment layout.
+
+AE, VAE, LEWM pretraining/adaptation, reconstruction, and cross-attention
+validate after every training epoch. All use top-level `eval_every` for test monitoring: the default is
+10, evaluation runs at each multiple and at the final epoch, and `0` disables
+it. Set `common.eval_every` in a suite manifest to apply the same cadence to
+every arm. The older `stage_c.eval_every` is a fallback when top-level
+`eval_every` is absent. At every evaluation, all three procedures (window,
+time-series, non-overlap window) print calibrated/oracle F1, event F1,
+thresholds, and VUS PR/ROC, and append full metrics with the epoch to
+`test_evaluations.jsonl`. TensorBoard receives the same metrics under `test/`.
+
+Validation and periodic `test/*` TensorBoard scalars use completed epochs
+starting at 1 and continue after resume. Validation improvements do not trigger
+extra test evaluations; an AE/VAE validation checkpoint saved between evaluation
+epochs has `evaluation: null`. Use the scoring entry point to evaluate its saved
+weights. Training objectives still differ by arm, so their loss values need not
+match.
+
+Final suite scoring adds `non_overlap_window` alongside `window` and `timeseries`.
+It reuses the scorer with evaluation stride equal to the scored region length
+(the full input window, or the target crop for cross-attention) and
+`include_last_window: false`. Each covered timestep contributes to exactly one
+window score; window labels still use any anomalous timestep in that region.
+Input context can overlap, and initial context or an incomplete tail can remain
+unscored. `coverage.non_overlap_window` records the actual coverage and stride.
+This additional pass has its own clean-tail threshold; its metrics are under
+`test/non_overlap_window/*` in `suite_evaluation` and
+`evaluation.non_overlap_window` in `metrics.json`. Scores, intervals, labels,
+predictions, and coverage counts use the `non_overlap_window_` prefix in
+`scores.npz`. Training-time monitoring retains its original two families.
+
+Final suite scoring reports `test/<procedure>/oracle/calibration_quantile`
+in `suite_evaluation` and the corresponding `evaluation.<procedure>.oracle`
+fields in `metrics.json`. This inverts the default linear calibration quantile
+on the held-out clean train tail at the test-oracle F1 threshold.
+`clean_anomaly_fraction` is the fraction of those clean scores strictly above
+the oracle threshold. `calibration_threshold` shows the threshold produced by
+the reported quantile; `calibration_threshold_in_range` is false if the oracle
+lies outside the clean-score range, in which case the quantile is clamped to
+0 or 1. Window and timeseries quantiles can differ. To reproduce a reported
+quantile in suite scoring, set `calibration_kwargs.quantile` (for example under
+the manifest's `common`). These are test-oracle diagnostics, not a normal-only
+tuning procedure, and do not change the configured calibration.
+
+AE/VAE training and final scoring export `decision_trace.html` and
+`decision_trace.json` alongside the weights. The HTML replays test-window
+arrivals using validation-selected weights and a clean-tail threshold; labels
+only annotate the display. Purple bands show ground-truth anomalies, colored
+dots show predicted decisions, and two white lines mark the current checking
+interval `[start, end)` rather than the input/context window.
+
+Use the arrival slider to replay updates and the timestep slider to choose a
+position inside that arrival's checking window. The top chart shows the latest
+running mean at each scored timestep. The lower chart tracks the selected
+timestep's mean only across arrivals that scored it, up to the replay position.
+Scroll to zoom, drag to pan, or use the chart buttons; “Show checking window”
+fits the top chart to the current checking interval. The default replay contains
+the first 256 windows; set `decision_trace.max_windows: null` for all windows or
+`decision_trace: false` to disable export.
 
 ## Naming and configuration
 
 `phase1_experiment` names the shared encoder. `framework` selects
 `lewm_encoder`, `reconstruction`, or `cross_attention`. `experiment_name`
 names the phase-two variant within that encoder and framework. `--version`
-names a run and can be reused to resume.
+optionally names a run and can be reused to resume. Without `--version`,
+the run folder is omitted: names and tags select a stable path, with no generated
+date. Reusing that path resumes training; changing a name or tag selects a new
+path. Explicit older dated versions remain accessible.
 
 Each child config uses relative `extends` paths. Parents merge left to right,
 then the child overrides them. Nested mappings merge recursively; changing

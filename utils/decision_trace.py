@@ -8,7 +8,7 @@ from pathlib import Path
 def write_final_decision_trace(model, device, series, config, threshold, *,
                                options=None, score_transform=None,
                                threshold_operator="ge",
-                               score_label="Mean score") -> dict | None:
+                               score_label="Mean score", labels=None) -> dict | None:
     """Replay a bounded prefix of final scoring and write its decision graph.
 
     The default 256-window limit keeps a normal score run from embedding a
@@ -40,11 +40,23 @@ def write_final_decision_trace(model, device, series, config, threshold, *,
     running = RunningScorer(
         model, device, window, check_mask=options.get("check_mask"),
         latency_offset=options.get("latency_offset", 0), threshold=threshold,
-        record_history=True)#, threshold_operator=threshold_operator, score_transform=score_transform, series_length=len(series))
+        record_history=True, threshold_operator=threshold_operator,
+        score_transform=score_transform, series_length=len(series))
     for start in selected:
         running.update(series[start:start + window], start)
     trace = running.decision_trace()
+    if labels is not None:
+        import numpy as np
+
+        labels = np.asarray(labels)
+        if labels.ndim != 1 or len(labels) != len(series):
+            raise ValueError("decision trace labels must match the series length")
+        active = (labels != 0).astype(np.int8)
+        edges = np.diff(np.pad(active, (1, 1)))
+        trace["ground_truth_intervals"] = list(zip(
+            np.flatnonzero(edges == 1).tolist(), np.flatnonzero(edges == -1).tolist()))
     trace["score_label"] = score_label
+    trace["series_length"] = len(series)
     trace["scope"] = {
         "recorded_windows": len(selected), "total_windows": len(starts),
         "first_input_start": selected[0], "last_input_start": selected[-1],

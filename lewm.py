@@ -24,6 +24,8 @@ from utils.common_config import (
     get_val_dataloader,
 )
 from utils.config import create_config, entry_overrides
+from utils.evaluation_schedule import evaluation_interval
+from utils.reconstruction_baselines import evaluate_on_test
 from utils.masking_steered import SubAnomalyMaskCollator
 from utils.trainer import Trainer
 from utils.utils import Logger
@@ -115,7 +117,13 @@ def run_pretrain(p, device):
                       collator=_masking_collator(p), amp=p.get("amp", False),
                       val_collator=_masking_collator(p))
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
-    best_val_loss = trainer.fit(train_loader, val_loader, start_epoch, best_val_loss)
+    interval = evaluation_interval(p)
+    best_val_loss = trainer.fit(
+        train_loader, val_loader, start_epoch, best_val_loss,
+        eval_every=interval,
+        eval_fn=(lambda step: evaluate_on_test(
+            model, p, device, logger, step, input_resolution=True))
+        if interval > 0 else None)
     logger.log(f"LeWM pretraining finished; best val loss {best_val_loss:.6f}")
     logger.finalize()
 
@@ -152,7 +160,13 @@ def run_adapt(p, device):
     trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger,
                       collator=None, amp=p.get("amp", False))
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
-    best_val_loss = trainer.fit(train_loader, val_loader, start_epoch, best_val_loss)
+    interval = evaluation_interval(p)
+    best_val_loss = trainer.fit(
+        train_loader, val_loader, start_epoch, best_val_loss,
+        eval_every=interval,
+        eval_fn=(lambda step: evaluate_on_test(
+            model, p, device, logger, step, input_resolution=True))
+        if interval > 0 else None)
     logger.log(f"Adaptation finished; best val loss {best_val_loss:.6f}")
     logger.finalize()
 

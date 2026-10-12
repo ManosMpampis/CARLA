@@ -1,5 +1,100 @@
 # Whole-series evaluation and live running mean
 
+## Configured checkpoint evaluation suite
+
+Select a dataset-specific manifest (`configs/psm/evaluation.yml` or
+`configs/smd/evaluation.yml`), then run:
+
+```bash
+./venv/bin/python evaluate_suite.py --manifest configs/psm/evaluation.yml --dry-run
+./venv/bin/python evaluate_suite.py --manifest configs/psm/evaluation.yml
+```
+
+The evaluation manifest selects exact experiment keys from `experiments_manifest`
+(the existing training suite manifest). Each experiment accepts multiple named
+`checkpoints` and multiple named `evaluations`; every checkpoint runs every case.
+No training or dependency training runs. All five runners are supported:
+`ae`, `vae`, `lewm`, `recon`, and `cross_attention`.
+
+```yaml
+name: checkpoint_comparison
+experiments_manifest: experiments.yml
+common:
+  device: cuda
+  score_batch_size: 256
+  evaluation: {input_window: 1024, stride: 10}
+experiments:
+  - experiment: lewm_encoder/time/cross_attention/observed_input
+    checkpoints:
+      - name: selected        # omitted path uses the standard selected checkpoint
+      - name: epoch_100
+        path: ../../results/path/to/epoch_100.pth.tar
+        # config: ../../results/path/to/resolved_config.yml
+    evaluations:
+      - name: default_halves
+        input_window: 1024
+        context_crop: null
+        target_crop: null
+      - name: longer_context
+        input_window: 2048
+        stride: 16
+        context_crop: [0, 192]
+        target_crop: [192, 256]
+```
+
+Paths to manifests, checkpoints, explicit checkpoint configs, and optional
+`output_dir` are relative to the evaluation manifest. An omitted checkpoint path
+selects the standard validation-selected file; optional top-level `version`
+selects a named training run. For explicit checkpoints the runner automatically
+uses `resolved_config.yml` beside the weights, when present, to reproduce their
+architecture and training task. Otherwise it uses the training manifest entry.
+Supply `config` explicitly when the checkpoint's matching config lives elsewhere.
+Raw state dictionaries and Trainer checkpoints containing `model` are supported.
+
+Settings merge in this order: checkpoint's saved config (or training entry),
+evaluation manifest `common`, experiment `overrides`, checkpoint `overrides`,
+then the evaluation case's fields inside `evaluation`. Use overrides for runtime
+options such as device, batch size, calibration quantile, or decision traces;
+architecture and checkpoint task settings must still match the saved weights.
+
+`input_window` is the **whole raw input length**. Cross-attention `context_crop`
+and `target_crop` are half-open **feature token** intervals, consistent with
+training configs: multiply by the encoder's total stride for raw timestep
+boundaries. With stride 8, `[0, 192]` covers raw `[0, 1536)` and `[192, 256]`
+covers `[1536, 2048)`. Set both crops to null for equal halves, or omit both to
+retain the checkpoint's training crops. Explicit crops must be ordered,
+non-overlapping, and inside the window; input lengths must be divisible by total
+stride. Default halves require an even feature token count. Only evaluation
+geometry changes after strict weight loading; query source, extraction mode,
+and target domain retain their checkpoint semantics. Scores automatically map
+to the target crop, so `check_mask` is unnecessary and `latency_offset` must be 0.
+
+Every job runs clean held-out training-tail calibration, timeseries and window
+evaluation, non-overlapping window evaluation, calibrated and oracle reports,
+VUS, and the existing honest/point-adjust metrics. Oracle results are reported
+separately; they do not choose the clean-data threshold. Decision traces follow
+the usual `decision_trace` setting.
+
+The generic evaluator requires `--manifest` and takes the dataset and series
+from the referenced training manifest. Outputs default to
+`results/<dataset>/evaluations/<name>/<experiment key>/<checkpoint name>/<case name>/`
+for a single-series dataset. Machine datasets insert `<fname>/` after `<name>/`,
+with `resolved_config.yml`, `metrics.json`, `scores.npz`, `calibration.json`,
+TensorBoard events, and optional decision traces. Training artifacts are kept
+intact. Each completed or failed job updates suite-level `summary.json` and
+`summary.csv`; subset reruns retain other summary rows. Reusing the same name,
+checkpoint label, and case label replaces that job's evaluation artifacts.
+Use a new suite `name` to retain a separate comparison.
+
+Training paths also omit repeated single-series dataset identifiers:
+`results/psm/ae/default/jepa_ae/`. SMD retains its machine component, such as
+`results/smd/ae/default/machine-1-1.txt/jepa_ae/`. Existing artifacts at older
+paths are not moved; explicit checkpoint `path` entries can still evaluate them.
+
+Additional CLI options: `--experiments <exact keys...>`, `--device cpu`,
+`--cpu-threads 1`, and `--fail-fast`. Failed jobs are recorded and later jobs
+continue unless `--fail-fast` is set; the command exits nonzero on any failure.
+
 The score stage cuts a series into full input windows, asks the model for a
 score map for each window, places those scores on the series timeline, and
 averages scores that land on the same timestep. JEPA, reconstruction, and
@@ -20,6 +115,14 @@ decision_trace:
 
 Set `max_windows: null` to replay every evaluation window, or
 `decision_trace: false` to disable trace output.
+The HTML also shows a ground-truth timeline across the full test series,
+with the recorded score range outlined in blue. Target anomalies beyond the
+replayed prefix remain visible there even when the score chart covers only
+normal timesteps (as happens for the default SMD machine).
+Both score charts default to a symmetric logarithmic vertical scale to keep
+small scores visible alongside large outliers, including zero or negative
+channel margins. Use **Score scale** to switch to linear spacing. Axis labels,
+tooltips, thresholds, and decisions retain their original score values.
 
 Add an `evaluation` block to an experiment YAML to configure this procedure
 without changing training `wsz` or training `stride`:

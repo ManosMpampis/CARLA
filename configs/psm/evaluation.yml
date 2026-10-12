@@ -1,0 +1,48 @@
+# Run: ./venv/bin/python evaluate_suite.py --manifest configs/psm/evaluation.yml
+# Preview paths/settings without writing: append --dry-run
+name: checkpoint_comparison
+experiments_manifest: experiments.yml
+# Optional named training run; omitted means stable experiment paths.
+# version: run-12345678
+# Optional output_dir, relative to this file. Default: results/psm/evaluations/<name>
+common:
+  device: cuda
+  score_batch_size: 256
+  evaluation:
+    input_window: 1024
+    stride: 10
+  decision_trace: {max_windows: null}
+
+# Each checkpoint is evaluated with EVERY input case in its experiment.
+# Checkpoint paths (and optional config paths) are relative to THIS file.
+# Omit path to use the experiment's standard validation-selected checkpoint.
+# Automatically uses resolved_config.yml beside each checkpoint if available;
+# otherwise uses the experiment manifest's config and overrides.
+experiments:
+  - experiment: ae/default
+    checkpoints:
+      - name: selected
+      # - name: epoch_100
+      #   path: ../../results/psm/ae/default/jepa_ae/epoch_100.pth.tar
+    evaluations:
+      - name: window_1024
+        input_window: 1024
+      - name: window_2048
+        input_window: 2048
+
+  - experiment: lewm_encoder/time/cross_attention/observed_input
+    checkpoints:
+      - name: selected
+      # - name: another_run
+      #   path: ../../results/psm/lewm_encoder/time/cross_attention/observed_input/myrun/jepa_cross_attention_observed_input/model.pth.tar
+    evaluations:
+      - name: half_split_1024
+        input_window: 1024
+        context_crop: null
+        target_crop: null
+      - name: custom_crops_2048
+        input_window: 2048
+        # Half-open FEATURE TOKEN intervals. This encoder has total stride 8:
+        # context covers raw [0, 1024), target covers raw [1024, 2048).
+        context_crop: [0, 128]
+        target_crop: [128, 256]

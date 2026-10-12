@@ -71,10 +71,10 @@ def verify_plan(directory):
     assert variant_plan[1].config["pretrained_from"] == str(checkpoint_path(variant_plan[0], root, "trial"))
 
     cfg = {"train_db_name": "psm", "framework": "vae", "experiment_name": "lr_0.1"}
-    expected = Path(root) / "psm/vae/lr_0.1/trial/psm"
+    expected = Path(root) / "psm/vae/lr_0.1/trial"
     assert Path(experiment_base_dir(root, cfg, "psm", "trial")) == expected
     assert Path(experiment_base_dir(root, {"train_db_name": "psm"}, "psm", "legacy/run")) == (
-        Path(root) / "psm/legacy/run/psm")
+        Path(root) / "psm/legacy/run")
     expect_error(lambda: experiment_base_dir(root, {**cfg, "experiment_name": "../bad"}, "psm", "trial"))
     print("16-arm plan, dependency ordering, named/legacy paths and validation: OK")
     return env

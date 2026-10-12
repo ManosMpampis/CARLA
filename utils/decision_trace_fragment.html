@@ -1,190 +1,322 @@
 <div id="decision-trace" class="decision-trace">
-  <h2>Decision dynamics</h2>
-  <div class="viz-controls">
-    <label class="form-label" for="decision-step">Window arrival <span id="decision-step-label" class="tabular-nums"></span></label>
-    <input id="decision-step" class="form-range" type="range" min="0" value="0" aria-label="Window arrival">
+  <h2>Real-time anomaly decision replay</h2>
+  <p class="decision-help">Replay of saved test windows, not a live sensor feed. Each arrival updates only its checking window.
+    Earlier scores are running means of all overlapping outputs received so far. Labels are shown for comparison only.</p>
+  <div class="decision-chart">
+    <h3>Target anomaly labels across the test series</h3>
+    <p id="decision-truth-summary" class="decision-help"></p>
+    <svg id="decision-truth" role="img" aria-label="Full test-series ground-truth anomaly labels and recorded replay range"></svg>
   </div>
-  <div class="decision-trace-focus">
-    <label class="form-label" for="decision-focus">Timestep</label>
-    <input id="decision-focus" class="form-control" type="number" min="0" step="1" aria-label="Focused timestep">
-    <span id="decision-current" aria-live="polite" class="tabular-nums"></span>
+  <label for="decision-step">Window arrival <strong id="decision-step-label"></strong></label>
+  <input id="decision-step" type="range" min="0" value="0" aria-label="Window arrival">
+  <div class="decision-focus-controls">
+    <label for="decision-focus">Selected timestep in checking window</label>
+    <input id="decision-focus" type="number" min="0" step="1" aria-label="Focused timestep">
+    <input id="decision-focus-slider" type="range" step="1" aria-label="Selected timestep in checking window">
+    <span id="decision-current" aria-live="polite"></span>
   </div>
-  <div class="decision-trace-chart">
+  <div class="decision-focus-controls">
+    <label for="decision-y-scale">Score scale</label>
+    <select id="decision-y-scale">
+      <option value="symlog" selected>Logarithmic</option>
+      <option value="linear">Linear</option>
+    </select>
+    <span class="decision-help">Logarithmic spacing makes small scores easier to see alongside large peaks. Labels and tooltips show original values.</span>
+  </div>
+  <div class="decision-chart">
     <h3>Current mean by timestep</h3>
-    <svg id="decision-series" role="img" aria-label="Current mean anomaly score by timestep at the selected window arrival"></svg>
+    <div class="decision-toolbar">
+      <button id="decision-series-zoom-in" type="button">Zoom in</button>
+      <button id="decision-series-zoom-out" type="button">Zoom out</button>
+      <button id="decision-series-reset" type="button">Reset zoom</button>
+      <button id="decision-series-checking" type="button">Show checking window</button>
+    </div>
+    <svg id="decision-series" role="img" aria-label="Current mean anomaly score, true anomaly regions and checking window"></svg>
   </div>
-  <div class="decision-trace-chart">
+  <div class="decision-chart">
     <h3>Selected timestep as windows arrive</h3>
-    <svg id="decision-evolution" role="img" aria-label="Running mean anomaly score and decision history for the selected timestep"></svg>
+    <p id="decision-evolution-help" class="decision-help"></p>
+    <div class="decision-toolbar">
+      <button id="decision-evolution-zoom-in" type="button">Zoom in</button>
+      <button id="decision-evolution-zoom-out" type="button">Zoom out</button>
+      <button id="decision-evolution-reset" type="button">Reset zoom</button>
+    </div>
+    <svg id="decision-evolution" role="img" aria-label="Selected timestep running mean for arrivals whose checking window contains it"></svg>
   </div>
-  <div class="decision-trace-legend" aria-label="Legend">
-    <span><i class="decision-line-key"></i> <span id="decision-score-label">Mean score</span></span>
-    <span><i class="decision-threshold-key"></i> Threshold</span>
-    <span><i class="decision-anomaly-key"></i> Anomaly</span>
-    <span><i class="decision-normal-key"></i> Normal</span>
+  <div class="decision-legend">
+    <span><i class="score-key"></i><span id="decision-score-label">Mean score</span></span>
+    <span><i class="threshold-key"></i>Threshold</span>
+    <span><i class="anomaly-key"></i>Predicted anomaly</span>
+    <span><i class="normal-key"></i>Predicted normal</span>
+    <span><i class="truth-key"></i>Ground-truth anomaly</span>
+    <span><i class="checking-key"></i>Checking window boundaries [start, end)</span>
   </div>
+  <p class="decision-help">Scroll over either chart to zoom its horizontal axis; drag to pan; double-click to reset.
+    White lines bound the current checking window, which may be smaller than the input/context window.
+    The lower chart includes only arrivals up to the replay position whose checking window contains the selected timestep.</p>
 </div>
 <style>
   #decision-trace { color: var(--foreground); width: 100%; }
-  #decision-trace h2 { margin: 0 0 12px; font-weight: 500; }
-  #decision-trace h3 { margin: 14px 0 5px; font-weight: 500; }
-  #decision-trace #decision-step-label { font-weight: 500; }
-  #decision-trace .viz-controls { display: grid; gap: 4px; }
-  #decision-trace .decision-trace-focus { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  #decision-trace .decision-trace-focus input { width: 85px; }
-  #decision-trace #decision-current { color: var(--foreground); }
-  #decision-trace .decision-trace-chart { width: 100%; }
-  #decision-trace svg { display: block; width: 100%; height: 210px; }
+  #decision-trace h2 { margin: 0 0 10px; font-weight: 600; }
+  #decision-trace h3 { margin: 18px 0 8px; font-weight: 500; }
+  #decision-trace .decision-help { color: var(--muted-foreground); line-height: 1.5; margin: 6px 0 12px; }
+  #decision-trace .decision-focus-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  #decision-trace #decision-focus { width: 95px; }
+  #decision-trace #decision-focus-slider { flex: 1; min-width: 150px; width: auto; }
+  #decision-trace #decision-current { flex-basis: 100%; font-variant-numeric: tabular-nums; }
+  #decision-trace .decision-toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
+  #decision-trace button { background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: 5px; padding: 5px 9px; cursor: pointer; }
+  #decision-trace select { background: var(--background); color: var(--foreground); border: 1px solid var(--border); padding: 5px; }
+  #decision-trace svg { display: block; width: 100%; height: 250px; touch-action: none; cursor: grab; user-select: none; }
   #decision-trace svg text { fill: var(--foreground); font-size: 12px; }
-  #decision-trace .decision-trace-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted-foreground); }
-  #decision-trace .decision-trace-legend span { display: inline-flex; align-items: center; gap: 5px; }
-  #decision-trace .decision-trace-legend i { display: inline-block; width: 16px; height: 3px; background: var(--viz-series-1); }
-  #decision-trace .decision-trace-legend .decision-threshold-key { background: var(--viz-series-2); }
-  #decision-trace .decision-trace-legend .decision-anomaly-key { width: 8px; height: 8px; border-radius: 50%; background: var(--viz-series-4); }
-  #decision-trace .decision-trace-legend .decision-normal-key { width: 8px; height: 8px; border-radius: 50%; background: var(--viz-series-3); }
+  #decision-trace #decision-truth { height: 100px; cursor: default; }
+  #decision-trace .decision-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; color: var(--muted-foreground); }
+  #decision-trace .decision-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  #decision-trace .decision-legend i { display: inline-block; width: 16px; height: 3px; background: var(--viz-series-1); }
+  #decision-trace .threshold-key { background: var(--viz-series-2) !important; }
+  #decision-trace .anomaly-key, #decision-trace .normal-key { width: 8px !important; height: 8px !important; border-radius: 50%; }
+  #decision-trace .anomaly-key { background: var(--viz-series-4) !important; }
+  #decision-trace .normal-key { background: var(--viz-series-3) !important; }
+  #decision-trace .truth-key { background: #b68aff !important; height: 12px !important; opacity: .6; }
+  #decision-trace .checking-key { background: white !important; border: 1px solid #555; }
 </style>
 <script>
 (() => {
   const root = document.getElementById('decision-trace');
   const encodedTrace = '__TRACE_BASE64__';
   if (encodedTrace === '__TRACE_BASE64__') {
-    root.innerHTML = '<h2>Decision dynamics</h2><p>This is the graph template. Generate a populated page with <code>RunningScorer.save_decision_trace_html(path)</code>.</p>';
+    root.innerHTML = '<h2>Decision dynamics</h2><p>Generate a populated page with RunningScorer.save_decision_trace_html(path).</p>';
     return;
   }
   const trace = JSON.parse(atob(encodedTrace));
-  const slider = root.querySelector('#decision-step');
-  const stepLabel = root.querySelector('#decision-step-label');
-  const focusInput = root.querySelector('#decision-focus');
-  const currentLabel = root.querySelector('#decision-current');
-  const seriesSvg = root.querySelector('#decision-series');
-  const evolutionSvg = root.querySelector('#decision-evolution');
+  const $ = selector => root.querySelector(selector);
+  const slider = $('#decision-step'), focusInput = $('#decision-focus'), focusSlider = $('#decision-focus-slider');
+  const seriesSvg = $('#decision-series'), evolutionSvg = $('#decision-evolution');
   const updates = trace.updates || [];
-  const scoreLabel = trace.score_label || 'Mean score';
-  root.querySelector('#decision-score-label').textContent = scoreLabel;
-  if (!updates.length) {
-    currentLabel.textContent = 'No scored windows';
-    return;
-  }
+  if (!updates.length) return;
+  const truth = trace.ground_truth_intervals || [];
+  const hasTruth = Object.hasOwn(trace, 'ground_truth_intervals');
+  const isAnomaly = timestep => truth.some(([s, e]) => s <= timestep && timestep < e);
   const positions = [...new Set(updates.flatMap(update => update.indices))].sort((a, b) => a - b);
-  const changes = trace.decision_changes || [];
-  const changeCounts = new Map();
-  for (const event of changes) {
-    if (event.previous !== null) changeCounts.set(event.timestep, (changeCounts.get(event.timestep) || 0) + 1);
-  }
-  const mostChanged = positions.reduce((best, position) =>
-    (changeCounts.get(position) || 0) > (changeCounts.get(best) || 0) ? position : best,
-    positions[Math.floor(positions.length / 2)]);
+  const scoreLabel = trace.score_label || 'Mean score';
+  $('#decision-score-label').textContent = scoreLabel;
   slider.max = String(updates.length - 1);
   slider.value = String(updates.length - 1);
-  focusInput.min = String(positions[0]);
-  focusInput.max = String(positions[positions.length - 1]);
-  focusInput.value = String(mostChanged);
-
+  focusInput.value = String(positions[Math.floor(positions.length / 2)]);
   const color = name => getComputedStyle(root).getPropertyValue(name).trim();
-  const svgElement = (tag, attributes = {}, parent) => {
-    const element = document.createElementNS('http://www.w3.org/2000/svg', tag);
-    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
-    if (parent) parent.appendChild(element);
-    return element;
-  };
-  const label = (parent, x, y, text, anchor = 'middle') => {
-    const node = svgElement('text', {x, y, 'text-anchor': anchor}, parent);
-    node.textContent = text;
+  const element = (tag, attrs, parent) => {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    parent.appendChild(node);
     return node;
   };
-  const range = values => {
-    const finite = values.filter(Number.isFinite);
-    const lo = Math.min(...finite), hi = Math.max(...finite);
-    const pad = Math.max((hi - lo) * .1, .5);
-    return [lo - pad, hi + pad];
+  const text = (parent, x, y, value, anchor = 'middle') => {
+    const node = element('text', {x, y, 'text-anchor': anchor}, parent);
+    node.textContent = value;
+    return node;
   };
-  const scale = (value, low, high, pixelLow, pixelHigh) =>
-    pixelLow + (value - low) * (pixelHigh - pixelLow) / Math.max(high - low, 1e-9);
-  const fmt = value => Number(value).toFixed(2);
-
-  function draw(svg, points, xExtent, yExtent, xTitle, selectedX) {
+  function drawTruthOverview() {
+    const svg = $('#decision-truth');
     svg.replaceChildren();
+    // Older exports lack series_length; still show all their known labels.
+    let length = trace.series_length || positions.at(-1) + 1;
+    for (const [, end] of truth) length = Math.max(length, end);
     const width = Math.max(320, Math.floor(svg.getBoundingClientRect().width));
-    const height = 210;
-    const plot = {left: 64, right: width - 18, top: 16, bottom: height - 38};
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const sx = value => scale(value, xExtent[0], xExtent[1], plot.left + 5, plot.right - 5);
-    const sy = value => scale(value, yExtent[0], yExtent[1], plot.bottom - 5, plot.top + 5);
-    svgElement('rect', {x: plot.left, y: plot.top, width: plot.right - plot.left,
-      height: plot.bottom - plot.top, fill: 'none', stroke: color('--border')}, svg);
+    const left = 72, right = width - 22, sx = value => left + value / length * (right - left);
+    svg.setAttribute('viewBox', `0 0 ${width} 100`);
+    svg.dataset.domainStart = '0'; svg.dataset.domainEnd = String(length);
+    element('rect', {x: left, y: 24, width: right - left, height: 24,
+      fill: color(hasTruth ? '--viz-series-3' : '--border'), opacity: .15}, svg);
+    for (const [start, end] of truth) {
+      const band = element('rect', {class: 'ground-truth-band', x: sx(start), y: 24,
+        width: Math.max(1, sx(end) - sx(start)), height: 24, fill: '#b68aff'}, svg);
+      element('title', {}, band).textContent = `Target anomaly [${start}, ${end})`;
+    }
+    const start = positions[0], end = positions.at(-1) + 1;
+    const replay = element('rect', {class: 'replay-range', x: sx(start), y: 20,
+      width: Math.max(1, sx(end) - sx(start)), height: 32, fill: 'none',
+      stroke: color('--viz-series-1'), 'stroke-width': 2}, svg);
+    element('title', {}, replay).textContent = `Recorded score range [${start}, ${end})`;
     for (let i = 0; i <= 3; i++) {
-      const value = yExtent[0] + (yExtent[1] - yExtent[0]) * i / 3;
-      const y = sy(value);
-      svgElement('line', {x1: plot.left, x2: plot.right, y1: y, y2: y,
-        stroke: color('--border'), 'stroke-opacity': .6}, svg);
-      label(svg, plot.left - 7, y + 4, fmt(value), 'end');
+      const timestep = Math.round(length * i / 3);
+      text(svg, sx(timestep), 70, String(timestep), i === 0 ? 'start' : i === 3 ? 'end' : 'middle');
     }
-    const xTicks = xExtent[0] === xExtent[1] ? [xExtent[0]] :
-      Array.from({length: 4}, (_, i) => xExtent[0] + (xExtent[1] - xExtent[0]) * i / 3);
-    xTicks.forEach((value, index) => {
-      const anchor = index === 0 ? 'start' : index === xTicks.length - 1 ? 'end' : 'middle';
-      label(svg, sx(value), plot.bottom + 17, String(Math.round(value)), anchor);
-    });
-    label(svg, (plot.left + plot.right) / 2, height - 3, xTitle);
-    const yTitle = label(svg, 13, (plot.top + plot.bottom) / 2, scoreLabel);
-    yTitle.setAttribute('transform', `rotate(-90 13 ${(plot.top + plot.bottom) / 2})`);
-    if (trace.threshold !== null && Number.isFinite(trace.threshold)) {
-      const y = sy(trace.threshold);
-      svgElement('line', {x1: plot.left, x2: plot.right, y1: y, y2: y,
-        stroke: color('--viz-series-2'), 'stroke-width': 2, 'stroke-dasharray': '5 4'}, svg);
-    }
-    if (selectedX !== null) {
-      svgElement('line', {x1: sx(selectedX), x2: sx(selectedX), y1: plot.top,
-        y2: plot.bottom, stroke: color('--muted-foreground'), 'stroke-width': 1}, svg);
-    }
-    if (points.length) {
-      const path = points.map((point, index) =>
-        `${index && point.x - points[index - 1].x === 1 ? 'L' : 'M'}${sx(point.x).toFixed(2)},${sy(point.y).toFixed(2)}`).join(' ');
-      svgElement('path', {d: path, fill: 'none', stroke: color('--viz-series-1'),
-        'stroke-width': 2}, svg);
-      for (const point of points) {
-        const mark = svgElement('circle', {cx: sx(point.x), cy: sy(point.y), r: 4,
-          fill: color(point.decision ? '--viz-series-4' : '--viz-series-3')}, svg);
-        const tooltip = svgElement('title', {}, mark);
-        tooltip.textContent = `${xTitle} ${point.x}: score ${fmt(point.y)}, ${point.decision ? 'anomaly' : 'normal'}, ${point.count} output${point.count === 1 ? '' : 's'}`;
-      }
-    }
-    return {sx, sy, plot};
+    text(svg, (left + right) / 2, 93, 'Timestep');
+    const total = trace.scope?.total_windows || updates.length;
+    const outside = truth.filter(([s, e]) => e <= start || s >= end).length;
+    $('#decision-truth-summary').textContent = (hasTruth
+      ? `${truth.length} anomaly intervals. Purple marks target anomalies; the blue outline marks recorded scores [${start}, ${end}).`
+      : 'Target anomaly labels unavailable in this export.')
+      + (total > updates.length ? ` Replay includes only the first ${updates.length} of ${total} windows.` : '')
+      + (hasTruth && outside ? ` ${outside} anomaly interval${outside === 1 ? ' is' : 's are'} outside the replay range; scores for those timesteps are not recorded here.` : '');
   }
-
+  drawTruthOverview();
+  const fmt = value => Number(value).toFixed(3);
+  // Compute once: no large-array spread and no rescanning all scores on each input.
+  let ymin = trace.threshold, ymax = trace.threshold;
+  for (const update of updates) for (const score of update.scores) {
+    ymin = Math.min(ymin, score); ymax = Math.max(ymax, score);
+  }
+  const pad = Math.max((ymax - ymin) * .1, Math.abs(ymax) * .01, 1e-6);
+  const yExtent = [ymin - pad, ymax + pad];
+  const views = {series: null, evolution: null};
+  const domains = {series: [positions[0], positions.at(-1) + 1], evolution: [1, 1]};
+  let lastFocus = null, checking = null;
+  function fit(view, domain) {
+    if (!view || domain[0] === domain[1]) return [...domain];
+    const width = Math.min(view[1] - view[0], domain[1] - domain[0]);
+    const start = Math.max(domain[0], Math.min(view[0], domain[1] - width));
+    return [start, start + width];
+  }
+  function draw(svg, points, domain, kind, selected, bands = [], boundaries = []) {
+    svg.replaceChildren();
+    const extent = fit(views[kind], domain);
+    const width = Math.max(320, Math.floor(svg.getBoundingClientRect().width));
+    const height = 250, plot = {left: 72, right: width - 22, top: 30, bottom: height - 42};
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.dataset.domainStart = extent[0]; svg.dataset.domainEnd = extent[1];
+    const sx = value => extent[0] === extent[1] ? (plot.left + plot.right) / 2 :
+      plot.left + (value - extent[0]) / (extent[1] - extent[0]) * (plot.right - plot.left);
+    const logarithmic = $('#decision-y-scale').value === 'symlog';
+    // Symmetric log stays finite through zero and preserves signed margins.
+    // Use the calibrated threshold as the transition scale for small scores.
+    const transition = Math.abs(trace.threshold) || 1;
+    const transform = value => logarithmic ? Math.sign(value) * Math.log1p(Math.abs(value) / transition) : value;
+    const inverse = value => logarithmic ? Math.sign(value) * Math.expm1(Math.abs(value)) * transition : value;
+    let low = yExtent[0], high = yExtent[1];
+    if (logarithmic) {
+      const a = transform(ymin), b = transform(ymax);
+      const padding = Math.max((b - a) * .1, Math.abs(b) * .01, 1e-6);
+      low = a - padding; high = b + padding;
+    }
+    if (ymin >= 0) low = Math.max(0, low);
+    svg.dataset.yScale = logarithmic ? 'symlog' : 'linear';
+    const sy = value => plot.bottom - (transform(value) - low) / (high - low) * (plot.bottom - plot.top);
+    const defs = element('defs', {}, svg);
+    const clip = element('clipPath', {id: `${svg.id}-clip`}, defs);
+    element('rect', {x: plot.left, y: plot.top, width: plot.right - plot.left, height: plot.bottom - plot.top}, clip);
+    element('rect', {x: plot.left, y: plot.top, width: plot.right - plot.left,
+      height: plot.bottom - plot.top, fill: 'none', stroke: color('--border')}, svg);
+    const content = element('g', {'clip-path': `url(#${svg.id}-clip)`}, svg);
+    for (const [s, e] of bands) {
+      if (e <= extent[0] || s >= extent[1]) continue;
+      const single = extent[0] === extent[1];
+      const band = element('rect', {class: 'ground-truth-band', x: single ? plot.left : sx(s), y: plot.top,
+        width: single ? plot.right - plot.left : Math.max(1, sx(e) - sx(s)), height: plot.bottom - plot.top,
+        fill: '#b68aff', opacity: .22}, content);
+      element('title', {}, band).textContent = 'Ground-truth anomaly';
+    }
+    for (let i = 0; i <= 4; i++) {
+      const value = inverse(low + (high - low) * i / 4);
+      const y = sy(value);
+      element('line', {x1: plot.left, x2: plot.right, y1: y, y2: y,
+        stroke: color('--border'), 'stroke-opacity': .45}, content);
+      text(svg, plot.left - 7, y + 4, Number(value.toPrecision(3)).toString(), 'end');
+    }
+    const ticks = extent[0] === extent[1] ? [extent[0]] :
+      [...new Set(Array.from({length: 4}, (_, i) => Math.round(extent[0] + (extent[1] - extent[0]) * i / 3)))];
+    ticks.forEach((value, i) => text(svg, sx(value), plot.bottom + 18, String(value),
+      i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'));
+    text(svg, (plot.left + plot.right) / 2, height - 4, kind === 'series' ? 'Timestep' : 'Contributing window arrival');
+    const title = text(svg, 13, (plot.top + plot.bottom) / 2, scoreLabel + (logarithmic ? ' (log)' : ''));
+    title.setAttribute('transform', `rotate(-90 13 ${(plot.top + plot.bottom) / 2})`);
+    element('line', {x1: plot.left, x2: plot.right, y1: sy(trace.threshold), y2: sy(trace.threshold),
+      stroke: color('--viz-series-2'), 'stroke-width': 2, 'stroke-dasharray': '5 4'}, content);
+    if (selected !== null && selected >= extent[0] && selected <= extent[1]) {
+      element('line', {x1: sx(selected), x2: sx(selected), y1: plot.top, y2: plot.bottom,
+        stroke: color('--muted-foreground'), 'stroke-dasharray': '2 3'}, content);
+    }
+    const visible = points.filter(point => point.x >= extent[0] && point.x <= extent[1]);
+    const path = visible.map((point, i) =>
+      `${i && point.x - visible[i - 1].x === 1 ? 'L' : 'M'}${sx(point.x)},${sy(point.y)}`).join(' ');
+    element('path', {d: path, fill: 'none', stroke: color('--viz-series-1'), 'stroke-width': 2}, content);
+    for (const point of visible) {
+      const mark = element('circle', {cx: sx(point.x), cy: sy(point.y), r: 3,
+        'data-timestep': point.timestep, 'data-arrival': point.arrival,
+        fill: color(point.decision ? '--viz-series-4' : '--viz-series-3')}, content);
+      element('title', {}, mark).textContent =
+        `Timestep ${point.timestep}, arrival ${point.arrival}: mean ${fmt(point.y)}, predicted ${point.decision ? 'anomaly' : 'normal'}, ${point.count} contributions; ground truth: ${hasTruth ? (isAnomaly(point.timestep) ? 'anomaly' : 'normal') : 'unavailable'}`;
+    }
+    boundaries.forEach((value, i) => {
+      if (value < extent[0] || value > extent[1]) return;
+      element('line', {x1: sx(value), x2: sx(value), y1: plot.top, y2: plot.bottom,
+        stroke: '#26313c', 'stroke-width': 5}, svg);
+      element('line', {class: 'checking-boundary', x1: sx(value), x2: sx(value), y1: plot.top,
+        y2: plot.bottom, stroke: '#fff', 'stroke-width': 2.5}, svg);
+      text(svg, sx(value), plot.top - 10, `${i ? 'End' : 'Start'} ${value}`, i ? 'end' : 'start');
+    });
+    svg._plot = plot;
+  }
   function render() {
-    const step = Number(slider.value);
-    const focus = Number(focusInput.value);
-    const state = new Map();
-    const evolution = [];
+    const step = Number(slider.value), arrival = updates[step];
+    const first = arrival.indices[0], last = arrival.indices.at(-1);
+    if (first === undefined) return;
+    checking = [arrival.checking_start ?? first, arrival.checking_end ?? last + 1];
+    for (const control of [focusInput, focusSlider]) { control.min = first; control.max = last; }
+    const focus = Math.max(first, Math.min(last, Math.round(Number(focusInput.value) || first)));
+    focusInput.value = focus; focusSlider.value = focus;
+    if (focus !== lastFocus) { views.evolution = null; lastFocus = focus; }
+    const state = new Map(), evolution = [];
     for (let i = 0; i <= step; i++) {
       const update = updates[i];
       update.indices.forEach((index, offset) => {
-        const point = {x: index, y: update.scores[offset],
+        const point = {x: index, timestep: index, arrival: i + 1, y: update.scores[offset],
           count: update.counts[offset], decision: update.decisions?.[offset] || false};
         state.set(index, point);
         if (index === focus) evolution.push({...point, x: i + 1});
       });
     }
-    const current = [...state.values()].sort((a, b) => a.x - b.x);
-    const scoreValues = updates.flatMap(update => update.scores);
-    const yExtent = range(trace.threshold === null ? scoreValues : [...scoreValues, trace.threshold]);
-    const xExtent = [positions[0], positions[positions.length - 1]];
-    const arrival = updates[step];
-    const scope = trace.scope;
-    const total = scope?.total_windows || updates.length;
-    stepLabel.textContent = `${step + 1} / ${updates.length} · input [${arrival.window_start}, ${arrival.window_end})`
+    domains.evolution = [evolution[0].x, evolution.at(-1).x];
+    const total = trace.scope?.total_windows || updates.length;
+    $('#decision-step-label').textContent = `${step + 1} / ${updates.length} · input [${arrival.window_start}, ${arrival.window_end}) · checking [${checking[0]}, ${checking[1]})`
       + (total > updates.length ? ` · first ${updates.length} of ${total} windows` : '');
     const focused = state.get(focus);
-    currentLabel.textContent = focused ?
-      `Score ${fmt(focused.y)} · ${focused.decision ? 'Anomaly' : 'Normal'} · ${focused.count} output${focused.count === 1 ? '' : 's'}` :
-      'No output yet';
-    draw(seriesSvg, current, xExtent, yExtent, 'Timestep', focus);
-    draw(evolutionSvg, evolution, [1, updates.length], yExtent, 'Window arrival', null);
+    $('#decision-current').textContent = `Timestep ${focus}: mean ${fmt(focused.y)} · predicted ${focused.decision ? 'anomaly' : 'normal'} · ${focused.count} contributions · ground truth: ${hasTruth ? (isAnomaly(focus) ? 'anomaly' : 'normal') : 'unavailable'}`;
+    $('#decision-evolution-help').textContent = `Timestep ${focus} in the current checking window: each point shows its updated running mean after a contributing arrival. Other arrivals are excluded; the threshold is fixed.`;
+    seriesSvg.dataset.checkStart = checking[0]; seriesSvg.dataset.checkEnd = checking[1];
+    draw(seriesSvg, [...state.values()].sort((a, b) => a.x - b.x), domains.series, 'series', focus, truth, checking);
+    const bands = hasTruth && isAnomaly(focus) ? [[domains.evolution[0] - .5, domains.evolution[1] + .5]] : [];
+    draw(evolutionSvg, evolution, domains.evolution, 'evolution', null, bands);
   }
+  function zoom(kind, factor, fraction = .5) {
+    const domain = domains[kind], extent = fit(views[kind], domain);
+    if (domain[0] === domain[1]) return;
+    const span = Math.max(Math.min(1, domain[1] - domain[0]), (extent[1] - extent[0]) * factor);
+    const anchor = extent[0] + (extent[1] - extent[0]) * fraction;
+    views[kind] = fit([anchor - span * fraction, anchor + span * (1 - fraction)], domain);
+    render();
+  }
+  for (const [kind, svg] of [['series', seriesSvg], ['evolution', evolutionSvg]]) {
+    $(`#decision-${kind}-zoom-in`).addEventListener('click', () => zoom(kind, .6));
+    $(`#decision-${kind}-zoom-out`).addEventListener('click', () => zoom(kind, 1 / .6));
+    const reset = () => { views[kind] = null; render(); };
+    $(`#decision-${kind}-reset`).addEventListener('click', reset);
+    svg.addEventListener('dblclick', reset);
+    svg.addEventListener('wheel', event => {
+      event.preventDefault();
+      const bounds = svg.getBoundingClientRect(), plot = svg._plot;
+      const fraction = Math.max(0, Math.min(1, (event.clientX - bounds.left - plot.left) / (plot.right - plot.left)));
+      zoom(kind, event.deltaY < 0 ? .8 : 1.25, fraction);
+    }, {passive: false});
+    let drag = null;
+    svg.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      drag = {x: event.clientX, extent: fit(views[kind], domains[kind])};
+      svg.setPointerCapture(event.pointerId);
+    });
+    svg.addEventListener('pointermove', event => {
+      if (!drag) return;
+      const shift = (event.clientX - drag.x) * (drag.extent[1] - drag.extent[0]) / (svg._plot.right - svg._plot.left);
+      views[kind] = fit(drag.extent.map(value => value - shift), domains[kind]); render();
+    });
+    for (const name of ['pointerup', 'pointercancel']) svg.addEventListener(name, () => { drag = null; });
+  }
+  $('#decision-series-checking').addEventListener('click', () => { views.series = [...checking]; render(); });
   slider.addEventListener('input', render);
+  $('#decision-y-scale').addEventListener('change', render);
   focusInput.addEventListener('input', render);
-  new ResizeObserver(render).observe(root);
+  focusSlider.addEventListener('input', () => { focusInput.value = focusSlider.value; render(); });
+  new ResizeObserver(() => { drawTruthOverview(); render(); }).observe(root);
   render();
 })();
 </script>

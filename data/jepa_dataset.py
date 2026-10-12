@@ -76,7 +76,7 @@ class JEPADataset(Dataset):
                     "JEPADataset(fname='all') is a train-corpus dataset; "
                     "score SMD test files separately"
                 )
-            machine_dir = os.path.join(MyPath.db_root_dir("smd"), "train")
+            machine_dir = os.path.join(p.get("dataset_root", MyPath.db_root_dir("smd")), "train")
             machines = sorted(
                 f for f in os.listdir(machine_dir) if f.startswith("machine-")
             )
@@ -106,7 +106,7 @@ class JEPADataset(Dataset):
                 self.series = series
         elif source == "smd":
             fname = p["fname"]
-            root = MyPath.db_root_dir("smd")
+            root = p.get("dataset_root", MyPath.db_root_dir("smd"))
             if train:
                 path = os.path.join(root, "train", fname)
             else:
@@ -206,7 +206,7 @@ class JEPACorpusDataset(Dataset):
         self.wsz = p["wsz"]
         self.stride = p["stride"]
         self.val_fraction = float(p.get("val_fraction", 0.1))
-        root = MyPath.db_root_dir("smd")
+        root = p.get("dataset_root", MyPath.db_root_dir("smd"))
         cache_dir = p.get("joint_cache_dir",
                           os.path.join(p.get("experiment_dir", "results/smd"),
                                        "joint_cache"))

@@ -94,36 +94,15 @@ def _build_run(p, device):
 def eval_recon_on_test(model, p, device, logger, step):
     """Evaluate window means and overlap-averaged series with both thresholds."""
 
-    from data.jepa_dataset import JEPADataset
-    from utils.common_config import get_jepa_datasets
-    from utils.reconstruction_baselines import evaluate
+    from utils.reconstruction_baselines import evaluate_on_test
 
     flag = bool(getattr(model, "score_aux_crop", False))
     model.score_aux_crop = False
     try:
-        _, val_dataset = get_jepa_datasets(p)
-        test_dataset = JEPADataset(p, train=False)
-        eval_config = dict(p)
-        eval_config["calibration_quantile"] = float(
-            p.get("calibration_kwargs", {}).get("quantile", 0.99))
-        metrics = evaluate(model, val_dataset.series, test_dataset.series,
-                           test_dataset.targets, eval_config, device)
-        for procedure, values in metrics.items():
-            for threshold_source in ("calibrated", "oracle"):
-                for name, value in values[threshold_source].items():
-                    logger.scalar_summary(f"test/{procedure}/{threshold_source}",
-                                          name, value, step)
-            logger.scalar_summary(f"test/{procedure}", "vus_pr",
-                                  values["vus_pr"], step)
-            logger.scalar_summary(f"test/{procedure}", "vus_roc",
-                                  values["vus_roc"], step)
-        logger.log(f"Test eval [{step}] window F1 "
-                   f"{metrics['window']['calibrated']['f1_no_pa']:.4f}, "
-                   f"time-series F1 "
-                   f"{metrics['timeseries']['calibrated']['f1_no_pa']:.4f}")
+        return evaluate_on_test(model, p, device, logger, step)
     finally:
         model.score_aux_crop = flag
-    return metrics["timeseries"]["calibrated"]["f1_no_pa"]
+
 
 def run_recon(p, device):
     """Train the mirrored head on normal-only windows (dense L1)."""
@@ -170,7 +149,8 @@ def run_recon(p, device):
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
     # Monitoring-only test eval every X epochs (default 10): logs test/ to
     # TensorBoard + log.txt; checkpoint selection stays on val (no leakage).
-    eval_every = int(p.get("stage_c", {}).get("eval_every", 10))
+    from utils.evaluation_schedule import evaluation_interval
+    eval_every = evaluation_interval(p)
     best_val_loss = trainer.fit(
         train_loader, val_loader, start_epoch, best_val_loss,
         eval_every=eval_every,
@@ -245,7 +225,7 @@ def run_score(p, device):
     trace_output = write_final_decision_trace(
         model, device, test_dataset.series, p,
         evaluation["timeseries"]["calibrated"]["threshold"],
-        options=trace_options, threshold_operator="gt")
+        options=trace_options, threshold_operator="gt", labels=test_dataset.targets)
     if trace_output is not None:
         report["decision_trace"] = trace_output
     with open(p["metrics_path"], "w") as stream:

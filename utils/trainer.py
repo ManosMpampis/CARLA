@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from utils.utils import AverageMeter
+from utils.evaluation_schedule import should_evaluate
 
 
 class Trainer:
@@ -89,7 +90,7 @@ class Trainer:
                 if f"meter_{key}" not in meters:
                     meters[f"meter_{key}"] = AverageMeter(key, ":.4e")
                 meters[f"meter_{key}"].update(value.item())
-                self.logger.scalar_summary("train", key, value.item(),
+                self.logger.scalar_summary("Train Loss", key, value.item(),
                                            epoch * len(loader) + i)
 
             self.scaler.scale(losses["loss"]).backward()
@@ -101,7 +102,7 @@ class Trainer:
 
             if i % 100 == 0:
                 var = self.model.latent_variance(extras["latents"])
-                self.logger.scalar_summary("train", "latent_var",
+                self.logger.scalar_summary("Train Loss", "latent_var",
                                            var, epoch * len(loader) + i)
                 progress = " | ".join(
                     f"{k[6:]} {m.avg:.4e}" for k, m in sorted(meters.items())
@@ -160,21 +161,17 @@ class Trainer:
             self.scheduler.step()
 
             val_loss = self.validate(val_loader)
-            self.logger.scalar_summary("val", "pred_loss", val_loss, epoch + 1)
+            self.logger.scalar_summary("validation", "pred_loss", val_loss, epoch + 1)
             self.logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
-            self.logger.metrics_summary("Train Loss", train_losses, epoch + 1)
+            self.logger.metrics_summary("train", train_losses, epoch + 1)
             self.logger.log(f"Epoch [{epoch+1}] val pred_loss {val_loss:.6f} "
                             f"(best {best_val_loss:.6f})")
 
-            if eval_fn is not None and eval_every and eval_every > 0 \
-                    and ((epoch + 1) % int(eval_every) == 0 or (epoch + 1) == epochs):
-                try:
-                    test_f1 = eval_fn(epoch + 1)
-                    if test_f1 >= best_test_f1:
-                        best_test_f1 = test_f1
-                        torch.save(self.model.state_dict(), self.p["jepa_model_best"])
-                except Exception as exc:
-                    self.logger.warn(f"Periodic eval skipped at epoch {epoch+1}: {exc}")
+            if eval_fn is not None and should_evaluate(epoch + 1, epochs, eval_every):
+                test_f1 = eval_fn(epoch + 1)
+                if test_f1 >= best_test_f1:
+                    best_test_f1 = test_f1
+                    torch.save(self.model.state_dict(), self.p["jepa_model_best"])
 
             if val_loss < best_val_loss or (epoch + 1) == epochs:
                 improved = val_loss < best_val_loss

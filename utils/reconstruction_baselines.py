@@ -18,6 +18,7 @@ from models.builders import get_ae_model, get_vae_model
 from utils.common_config import (get_jepa_datasets, get_optimizer, get_scheduler,
                                  get_train_dataloader, get_val_dataloader)
 from utils.config import create_config, entry_overrides, load_experiment_config
+from utils.evaluation_schedule import evaluation_interval, should_evaluate
 from utils.scoring import (aggregate_score_maps, covered_evaluation_view,
                            evaluation_options)
 
@@ -91,13 +92,44 @@ def _classification(scores, labels, threshold) -> dict:
                 labels, convert_vector_to_events(labels), pred))}
 
 
+def calibration_at_threshold(clean_scores, threshold) -> dict:
+    """Invert NumPy's linear quantile; clamp thresholds outside its score range.
+
+    The empirical anomaly fraction uses the same strict > as predictions.
+    It differs from 1-q because quantiles interpolate between order statistics.
+    """
+    scores = np.sort(np.asarray(clean_scores, dtype=np.float64).reshape(-1))
+    if not scores.size or not np.isfinite(scores).all() or not np.isfinite(threshold):
+        raise ValueError("calibration diagnostics require finite, nonempty scores and threshold")
+    index = int(np.searchsorted(scores, threshold, side="right"))
+    if scores.size == 1 or index == 0:
+        quantile = 0.0
+    elif index == scores.size:
+        quantile = 1.0
+    else:
+        lower, upper = scores[index - 1], scores[index]
+        quantile = float((index - 1 + (threshold - lower) / (upper - lower))
+                         / (scores.size - 1))
+    reproduced = float(np.quantile(scores, quantile))
+    return {
+        "calibration_quantile": quantile,
+        "calibration_threshold": reproduced,
+        "calibration_threshold_in_range": bool(scores[0] <= threshold <= scores[-1]),
+        "clean_anomaly_fraction": float(np.mean(scores > threshold)),
+    }
+
+
 def _evaluate_protocol(scores, labels, clean_scores, quantile, vus_window):
     calibrated = float(np.quantile(clean_scores, quantile))
     oracle = _oracle_threshold(scores, labels)
     vus = get_range_vus_roc(scores, labels, vus_window)
+    calibrated_metrics = _classification(scores, labels, calibrated)
+    calibrated_metrics["calibration_quantile"] = float(quantile)
+    oracle_metrics = _classification(scores, labels, oracle)
+    oracle_metrics.update(calibration_at_threshold(clean_scores, oracle))
     return {
-        "calibrated": _classification(scores, labels, calibrated),
-        "oracle": _classification(scores, labels, oracle),
+        "calibrated": calibrated_metrics,
+        "oracle": oracle_metrics,
         "vus_pr": float(vus["VUS_PR"]),
         "vus_roc": float(vus["VUS_ROC"]),
     }
@@ -127,16 +159,48 @@ def evaluate_from_scores(clean, test, test_labels, config) -> dict:
     return result
 
 
-def evaluate(model, val_series, test_series, test_labels, config, device) -> dict:
+def evaluate(model, val_series, test_series, test_labels, config, device,
+             *, options=None) -> dict:
     """Distinct window and overlap-averaged time-series evaluation."""
-    options = evaluation_options(config)
+    options = dict(evaluation_options(config) if options is None else options)
     window, stride = options.pop("wsz"), options.pop("stride")
     batch_size = int(config.get("score_batch_size", config["batch_size"]))
     clean = score_both(model, val_series, window, stride, batch_size, device,
                        **options)
     test = score_both(model, test_series, window, stride, batch_size, device,
                       **options)
-    return evaluate_from_scores(clean, test, test_labels, config)
+    result = evaluate_from_scores(clean, test, test_labels, config)
+    result["non_overlap_window"], _, _, _ = evaluate_non_overlap_window(
+        model, val_series, test_series, test_labels, config, device,
+        options={"wsz": window, "stride": stride, **options})
+    return result
+
+
+def evaluate_non_overlap_window(model, val_series, test_series, test_labels,
+                                config, device, *, options):
+    """Window-level metrics on disjoint scored regions using the same scorer.
+
+    Input context may overlap for crop heads. Scored timesteps never overlap;
+    initial context and any incomplete final scored region remain unscored.
+    """
+    options = dict(options)
+    window = int(options.pop("wsz"))
+    options.pop("stride", None)
+    span = options.get("check_mask")
+    stride = int(span[1] - span[0]) if span is not None else window
+    options["include_last_window"] = False
+    batch_size = int(config.get("score_batch_size", config["batch_size"]))
+    clean = score_both(model, val_series, window, stride, batch_size, device, **options)
+    test = score_both(model, test_series, window, stride, batch_size, device, **options)
+    if np.any(clean["cover_counts"] > 1) or np.any(test["cover_counts"] > 1):
+        raise ValueError("non_overlap_window scored a timestep more than once")
+    labels = np.asarray([np.any(test_labels[s:e])
+                         for s, e in zip(test["starts"], test["ends"])], dtype=np.int64)
+    metrics = _evaluate_protocol(
+        test["window_scores"], labels, clean["window_scores"],
+        float(config.get("calibration_quantile", 0.99)),
+        max(1, int(config.get("eval_window_size", 100)) // stride))
+    return metrics, clean, test, stride
 
 
 def _run_epoch(model, loader, optimizer, device, beta: float, writer,
@@ -205,6 +269,52 @@ def _log_evaluation(writer, evaluation, epoch):
         writer.add_scalar(f"test/{protocol}/vus_roc", metrics["vus_roc"], epoch)
 
 
+def record_test_evaluation(config, evaluation, epoch, log):
+    """Persist every scheduled evaluation and display all available metrics."""
+    with open(os.path.join(config["jepa_dir"], "test_evaluations.jsonl"), "a") as stream:
+        stream.write(json.dumps({"epoch": epoch, "evaluation": evaluation}) + "\n")
+    for protocol, metrics in evaluation.items():
+        parts = []
+        for source in ("calibrated", "oracle"):
+            values = ", ".join(f"{name}={value:.6f}"
+                               for name, value in metrics[source].items())
+            parts.append(f"{source}: {values}")
+        parts.extend(f"{name}={metrics[name]:.6f}" for name in ("vus_pr", "vus_roc"))
+        log(f"Test eval [{epoch}] {protocol} | " + " | ".join(parts))
+
+
+def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
+                     input_resolution=False):
+    """Monitoring hook shared by all LEWM stages and phase-two heads."""
+    _, val_dataset = get_jepa_datasets(config)
+    test_dataset = JEPADataset(config, train=False)
+    eval_config = dict(config)
+    eval_config["calibration_quantile"] = float(config.get(
+        "calibration_quantile", config.get("calibration_kwargs", {}).get("quantile", 0.99)))
+
+    class InputResolutionScores:
+        def eval(self):
+            model.eval()
+            return self
+
+        def score(self, x):
+            return {"fused": model.score(x)["fused"].repeat_interleave(
+                int(model.level_strides[0]), dim=-1)}
+
+    scorer = InputResolutionScores() if input_resolution else model
+    metrics = evaluate(scorer, val_dataset.series, test_dataset.series,
+                       test_dataset.targets, eval_config, device, options=options)
+
+    class Writer:
+        def add_scalar(self, tag, value, step):
+            section, name = tag.rsplit("/", 1)
+            logger.scalar_summary(section, name, value, step)
+
+    _log_evaluation(Writer(), metrics, epoch)
+    record_test_evaluation(config, metrics, epoch, logger.log)
+    return metrics["timeseries"]["calibrated"]["f1_no_pa"]
+
+
 def run_arm(arm, args, update_dictionary=None):
     """Single AE/VAE entry: train normally, or score the same saved experiment."""
     overrides = entry_overrides(args, update_dictionary)
@@ -255,11 +365,9 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     beta = float(config.get("beta", 0.3)) if arm == "vae" else 0.0
     if beta < 0:
         raise ValueError("beta must be nonnegative")
-    eval_every = int(config.get("eval_every", 1))
-    if eval_every < 1:
-        raise ValueError("eval_every must be positive")
+    eval_every = evaluation_interval(config)
     best = {"validation_loss": float("inf")}
-    for protocol in ("window", "timeseries"):
+    for protocol in ("window", "timeseries", "non_overlap_window"):
         for key in ("calibrated_f1", "oracle_f1", "vus_pr", "vus_roc"):
             best[f"{protocol}_{key}"] = float("-inf")
     last_path = os.path.join(out_dir, "last.pth.tar")
@@ -280,16 +388,16 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
             scheduler.step()
             losses = {"train": train_losses, "validation": val_losses,
                       "beta": beta}
-            # A newly selected validation checkpoint must also contain that
-            # epoch's evaluation values, even between scheduled intervals.
-            do_eval = (epoch % eval_every == 0 or
-                       epoch == int(config["epochs"]) or
-                       val_losses["loss"] < best["validation_loss"])
+            # Validation selects weights independently of test monitoring.
+            # Unscheduled checkpoints deliberately carry evaluation=None.
+            do_eval = should_evaluate(epoch, int(config["epochs"]), eval_every)
             evaluation = (evaluate(model, val_dataset.series, test_dataset.series,
                                    test_dataset.targets, config, device)
                           if do_eval else None)
             if evaluation is not None:
                 _log_evaluation(writer, evaluation, epoch)
+                record_test_evaluation(config, evaluation, epoch,
+                                       lambda message: print(message, flush=True))
             candidates = {"validation_loss": (val_losses["loss"], "min",
                                               "best_validation_loss.pth.tar",
                                               {"metric": "loss", "source": "validation"})}
@@ -328,6 +436,28 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
                   + ("; test evaluated" if do_eval else ""), flush=True)
         with open(os.path.join(out_dir, "best_metrics.json"), "w") as stream:
             json.dump(best, stream, indent=2)
+        selected_weights = os.path.join(out_dir, "best_validation_loss.pth.tar")
+        if config.get("decision_trace") is not False and os.path.isfile(selected_weights):
+            # Ordinary AE/VAE training also exports the final validation-selected
+            # replay; --score and suite scoring refresh it through score_experiment.
+            from utils.decision_trace import write_final_decision_trace
+
+            selected = torch.load(selected_weights, map_location="cpu", weights_only=False)
+            model.load_state_dict(selected["model"])
+            options = evaluation_options(config)
+            window, stride = options.pop("wsz"), options.pop("stride")
+            clean = score_both(model, val_dataset.series, window, stride,
+                               int(config.get("score_batch_size", config["batch_size"])),
+                               device, **options)
+            quantile = float(config.get("calibration_kwargs", {}).get(
+                "quantile", config.get("calibration_quantile", 0.99)))
+            threshold = float(np.quantile(
+                clean["timeseries_scores"][clean["cover_counts"] > 0], quantile))
+            artifact = write_final_decision_trace(
+                model, device, test_dataset.series, config, threshold,
+                options={"wsz": window, "stride": stride, **options},
+                threshold_operator="gt", labels=test_dataset.targets)
+            print(f"{arm.upper()} validation-selected decision replay: {artifact['html']}", flush=True)
         return best
     finally:
         writer.close()

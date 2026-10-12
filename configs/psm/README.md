@@ -6,11 +6,12 @@ Run every currently implemented framework and its configured arms:
 ./venv/bin/python experiments_psm_all.py --version psm_v1
 ```
 
-Without `--version`, the launcher checks each experiment's run folders and
-resumes the most recently modified training checkpoint (`last.pth.tar` for
-AE/VAE, `checkpoint.pth.tar` for LEWM and phase two). Experiments without a
-checkpoint start in a new timestamped run. Use `--fresh` to start new runs,
-or `--version NAME` to select a specific run. `--dry-run` shows the selected
+Without `--version`, each experiment uses a stable path with no date or run
+folder. Its names and `tag_jepa` identify the output directory, and rerunning
+resumes its existing checkpoint (`last.pth.tar` for AE/VAE,
+`checkpoint.pth.tar` for LEWM and phase two). Change the experiment name or tag
+to use another path. `--version NAME` adds an explicit named run folder and can
+access older dated runs. `--fresh` creates a separate randomly named run. `--dry-run` shows the selected
 paths without training. Resuming restores model, optimizer, scheduler, and
 epoch; `--epochs` is the total epoch target. Saved phase-one weights can also
 supply dependencies whose entries are omitted from the manifest.
@@ -83,20 +84,20 @@ The resulting layout groups both variants together:
 results/psm/
   vae/
     default/
-      psm_v1/psm/jepa_vae/
+      psm_v1/jepa_vae/
     lr_0.1/
-      psm_v1/psm/jepa_vae/
+      psm_v1/jepa_vae/
   ae/
-    default/psm_v1/psm/jepa_ae/
+    default/psm_v1/jepa_ae/
   lewm_encoder/
     time/
-      phase1/psm_v1/psm/jepa_time_predictor/
-      reconstruction/default/psm_v1/psm/jepa/
-      cross_attention/observed_input/psm_v1/psm/jepa_cross_attention_observed_input/
+      phase1/psm_v1/jepa_time_predictor/
+      reconstruction/default/psm_v1/jepa/
+      cross_attention/observed_input/psm_v1/jepa_cross_attention_observed_input/
     frequency_aux/
-      phase1/psm_v1/psm/jepa_frequency_predictor_time_annotation_steering/
-      reconstruction/default/psm_v1/psm/jepa/
-      reconstruction/aux_crop/psm_v1/psm/jepa/
+      phase1/psm_v1/jepa_frequency_predictor_time_annotation_steering/
+      reconstruction/default/psm_v1/jepa/
+      reconstruction/aux_crop/psm_v1/jepa/
   summaries/
     psm_v1/summary.csv
     psm_v1/summary.json
@@ -144,7 +145,7 @@ version for a changed model, loss, learning rate, or data/window configuration.
 `--manifest` chooses another experiment list, `--config-env` chooses another
 output-root config, and `--device` overrides the device. Optional
 `--cpu-threads` controls Torch's CPU thread count. When `--version` is omitted,
-a timestamp names the run. A custom PSM location can be set with
+paths contain no generated date. Default summaries live in `psm/summaries/`. A custom PSM location can be set with
 `common.dataset_root`; the CSV schema stays the standard PSM schema.
 
 To change the source encoder, update the corresponding source LEWM entry and
@@ -168,7 +169,17 @@ Every summary uses **validation-selected weights**: AE/VAE
 training-tail quantiles. The final test labels do not select these checkpoints
 or calibrated thresholds. The AE/VAE training code also saves its existing
 diagnostic best-test checkpoints; those are excluded from the suite summary.
-Reconstruction test-monitoring cadence is disabled in the supplied manifest.
+All experiments evaluate the test dataset every `eval_every` epochs (10 in
+this manifest), including the final epoch. Set `eval_every: 1` for every epoch,
+or `0` to disable monitoring. Each evaluation prints window, time-series, and
+non-overlap-window metrics (calibrated/oracle F1, event F1, VUS PR/ROC and
+thresholds), logs them under `test/` in TensorBoard, and appends the full report
+with its one-based epoch to `test_evaluations.jsonl` in the run directory.
+Resumed runs append subsequent evaluations to the same history. Every
+procedure includes `calibration_quantile` under both `calibrated` (the configured
+clean-data quantile) and `oracle` (the clean-data quantile equivalent to the
+oracle threshold). These values appear during training and suite evaluation,
+including TensorBoard and saved reports.
 
 All frameworks use the same window/time-series scoring and evaluation code.
 Point-adjusted metrics have a separate `point_adjust_comparability` section;

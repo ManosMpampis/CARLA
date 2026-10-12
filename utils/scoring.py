@@ -186,7 +186,8 @@ class RunningScorer:
 
     def __init__(self, model, device, input_window: int, *, check_mask=None,
                  latency_offset: int = 0, threshold: float | None = None,
-                 record_history: bool = False):
+                 record_history: bool = False, threshold_operator="ge",
+                 score_transform=None, series_length=None):
         self.scorer = Scorer(model, device)
         self.input_window = int(input_window)
         if self.input_window < 1:
@@ -197,8 +198,14 @@ class RunningScorer:
         if self.threshold is not None and not np.isfinite(self.threshold):
             raise ValueError("threshold must be finite")
         self.record_history = bool(record_history)
+        if threshold_operator not in {"ge", "gt"}:
+            raise ValueError("threshold_operator must be ge or gt")
+        self.threshold_operator = threshold_operator
+        self.score_transform = score_transform
+        self.series_length = series_length
         self.counts: dict[int, int] = {}
         self.sums: dict[str, dict[int, float]] = {}
+        self.scores: dict[int, float] = {}
         self.decisions: dict[int, bool] = {}
         self.decision_changes: list[dict] = []
         self.history: list[dict] = []
@@ -243,6 +250,8 @@ class RunningScorer:
                 raise ValueError(f"score map {name!r} must have shape (1, {length})")
         positions = int(start_idx) + relative_start + np.arange(length)
         valid = positions >= 0
+        if self.series_length is not None:
+            valid &= positions < self.series_length
         positions = positions[valid]
         self.output_length = length
         self.channel_names = set(maps)
@@ -260,11 +269,18 @@ class RunningScorer:
             current[name] = np.asarray(
                 [totals[int(position)] / self.counts[int(position)]
                  for position in positions], dtype=np.float64)
+        scores = (current["fused"] if self.score_transform is None
+                  else np.asarray(self.score_transform(current), dtype=np.float64))
+        if scores.shape != current["fused"].shape or not np.isfinite(scores).all():
+            raise ValueError("score_transform must return one finite score per scored timestep")
+        for position, score in zip(positions, scores):
+            self.scores[int(position)] = float(score)
         decisions = None
         if self.threshold is not None:
-            decisions = current["fused"] >= self.threshold
+            decisions = (scores > self.threshold if self.threshold_operator == "gt"
+                         else scores >= self.threshold)
             for position, score, decision in zip(positions,
-                                                 current["fused"], decisions):
+                                                 scores, decisions):
                 index = int(position)
                 previous = self.decisions.get(index)
                 now = bool(decision)
@@ -283,15 +299,17 @@ class RunningScorer:
             self.history.append({
                 "window_start": int(start_idx),
                 "window_end": int(start_idx) + self.input_window,
+                "checking_start": int(start_idx) + relative_start,
+                "checking_end": int(start_idx) + relative_start + length,
                 "indices": positions.astype(int).tolist(),
-                "scores": current["fused"].tolist(),
+                "scores": scores.tolist(),
                 "counts": [self.counts[int(position)] for position in positions],
                 "decisions": None if decisions is None else decisions.tolist(),
             })
         return {
             "indices": positions.astype(np.int64),
             "channels": current,
-            "scores": current["fused"],
+            "scores": scores,
             "decisions": decisions,
             "cover_counts": np.asarray(
                 [self.counts[int(position)] for position in positions],
@@ -302,6 +320,8 @@ class RunningScorer:
         """Current mean at one timestep, or None before any score arrives."""
         if timestep not in self.counts:
             return None
+        if channel == "fused":
+            return self.scores[timestep]
         return self.sums[channel][timestep] / self.counts[timestep]
 
     def decision_at(self, timestep: int) -> bool | None:
@@ -318,6 +338,7 @@ class RunningScorer:
             raise ValueError("no scored timesteps to display")
         return {"input_window": self.input_window,
                 "threshold": self.threshold,
+                "threshold_operator": self.threshold_operator,
                 "updates": self.history,
                 "decision_changes": self.decision_changes}
 

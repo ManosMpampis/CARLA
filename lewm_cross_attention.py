@@ -94,7 +94,15 @@ def run_phase2(p, device):
                           amp=bool(p.get("amp", False)) and device.type == "cuda",
                           val_collator=_collator(p))
         epoch, best = Trainer.resume(p, model, optimizer, scheduler, logger)
-        best = trainer.fit(train_loader, val_loader, epoch, best)
+        from utils.evaluation_schedule import evaluation_interval
+        from utils.reconstruction_baselines import evaluate_on_test
+
+        interval = evaluation_interval(p)
+        best = trainer.fit(
+            train_loader, val_loader, epoch, best, eval_every=interval,
+            eval_fn=(lambda step: evaluate_on_test(
+                model, p, device, logger, step, options=scoring_options(p, model)))
+            if interval > 0 else None)
         logger.log(f"Phase2 finished; best validation prediction loss {best:.6f}")
     finally:
         logger.finalize()
@@ -159,7 +167,7 @@ def run_score(p, device):
             model, device, test_dataset.series, p,
             calibration["timeseries_threshold"],
             options={"wsz": window, "stride": stride, **options},
-            threshold_operator="gt")
+            threshold_operator="gt", labels=test_dataset.targets)
         if trace_output is not None:
             report["decision_trace"] = trace_output
         for path, payload in ((p["calibration_path"], calibration), (p["metrics_path"], report)):

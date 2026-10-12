@@ -1,10 +1,12 @@
 import os
-import time
 from copy import deepcopy
 from pathlib import Path
 import yaml
 from easydict import EasyDict
 from utils.utils import mkdir_if_missing as mkdir
+
+
+DEFAULT_VERSION = "default"
 
 
 def validate_experiment_name(value, field):
@@ -74,7 +76,13 @@ def entry_overrides(args, updates=None):
 
 
 def experiment_base_dir(root_dir, config, fname, version):
-    """Resolve named framework/experiment runs while preserving legacy paths."""
+    """Tags identify stable paths; explicit named versions add a run directory."""
+    version = DEFAULT_VERSION if version is None else version
+    validate_experiment_name(version, "version")
+    run_parts = [] if version == DEFAULT_VERSION else [version]
+    # Single-series datasets need no repeated dataset identifier. Machine
+    # datasets retain their file component to isolate weights and reports.
+    series_parts = [] if fname == config["train_db_name"] else [fname]
     if config.get("framework"):
         framework = validate_experiment_name(config["framework"], "framework")
         experiment = validate_experiment_name(config.get("experiment_name", "default"), "experiment_name")
@@ -92,12 +100,13 @@ def experiment_base_dir(root_dir, config, fname, version):
             else:
                 raise ValueError(f"framework {framework} cannot use phase1_experiment")
             return os.path.join(root_dir, config["train_db_name"], "lewm_encoder",
-                                encoder, *branch, version, fname)
-        return os.path.join(root_dir, config["train_db_name"], framework, experiment, version, fname)
-    return os.path.join(root_dir, config["train_db_name"], version, fname)
+                                encoder, *branch, *run_parts, *series_parts)
+        return os.path.join(root_dir, config["train_db_name"], framework, experiment, *run_parts, *series_parts)
+    return os.path.join(root_dir, config["train_db_name"], *run_parts, *series_parts)
 
 
-def create_config(config_file_env, config_file_exp, fname, version=None, update_dictionary=None):
+def create_config(config_file_env, config_file_exp, fname, version=None, update_dictionary=None,
+                  *, output_dir=None):
     # Config for environment path
     with open(config_file_env, 'r') as stream:
         root_dir = yaml.safe_load(stream)['root_dir']
@@ -112,10 +121,11 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
 
     for k, v in (update_dictionary or {}).items():
         cfg[k] = v
+    fname = fname or cfg.get("fname") or cfg["train_db_name"]
     
     # Set paths for pretext task (These directories are needed in every stage)
-    version = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) if version is None else version
-    base_dir = experiment_base_dir(root_dir, cfg, fname, version)
+    version = DEFAULT_VERSION if version is None else version
+    base_dir = str(output_dir) if output_dir is not None else experiment_base_dir(root_dir, cfg, fname, version)
     if cfg.get("phase1_experiment") and cfg.get("framework") in (
             "reconstruction", "lewm_reconstruction", "cross_attention", "lewm_cross_attention"):
         cfg["phase1_version"] = cfg.get("phase1_version") or version
@@ -139,7 +149,7 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     if cfg['setup'] == 'jepa':
         jepa_tag = cfg.get('tag_jepa', None)
         cfg['jepa_tag'] = ("_"+jepa_tag) if jepa_tag else ""
-        jepa_dir = os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
+        jepa_dir = base_dir if output_dir is not None else os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
         mkdir(base_dir)
         mkdir(jepa_dir)
         cfg['jepa_dir'] = jepa_dir

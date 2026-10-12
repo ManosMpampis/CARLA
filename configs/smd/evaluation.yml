@@ -1,0 +1,32 @@
+# Checkpoints and input/crop cases for the machine in experiments.yml.
+name: checkpoint_comparison
+experiments_manifest: experiments.yml
+common:
+  device: cuda
+  score_batch_size: 256
+  evaluation: {input_window: 1024, stride: 10}
+  decision_trace: {max_windows: null}
+experiments:
+  - experiment: ae/default
+    checkpoints:
+      - name: selected
+      # - name: another_checkpoint
+      #   path: ../../results/smd/ae/default/machine-1-1.txt/jepa_ae/last.pth.tar
+    evaluations:
+      - name: window_1024
+        input_window: 1024
+      - name: window_2048
+        input_window: 2048
+  - experiment: lewm_encoder/time/cross_attention/observed_input
+    checkpoints:
+      - name: selected
+    evaluations:
+      - name: half_split_1024
+        input_window: 1024
+        context_crop: null
+        target_crop: null
+      - name: longer_context_2048
+        input_window: 2048
+        # Feature token intervals; encoder total stride is 8.
+        context_crop: [0, 192]
+        target_crop: [192, 256]

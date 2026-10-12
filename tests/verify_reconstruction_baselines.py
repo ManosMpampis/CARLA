@@ -1,6 +1,7 @@
 """Plain-Python smoke and score-contract checks for the AE/VAE arms."""
 
 import os
+import json
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -114,11 +115,37 @@ def main():
                 assert "window" in checkpoint["evaluation"]
                 assert "timeseries" in checkpoint["evaluation"]
             assert os.path.exists(os.path.join(run_dir, "tensorboard"))
+            # The ordinary training entry exports a labeled graph before --score.
+            assert os.path.isfile(os.path.join(run_dir, "decision_trace.html"))
+            with open(os.path.join(run_dir, "decision_trace.json")) as stream:
+                training_trace = json.load(stream)
+            assert "ground_truth_intervals" in training_trace
+            assert training_trace["threshold_operator"] == "gt"
+            assert training_trace["updates"][0]["checking_start"] == 0
             scored = run_arm(arm, SimpleNamespace(
                 config_env=env, config_exp=path, fname="toy", version=arm,
                 score=True, score_checkpoint=None))
             assert os.path.isfile(scored["decision_trace"]["html"])
             assert os.path.isfile(scored["decision_trace"]["json"])
+            from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+            events = EventAccumulator(os.path.join(run_dir, "suite_evaluation"))
+            events.Reload()
+            saved_metrics = json.loads(open(os.path.join(run_dir, "metrics.json")).read())
+            for protocol in ("window", "timeseries", "non_overlap_window"):
+                oracle = scored["evaluation"][protocol]["oracle"]
+                assert 0 <= oracle["calibration_quantile"] <= 1
+                assert 0 <= oracle["clean_anomaly_fraction"] <= 1
+                assert saved_metrics["evaluation"][protocol]["oracle"] == oracle
+                for name in ("calibration_quantile", "calibration_threshold",
+                             "calibration_threshold_in_range", "clean_anomaly_fraction"):
+                    tag = f"test/{protocol}/oracle/{name}"
+                    np.testing.assert_allclose(events.Scalars(tag)[0].value, oracle[name])
+            assert scored["coverage"]["non_overlap_window"]["stride"] == 16
+            assert scored["coverage"]["non_overlap_window"]["window_count"] == 15
+            saved_scores = np.load(os.path.join(run_dir, "scores.npz"))
+            assert saved_scores["non_overlap_window_cover_counts"].max() == 1
+            np.testing.assert_array_equal(saved_scores["non_overlap_window_start_idxs"],
+                                          np.arange(0, 240, 16))
         steering_weights = os.path.join(root, "steering_weights.pth.tar")
         torch.save(get_recon_model({"model_kwargs": kwargs,
                                    "recon_kwargs": {"dropout": 0.0}}).state_dict(),

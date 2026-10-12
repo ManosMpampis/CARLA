@@ -236,6 +236,13 @@ def verify_runs(directory):
             run_stage(args, {**patch, "epochs": 2, "pretrained_from": "/missing/phase1"})
             checkpoint = torch.load(out_dir / "checkpoint.pth.tar", weights_only=False)
             assert checkpoint["next_epoch"] == 2
+            # Training-time test metrics share the completed-epoch axis
+            # with validation, including the final epoch after resume.
+            from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+            events = EventAccumulator(str(out_dir / "tensorboard"))
+            events.Reload()
+            for tag in ("validation/pred_loss", "test/timeseries/calibrated/f1_no_pa"):
+                assert [event.step for event in events.Scalars(tag)] == [1, 2], tag
             report = run_stage(args, {**patch, "stage": "score"})
             assert report["task"]["target"] == target
             assert Path(report["decision_trace"]["html"]).is_file()
@@ -254,6 +261,20 @@ def verify_runs(directory):
             assert np.array_equal(scores["timeseries_predictions"], expected_flags)
             assert (out_dir / "log.txt").exists()
             assert any(out_dir.rglob("events.out.tfevents.*"))
+            if query_source == "observed" and target == "features":
+                from utils.experiment_suite import Experiment, score_experiment
+
+                suite_config = {**load_experiment_config(path), **patch,
+                                "score_checkpoint": str(out_dir / "model.pth.tar")}
+                experiment = Experiment("cross_attention", "default", "cross_attention",
+                                        path, suite_config)
+                suite_report = score_experiment(experiment, str(env), "phase2", fname="toy")
+                assert "non_overlap_window" in suite_report["evaluation"]
+                assert suite_report["coverage"]["non_overlap_window"]["stride"] == 24
+                disjoint = np.load(out_dir / "scores.npz")
+                assert disjoint["non_overlap_window_cover_counts"].max() == 1
+                assert (disjoint["non_overlap_window_cover_counts"][:40] == 0).all()
+                np.testing.assert_array_equal(np.diff(disjoint["non_overlap_window_start_idxs"]), 24)
     print("Phase1 -> all six phase2 arms -> resume -> calibration/metrics/TensorBoard: OK")
 
 

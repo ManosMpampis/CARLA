@@ -1,6 +1,5 @@
-"""Named experiment planning, native training, and comparable PSM reporting."""
+"""Dataset-configured experiment planning, native training, and reporting."""
 
-import os
 import copy
 import csv
 from dataclasses import dataclass
@@ -13,7 +12,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from utils.config import (create_config, experiment_base_dir,
+from utils.config import (DEFAULT_VERSION, create_config, experiment_base_dir,
                           load_experiment_config, merge_config,
                           validate_experiment_name)
 
@@ -54,9 +53,31 @@ def _load_yaml(path):
     return value
 
 
+def load_suite_manifest(path, _parents=()):
+    """Resolve inherited suite manifests and config paths at their declaration."""
+    path = Path(path).resolve()
+    if path in _parents:
+        raise ValueError(f"cyclic suite inheritance: {path}")
+    manifest = _load_yaml(path)
+    parents = manifest.pop("extends", [])
+    if isinstance(parents, str):
+        parents = [parents]
+    resolved = {}
+    for parent in parents:
+        resolved = merge_config(resolved, load_suite_manifest(path.parent / parent, (*_parents, path)))
+    for entry in manifest.get("experiments", []):
+        entry["config"] = str((path.parent / entry["config"]).resolve())
+    return merge_config(resolved, manifest)
+
+
+def series_parts(config):
+    fname = config["fname"]
+    return [] if fname == config["train_db_name"] else [fname]
+
+
 def experiment_dir(exp, root_dir, version):
     version = exp.run_version or version
-    base = Path(experiment_base_dir(root_dir, exp.config, "psm", version))
+    base = Path(experiment_base_dir(root_dir, exp.config, exp.config["fname"], version))
     tag = exp.config.get("tag_jepa")
     return base / (f"jepa_{tag}" if tag else "jepa")
 
@@ -68,21 +89,26 @@ def checkpoint_path(exp, root_dir, version):
 def resume_latest(exp, root_dir, version):
     """Select the most recently saved training state for this exact experiment."""
     directory = experiment_dir(exp, root_dir, version)
-    run_parent = directory.parents[2]
+    run_parent = Path(experiment_base_dir(root_dir, exp.config,
+                                         exp.config["train_db_name"], DEFAULT_VERSION))
     filename = "last.pth.tar" if exp.runner in ("ae", "vae") else "checkpoint.pth.tar"
-    candidates = list(run_parent.glob(f"*/psm/{directory.name}/{filename}"))
+    suffix = Path(*series_parts(exp.config), directory.name, filename)
+    candidates = list(run_parent.glob(f"*/{suffix}"))
+    stable = run_parent / suffix
+    if stable.is_file():
+        candidates.append(stable)
     if candidates:
         latest = max(candidates, key=lambda path: (path.stat().st_mtime_ns, str(path)))
-        exp.run_version = latest.parents[2].name
+        exp.run_version = DEFAULT_VERSION if latest == stable else latest.relative_to(run_parent).parts[0]
     return exp
 
 
 def build_plan(manifest_path, env_path, version, *, frameworks=None,
                experiments=None, epochs=None, device=None, auto_resume=False,
-               reuse_saved_sources=False):
+               reuse_saved_sources=False, dataset=None, fname=None, dataset_root=None):
     """Resolve a manifest without writing directories; order source LEWM first."""
     manifest_path = Path(manifest_path).resolve()
-    manifest = _load_yaml(manifest_path)
+    manifest = load_suite_manifest(manifest_path)
     root_dir = _load_yaml(env_path)["root_dir"]
     validate_experiment_name(version, "version")
     entries = manifest.get("experiments", [])
@@ -102,8 +128,16 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
         config = merge_config(load_experiment_config(config_path), common)
         config = merge_config(config, entry.get("overrides", {}))
         description = config.get("experiment_name")
-        config.update(framework=framework, experiment_name=name, fname="psm",
-                      train_db_name="psm", val_db_name="psm")
+        config.update(framework=framework, experiment_name=name)
+        if dataset is not None:
+            config.update(train_db_name=dataset, val_db_name=dataset)
+        if fname is not None:
+            config["fname"] = fname
+        if dataset_root is not None:
+            config["dataset_root"] = str(dataset_root)
+        config.setdefault("fname", config["train_db_name"])
+        validate_experiment_name(config["train_db_name"], "train_db_name")
+        validate_experiment_name(config["fname"], "fname")
         # A named phase-one variant creates a new encoder parent. Descendants
         # follow their source's identity even when reusing a base config file.
         if runner == "lewm" and framework == "lewm_encoder":
@@ -127,8 +161,9 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
                                "cross_attention": "phase2"}[runner]
         if config["setup"] != "jepa":
             raise ValueError("suite entries must use setup=jepa")
-        if int(config["model_kwargs"]["in_channels"]) != 25:
-            raise ValueError(f"{framework}/{name}: PSM requires 25 input channels")
+        expected_channels = {"psm": 25, "smd": 38}.get(config["train_db_name"])
+        if expected_channels and int(config["model_kwargs"]["in_channels"]) != expected_channels:
+            raise ValueError(f"{framework}/{name}: {config['train_db_name']} requires {expected_channels} input channels")
         exp = Experiment(framework, name, runner, config_path, config,
                          dependency)
         if exp.key in all_experiments:
@@ -156,10 +191,7 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
         if key in visited:
             return
         if key not in all_experiments:
-            if os.path.exists(f"{root_dir}/psm/{key}"):
-                return
-            else:
-                raise ValueError(f"missing pretrained_experiment {key}")
+            raise ValueError(f"missing pretrained_experiment {key}")
         exp = all_experiments[key]
         if auto_resume:
             resume_latest(exp, root_dir, version)
@@ -170,9 +202,16 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
             if exp.dependency not in all_experiments:
                 # An omitted phase-one entry can supply saved weights without
                 # being retrained. Resolve its actual tag from the saved path.
-                source_dir = Path(root_dir) / "psm" / exp.dependency / "phase1"
+                source_config = {**exp.config, "framework": "lewm_encoder",
+                                 "experiment_name": exp.config["phase1_experiment"]}
+                source_dir = Path(experiment_base_dir(root_dir, source_config,
+                                                      source_config["train_db_name"], DEFAULT_VERSION))
+                suffix = Path(*series_parts(exp.config), "jepa*", "model.pth.tar")
                 run = "*" if auto_resume or reuse_saved_sources else version
-                weights = list(source_dir.glob(f"{run}/psm/jepa*/model.pth.tar"))
+                weights = (list(source_dir.glob(f"{run}/{suffix}"))
+                           if run != DEFAULT_VERSION else [])
+                if run in ("*", DEFAULT_VERSION):
+                    weights.extend(source_dir.glob(str(suffix)))
                 if not weights:
                     raise ValueError(f"missing pretrained_experiment checkpoint {exp.dependency}")
                 exp.config["pretrained_from"] = str(max(
@@ -183,6 +222,9 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
                 return
             visit(exp.dependency)
             source = all_experiments[exp.dependency]
+            if any(exp.config[field] != source.config[field]
+                   for field in ("train_db_name", "fname")):
+                raise ValueError(f"{key}: dataset and fname must match {exp.dependency}")
             if source.runner != "lewm":
                 raise ValueError(f"{key}: pretrained_experiment must use the lewm runner")
             if exp.config["model_kwargs"] != source.config["model_kwargs"]:
@@ -221,7 +263,7 @@ def _function(reference):
 def train_experiment(exp, env_path, version):
     version = exp.run_version or version
     args = SimpleNamespace(config_env=str(env_path), config_exp=str(exp.config_path),
-                           fname="psm", version=version)
+                           fname=exp.config["fname"], version=version)
     trainer = _function(RUNNERS[exp.runner][0])
     if exp.runner in ("ae", "vae"):
         return trainer(exp.runner, args, update_dictionary=exp.config)
@@ -232,7 +274,7 @@ def _build_model(exp, config):
     return _function(RUNNERS[exp.runner][1])(config)
 
 
-def score_experiment(exp, env_path, version, *, fname="psm"):
+def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     """All frameworks use validation-selected weights and the same evaluation."""
     import numpy as np
     import torch
@@ -240,13 +282,15 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
     from data.jepa_dataset import JEPADataset
     from metrics.metrics import combine_all_evaluation_scores
     from utils.common_config import get_jepa_datasets
-    from utils.reconstruction_baselines import (evaluate_from_scores, score_both)
+    from utils.reconstruction_baselines import (evaluate_from_scores,
+                                               evaluate_non_overlap_window, score_both)
     from utils.scoring import covered_evaluation_view, evaluation_options
     from utils.trainer import Trainer
 
     version = exp.run_version or version
+    fname = fname or exp.config["fname"]
     p = create_config(env_path, exp.config_path, fname, version,
-                      update_dictionary=exp.config)
+                      update_dictionary=exp.config, output_dir=output_dir)
     requested_device = str(p.get("device", "cpu"))
     device = torch.device(requested_device if not requested_device.startswith("cuda")
                           or torch.cuda.is_available() else "cpu")
@@ -259,8 +303,21 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
     if exp.runner == "cross_attention":
         from lewm_cross_attention import scoring_options
 
+        # Load the checkpoint's original task strictly before changing only
+        # evaluation geometry. Training/resume task checks remain unchanged.
+        geometry = p.get("evaluation", {}) or {}
+        if "context_crop" in geometry or "target_crop" in geometry:
+            if not {"context_crop", "target_crop"} <= geometry.keys():
+                raise ValueError("evaluation needs both context_crop and target_crop")
+            context = model._interval(geometry["context_crop"])
+            target = model._interval(geometry["target_crop"])
+            if (context is None) != (target is None):
+                raise ValueError("evaluation crops must both be null or both be intervals")
+            model.context_crop, model.target_crop = context, target
         options = scoring_options(p, model)
     else:
+        if {"context_crop", "target_crop"} & (p.get("evaluation", {}) or {}).keys():
+            raise ValueError("evaluation crops require the cross_attention runner")
         options = evaluation_options(p)
     window, stride = options.pop("wsz"), options.pop("stride")
     _, val_dataset = get_jepa_datasets(p)
@@ -299,6 +356,11 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
         "quantile", p.get("calibration_quantile", 0.995)))
     evaluation = evaluate_from_scores(clean, test, test_dataset.targets,
                                       {**p, "calibration_quantile": quantile})
+    non_overlap, _, non_overlap_test, non_overlap_stride = evaluate_non_overlap_window(
+        scorer_model, val_dataset.series, test_dataset.series, test_dataset.targets,
+        {**p, "calibration_quantile": quantile}, device,
+        options={"wsz": window, "stride": stride, **options})
+    evaluation["non_overlap_window"] = non_overlap
     thresholds = {name: values["calibrated"]["threshold"]
                   for name, values in evaluation.items()}
     scores, labels, _, _ = covered_evaluation_view(
@@ -311,8 +373,9 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
         "framework": exp.framework, "experiment_name": exp.name,
         "experiment_key": exp.key,
         "phase1_experiment": exp.config.get("phase1_experiment"),
-        "run": version, "dataset": p["train_db_name"], "runner": exp.runner,
-        "selection": {"weights": str(weights), "source": "validation loss"},
+        "run": version, "dataset": p["train_db_name"], "fname": fname, "runner": exp.runner,
+        "selection": {"weights": str(weights), "source": "configured checkpoint" if p.get("score_checkpoint") else "validation loss"},
+        "evaluation_settings": {"input_window": window, "stride": stride, **options},
         "calibration_source": "held-out clean train tail",
         "evaluation": evaluation,
         "honest": {k: float(v) for k, v in metric_dict.items() if not k.startswith("pa_")},
@@ -322,20 +385,31 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
                      "total_timesteps": len(test_dataset.series),
                      "first_scored_timestep": int(test["starts"].min()),
                      "input_window": window,
-                     "output_window": int(test["ends"][0] - test["starts"][0])},
+                     "output_window": int(test["ends"][0] - test["starts"][0]),
+                     "non_overlap_window": {
+                         "stride": non_overlap_stride,
+                         "window_count": len(non_overlap_test["window_scores"]),
+                         "scored_timesteps": int((non_overlap_test["cover_counts"] > 0).sum()),
+                         "total_timesteps": len(test_dataset.series),
+                         "include_last_window": False}},
     }
+    if exp.runner == "cross_attention":
+        report["evaluation_settings"].update(
+            context_crop=model.context_crop, target_crop=model.target_crop,
+            crop_units="feature tokens", total_stride=model.total_stride)
     from utils.decision_trace import write_final_decision_trace
 
     trace_output = write_final_decision_trace(
         scorer_model, device, test_dataset.series, p,
         thresholds["timeseries"],
         options={"wsz": window, "stride": stride, **options},
-        threshold_operator="gt")
+        threshold_operator="gt", labels=test_dataset.targets)
     if trace_output is not None:
         report["decision_trace"] = trace_output
     calibration = {"source": "held-out clean train tail", "quantile": quantile,
                    "window_threshold": thresholds["window"],
-                   "timeseries_threshold": thresholds["timeseries"]}
+                   "timeseries_threshold": thresholds["timeseries"],
+                   "non_overlap_window_threshold": thresholds["non_overlap_window"]}
     for path, payload in ((p["metrics_path"], report), (p["calibration_path"], calibration)):
         with open(path, "w") as stream:
             json.dump(payload, stream, indent=2)
@@ -345,6 +419,15 @@ def score_experiment(exp, env_path, version, *, fname="psm"):
         start_idxs=test["starts"], end_idxs=test["ends"],
         input_start_idxs=test["input_starts"], input_end_idxs=test["input_ends"],
         cover_counts=test["cover_counts"],
+        non_overlap_window_scores=non_overlap_test["window_scores"],
+        non_overlap_window_start_idxs=non_overlap_test["starts"],
+        non_overlap_window_end_idxs=non_overlap_test["ends"],
+        non_overlap_window_cover_counts=non_overlap_test["cover_counts"],
+        non_overlap_window_predictions=(non_overlap_test["window_scores"]
+                                        > thresholds["non_overlap_window"]),
+        non_overlap_window_labels=np.asarray([
+            np.any(test_dataset.targets[s:e])
+            for s, e in zip(non_overlap_test["starts"], non_overlap_test["ends"])], dtype=np.int64),
         window_predictions=test["window_scores"] > thresholds["window"],
         timeseries_predictions=(test["timeseries_scores"] > thresholds["timeseries"])
                               & (test["cover_counts"] > 0),
@@ -377,7 +460,7 @@ def _save_resolved_config(exp, directory):
     path.write_text(yaml.safe_dump(exp.config, sort_keys=False))
 
 
-SUMMARY_FIELDS = ["framework", "experiment_name", "experiment_key", "phase1_experiment", "run", "status", "runner",
+SUMMARY_FIELDS = ["framework", "experiment_name", "experiment_key", "phase1_experiment", "run", "status", "runner", "dataset", "fname",
                   "timeseries_f1", "window_f1", "vus_pr", "vus_roc",
                   "scored_timesteps", "total_timesteps", "output_window",
                   "seconds", "checkpoint", "metrics_path", "error"]
@@ -397,7 +480,15 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
     """Run dependencies once, save partial summaries, and isolate failed experiments."""
     rows, statuses = [], {}
     planned_keys = {exp.key for exp in plan}
-    summary_dir = Path(root_dir) / "psm" / "summaries" / version
+    identities = {(exp.config["train_db_name"], exp.config["fname"]) for exp in plan}
+    if len(identities) != 1:
+        raise ValueError("a suite run must contain one dataset and one series")
+    dataset, fname = identities.pop()
+    summary_dir = Path(root_dir) / dataset / "summaries"
+    if version != DEFAULT_VERSION:
+        summary_dir /= version
+    if fname != dataset:
+        summary_dir /= fname
     summary_path = summary_dir / "summary.json"
     existing = json.loads(summary_path.read_text()) if summary_path.exists() else []
     combined = {row.get("experiment_key", f"{row['framework']}/{row['experiment_name']}"): row for row in existing}
@@ -405,7 +496,7 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
         directory = experiment_dir(exp, root_dir, version)
         row = {"framework": exp.framework, "experiment_name": exp.name,
                "experiment_key": exp.key, "phase1_experiment": exp.config.get("phase1_experiment"),
-               "runner": exp.runner, "run": exp.run_version or version,
+               "runner": exp.runner, "dataset": dataset, "fname": fname, "run": exp.run_version or version,
                "checkpoint": str(checkpoint_path(exp, root_dir, version)),
                "metrics_path": str(directory / "metrics.json")}
         started = time.monotonic()

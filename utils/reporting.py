@@ -333,7 +333,7 @@ def score_with_model(p, device, build_model, logger, *, input_resolution=False) 
     trace_output = write_final_decision_trace(
         scoring_model(model), device, test_series, p, trace_threshold,
         options=eval_options, score_transform=trace_score,
-        score_label=trace_label)
+        score_label=trace_label, labels=targets)
     if trace_output is not None:
         report["decision_trace"] = trace_output
 
