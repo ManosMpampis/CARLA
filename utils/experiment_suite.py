@@ -105,11 +105,12 @@ def resume_latest(exp, root_dir, version):
 
 def build_plan(manifest_path, env_path, version, *, frameworks=None,
                experiments=None, epochs=None, device=None, auto_resume=False,
-               reuse_saved_sources=False, dataset=None, fname=None, dataset_root=None):
+               reuse_saved_sources=False, dataset=None, fname=None, dataset_root=None,
+               config_overrides=None, root_dir_override=None):
     """Resolve a manifest without writing directories; order source LEWM first."""
     manifest_path = Path(manifest_path).resolve()
     manifest = load_suite_manifest(manifest_path)
-    root_dir = _load_yaml(env_path)["root_dir"]
+    root_dir = root_dir_override or _load_yaml(env_path)["root_dir"]
     validate_experiment_name(version, "version")
     entries = manifest.get("experiments", [])
     if not isinstance(entries, list) or not entries:
@@ -127,6 +128,7 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
         config_path = (manifest_path.parent / entry["config"]).resolve()
         config = merge_config(load_experiment_config(config_path), common)
         config = merge_config(config, entry.get("overrides", {}))
+        config = merge_config(config, config_overrides or {})
         description = config.get("experiment_name")
         config.update(framework=framework, experiment_name=name)
         if dataset is not None:

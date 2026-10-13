@@ -1,5 +1,34 @@
 # Whole-series evaluation and live running mean
 
+## TSB-AD benchmark
+
+`benchmark_tsb_ad.py` runs the existing AE/VAE, LeWM, reconstruction, and
+cross-attention experiment suite on extracted TSB-AD-U/M CSVs while retaining
+the native logger, TensorBoard events, resumable checkpoints, and decision
+traces. It trains on the filename's declared prefix, reserves its last 20% for
+validation and calibration, and exports scores for the entire series. Labels
+do not affect training or checkpoint selection. Automatic window adjustment
+handles short prefixes; the score archive records coverage and interpolation
+of uncovered positions.
+
+```bash
+./venv/bin/python benchmark_tsb_ad.py \
+  --dataset-root /absolute/path/to/TSB-AD-M \
+  --files 001_Genesis_id_1_Sensor_tr_4055_1st_15538.csv \
+  --experiments ae/default --epochs 1 --version tsb-smoke --dry-run
+```
+
+Remove `--dry-run` to train. Official metrics are deferred by default and can
+run later through `evaluate_tsb_ad.py` in a separate Python 3.11/3.12 TSB-AD
+environment; point `--run-dir` at the benchmark's
+`<output-root>/benchmark_runs/tsb-smoke` summary directory to evaluate only
+that named version (`benchmark_runs/default` for an unnamed run).
+See [the TSB-AD guide](configs/tsb_ad/README.md) for dataset lists,
+complete-suite commands, output artifacts, metric evaluation, and fine-tuning
+with a lower learning rate or model-only initialization. The full downloaded
+benchmark has not been executed as part of this integration. Existing native
+evaluation commands below remain available.
+
 ## Configured checkpoint evaluation suite
 
 Select a dataset-specific manifest (`configs/psm/evaluation.yml` or

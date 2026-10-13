@@ -109,7 +109,7 @@ def run_recon(p, device):
     logger = _make_logger(p)
     model, criterion, optimizer, scheduler = _build_run(p, device)
     _assert_divisible(p, model)
-    if not os.path.exists(p["jepa_checkpoint"]):
+    if not os.path.exists(p["jepa_checkpoint"]) and not p.get("initialize_from"):
         _load_encoder_source(p, model, logger)
 
     mode = p.get("stage_c", {}).get("mode", "frozen")

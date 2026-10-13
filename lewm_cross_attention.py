@@ -78,7 +78,7 @@ def run_phase2(p, device):
     try:
         # A resumed run contains the complete frozen encoder and needs no
         # original phase-one file to still be available.
-        if not os.path.exists(p["jepa_checkpoint"]):
+        if not os.path.exists(p["jepa_checkpoint"]) and not p.get("initialize_from"):
             load_feature_extractor(p.get("pretrained_from"), model, logger)
         criterion = get_criterion(p).to(device)
         optimizer = get_optimizer(p, model)

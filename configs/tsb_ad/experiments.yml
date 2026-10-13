@@ -1,0 +1,8 @@
+# Reuse every model/variant and its phase-one dependencies from the native suite.
+extends: ../psm/experiments.yml
+common:
+  train_db_name: tsb_ad
+  val_db_name: tsb_ad
+  val_fraction: 0.2
+  eval_every: 0
+  decision_trace: false

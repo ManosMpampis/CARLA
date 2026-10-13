@@ -150,6 +150,8 @@ class Trainer:
         the hook observes (e.g. test labels) can never steer model
         selection. Default (0/None) preserves the legacy loop exactly.
         """
+        if self.p.get("benchmark_protocol") == "tsb_ad":
+            eval_every, eval_fn = 0, None
         epochs = self.p["epochs"]
         for epoch in range(start_epoch, epochs):
             self.logger.log(f"Epoch {epoch + 1}/{epochs}")
@@ -173,7 +175,8 @@ class Trainer:
                     best_test_f1 = test_f1
                     torch.save(self.model.state_dict(), self.p["jepa_model_best"])
 
-            if val_loss < best_val_loss or (epoch + 1) == epochs:
+            if (val_loss < best_val_loss or (epoch + 1) == epochs
+                    or self.p.get("benchmark_protocol") == "tsb_ad"):
                 improved = val_loss < best_val_loss
                 best_val_loss = min(best_val_loss, val_loss)
                 if improved:
@@ -191,6 +194,8 @@ class Trainer:
             "best_val_loss": best_val_loss,
             "stage": self.p.get("stage", "pretrain"),
             "anti_collapse": self.model.anti_collapse,
+            "initialize_from": self.p.get("initialize_from"),
+            "benchmark_protocol": self.p.get("benchmark_protocol"),
         }
         torch.save(save_dict, self.p["jepa_checkpoint"])
 
@@ -204,16 +209,61 @@ class Trainer:
         path = p["jepa_checkpoint"]
         if not os.path.exists(path):
             logger.log(f"No checkpoint file at {path}")
+            if p.get("initialize_from"):
+                Trainer.initialize_weights(p["initialize_from"], model, logger)
             return 0, np.inf
         logger.log(f"Restart from checkpoint {path}")
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        if checkpoint.get("initialize_from"):
+            p["initialize_from"] = checkpoint["initialize_from"]
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         if "scheduler" in checkpoint:
             scheduler.load_state_dict(checkpoint["scheduler"])
+        Trainer.apply_resume_learning_rate(p, optimizer, scheduler, logger)
         start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
         best = checkpoint.get("best_val_loss", np.inf)
         return start_epoch, best
+
+    @staticmethod
+    def apply_resume_learning_rate(p, optimizer, scheduler, logger=None):
+        """Apply an explicit tuning rate after restoring optimizer/scheduler state."""
+        if p.get("resume_learning_rate") is None:
+            return
+        lr = float(p["resume_learning_rate"])
+        if not np.isfinite(lr) or lr <= 0:
+            raise ValueError("resume_learning_rate must be finite and positive")
+        rates = [lr] * len(optimizer.param_groups)
+        for group in optimizer.param_groups:
+            group["lr"] = group["initial_lr"] = lr
+
+        def update_schedule(current):
+            for attr in ("base_lrs", "_last_lr"):
+                if hasattr(current, attr):
+                    setattr(current, attr, list(rates))
+            for child in getattr(current, "_schedulers", []):
+                update_schedule(child)
+
+        update_schedule(scheduler)
+        if logger is not None:
+            logger.log(f"Resumed optimizer learning rate overridden to {lr}")
+
+    @staticmethod
+    def initialize_weights(path, model, logger=None):
+        """Strict model warm start, allowing only an encoder freezing change."""
+        checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        state = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
+        state = dict(state)
+        if "_extra_state" in state and hasattr(model, "_task"):
+            # Freezing controls optimization, not the prediction task. Keep
+            # every architecture/crop/query check used by strict resume.
+            task = dict(state["_extra_state"])
+            if "freeze_encoder" in task:
+                task["freeze_encoder"] = model.get_extra_state()["freeze_encoder"]
+                state["_extra_state"] = task
+        model.load_state_dict(state, strict=True)
+        if logger is not None:
+            logger.log(f"Initialized model weights from {path}; optimizer starts fresh")
 
     @staticmethod
     def load_weights(path, model, logger=None, strict: bool = True):

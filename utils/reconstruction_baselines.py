@@ -21,6 +21,7 @@ from utils.config import create_config, entry_overrides, load_experiment_config
 from utils.evaluation_schedule import evaluation_interval, should_evaluate
 from utils.scoring import (aggregate_score_maps, covered_evaluation_view,
                            evaluation_options)
+from utils.utils import Logger
 
 
 def _seed(seed: int) -> None:
@@ -232,7 +233,7 @@ def _run_epoch(model, loader, optimizer, device, beta: float, writer,
 
 
 def _save(path, model, optimizer, scheduler, epoch, losses, evaluation,
-          config, train_dataset, selection) -> None:
+          config, train_dataset, selection, initialize_from=None) -> None:
     payload = {
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -241,6 +242,7 @@ def _save(path, model, optimizer, scheduler, epoch, losses, evaluation,
         "losses": losses,
         "evaluation": evaluation,
         "selection": selection,
+        "initialize_from": initialize_from,
         "inference": {
             "arm": "vae" if model.variational else "ae",
             "model_kwargs": dict(config["model_kwargs"]),
@@ -352,25 +354,35 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     model = builder(config).to(device)
     if int(config["wsz"]) % model.total_stride:
         raise ValueError("window length must be divisible by encoder stride")
+    out_dir = config["jepa_dir"]
+    last_path = os.path.join(out_dir, "last.pth.tar")
+    initialization_source = None
+    if config.get("initialize_from") and not os.path.exists(last_path):
+        # Fine-tuning starts a new optimizer and schedule. An existing run's
+        # complete state always takes precedence over a weights-only source.
+        from utils.trainer import Trainer
+
+        initialization_source = str(config["initialize_from"])
+        Trainer.load_weights(initialization_source, model, strict=True)
     train_dataset, val_dataset = get_jepa_datasets(config)
     if not isinstance(train_dataset, JEPADataset) or train_dataset._corpus is not None:
         raise ValueError("these comparison arms require a single machine")
-    test_dataset = JEPADataset(config, train=False)
+    benchmark = config.get("benchmark_protocol") == "tsb_ad"
+    eval_every = 0 if benchmark else evaluation_interval(config)
+    trace_enabled = not benchmark and config.get("decision_trace") is not False
+    test_dataset = (JEPADataset(config, train=False)
+                    if eval_every > 0 or trace_enabled else None)
     train_loader = get_train_dataloader(config, train_dataset)
     val_loader = get_val_dataloader(config, val_dataset)
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
-    out_dir = config["jepa_dir"]
-    writer = SummaryWriter(os.path.join(out_dir, "tensorboard"))
     beta = float(config.get("beta", 0.3)) if arm == "vae" else 0.0
     if beta < 0:
         raise ValueError("beta must be nonnegative")
-    eval_every = evaluation_interval(config)
     best = {"validation_loss": float("inf")}
     for protocol in ("window", "timeseries", "non_overlap_window"):
         for key in ("calibrated_f1", "oracle_f1", "vus_pr", "vus_roc"):
             best[f"{protocol}_{key}"] = float("-inf")
-    last_path = os.path.join(out_dir, "last.pth.tar")
     first_epoch = 1
     if os.path.exists(last_path):
         checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
@@ -379,7 +391,23 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
         scheduler.load_state_dict(checkpoint["scheduler"])
         best.update(checkpoint["best"])
         first_epoch = int(checkpoint["epoch"]) + 1
+        initialization_source = checkpoint.get("initialize_from")
+    logger = Logger(config.get("version", "default"), verbose=2, file_path=out_dir,
+                    use_tensorboard=False, delete_files=False)
+    writer = SummaryWriter(os.path.join(out_dir, "tensorboard"))
     try:
+        logger.log(f"{arm.upper()} training; train/validation batches "
+                   f"{len(train_loader)}/{len(val_loader)}")
+        logger.log_hyperparams(config)
+        if initialization_source:
+            logger.log(f"Weights initialized from {initialization_source}")
+        if os.path.exists(last_path):
+            logger.log(f"Restart from checkpoint {last_path}; next epoch {first_epoch}")
+            from utils.trainer import Trainer
+
+            Trainer.apply_resume_learning_rate(config, optimizer, scheduler, logger)
+        if benchmark:
+            logger.log("TSB-AD protocol: training and selection use train data only")
         for epoch in range(first_epoch, int(config["epochs"]) + 1):
             train_losses = _run_epoch(model, train_loader, optimizer, device,
                                       beta, writer, epoch, training=True)
@@ -424,20 +452,24 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
                     best[key] = float(value)
                     _save(os.path.join(out_dir, filename), model, optimizer,
                           scheduler, epoch, losses, evaluation, config,
-                          train_dataset, selection)
+                          train_dataset, selection, initialization_source)
             torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                         "scheduler": scheduler.state_dict(), "epoch": epoch,
-                        "best": best, "losses": losses, "evaluation": evaluation},
+                        "best": best, "losses": losses, "evaluation": evaluation,
+                        "initialize_from": initialization_source,
+                        "benchmark_protocol": config.get("benchmark_protocol")},
                        last_path)
             with open(os.path.join(out_dir, "epochs.jsonl"), "a") as stream:
                 stream.write(json.dumps({"epoch": epoch, "losses": losses,
                                          "evaluation": evaluation}) + "\n")
-            print(f"{arm.upper()} epoch {epoch}: val loss={val_losses['loss']:.6f}"
-                  + ("; test evaluated" if do_eval else ""), flush=True)
+            message = (f"{arm.upper()} epoch {epoch}: val loss={val_losses['loss']:.6f}"
+                       + ("; test evaluated" if do_eval else ""))
+            print(message, flush=True)
+            logger.log(message)
         with open(os.path.join(out_dir, "best_metrics.json"), "w") as stream:
             json.dump(best, stream, indent=2)
         selected_weights = os.path.join(out_dir, "best_validation_loss.pth.tar")
-        if config.get("decision_trace") is not False and os.path.isfile(selected_weights):
+        if trace_enabled and os.path.isfile(selected_weights):
             # Ordinary AE/VAE training also exports the final validation-selected
             # replay; --score and suite scoring refresh it through score_experiment.
             from utils.decision_trace import write_final_decision_trace
@@ -461,3 +493,4 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
         return best
     finally:
         writer.close()
+        logger.finalize()
