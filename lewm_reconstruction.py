@@ -167,7 +167,8 @@ def run_score(p, device):
     import json
 
     from data.jepa_dataset import JEPADataset
-    from utils.reconstruction_baselines import score_both, evaluate_from_scores
+    from utils.reconstruction_baselines import (score_both, evaluate_from_scores,
+                                               tensorboard_threshold_metrics)
     from utils.scoring import evaluation_options
 
     logger = _make_logger(p)
@@ -249,7 +250,7 @@ def run_score(p, device):
     )
     for procedure, values in evaluation.items():
         for source in ("calibrated", "oracle"):
-            for metric, value in values[source].items():
+            for metric, value in tensorboard_threshold_metrics(values[source]):
                 logger.scalar_summary(f"test/{procedure}/{source}", metric,
                                       value, 1)
         logger.scalar_summary(f"test/{procedure}", "vus_pr", values["vus_pr"], 1)

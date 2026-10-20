@@ -1,8 +1,9 @@
 from .utils.metrics import metricor
-from .analysis.robustness_eval import generate_curve, generate_curve_t
+from .analysis.robustness_eval import generate_curve_t
 
 
-def get_range_vus_roc(score, labels, slidingWindow):
+def get_range_vus_roc(score, labels, slidingWindow=100):
+    """Use slidingWindow directly as the maximum VUS buffer in score samples."""
     grader = metricor()
     R_AUC_ROC, R_AUC_PR, _, _, _ = grader.RangeAUC(labels=labels, score=score, window=slidingWindow, plot_ROC=True)
     # _, _, _, _, _, _,VUS_ROC, VUS_PR = generate_curve(labels, score, 2*slidingWindow)

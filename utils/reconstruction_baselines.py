@@ -259,10 +259,17 @@ def _save(path, model, optimizer, scheduler, epoch, losses, evaluation,
     torch.save(payload, path)
 
 
+def tensorboard_threshold_metrics(metrics):
+    """Keep decision metrics on dashboards; retain calibration diagnostics in JSON."""
+    diagnostics = {"calibration_threshold", "calibration_threshold_in_range",
+                   "clean_anomaly_fraction"}
+    return ((name, value) for name, value in metrics.items() if name not in diagnostics)
+
+
 def _log_evaluation(writer, evaluation, epoch):
     for protocol, metrics in evaluation.items():
         for threshold_source in ("calibrated", "oracle"):
-            for name, value in metrics[threshold_source].items():
+            for name, value in tensorboard_threshold_metrics(metrics[threshold_source]):
                 writer.add_scalar(f"test/{protocol}/{threshold_source}/{name}",
                                   value, epoch)
         writer.add_scalar(f"test/{protocol}/vus_pr", metrics["vus_pr"], epoch)

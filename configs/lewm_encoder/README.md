@@ -51,6 +51,16 @@ weights. Training objectives still differ by arm, so their loss values need not
 match.
 
 Final suite scoring adds `non_overlap_window` alongside `window` and `timeseries`.
+`eval_window_size` sets the maximum VUS buffer parameter in original timesteps
+(default: 100), with no hidden multiplier. Time-series VUS sweeps 0 through this
+value. Window-level evaluation converts it to score samples using
+`max(1, eval_window_size // stride)`; non-overlap evaluation uses the scored
+region length as its stride. This conversion is approximate at coarse resolution.
+The setting also applies to point-adjusted VUS. Changing this convention requires
+re-scoring existing runs to compare their VUS values.
+For every reconstruction experiment, suite scoring forces `score_aux_crop: false`
+to match training-time test monitoring, even when the experiment config enables
+auxiliary crops. The effective value is recorded in `evaluation_settings`.
 It reuses the scorer with evaluation stride equal to the scored region length
 (the full input window, or the target crop for cross-attention) and
 `include_last_window: false`. Each covered timestep contributes to exactly one
@@ -75,6 +85,11 @@ lies outside the clean-score range, in which case the quantile is clamped to
 quantile in suite scoring, set `calibration_kwargs.quantile` (for example under
 the manifest's `common`). These are test-oracle diagnostics, not a normal-only
 tuning procedure, and do not change the configured calibration.
+
+TensorBoard keeps `threshold` and `calibration_quantile` for each threshold
+source. The additional `calibration_threshold`,
+`calibration_threshold_in_range`, and `clean_anomaly_fraction` diagnostics
+are retained in JSON reports only. Existing event files retain their old tags.
 
 AE/VAE training and final scoring export `decision_trace.html` and
 `decision_trace.json` alongside the weights. The HTML replays test-window

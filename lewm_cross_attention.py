@@ -112,7 +112,8 @@ def run_phase2(p, device):
 def run_score(p, device):
     from data.jepa_dataset import JEPADataset
     from metrics.metrics import combine_all_evaluation_scores
-    from utils.reconstruction_baselines import evaluate_from_scores, score_both
+    from utils.reconstruction_baselines import (evaluate_from_scores, score_both,
+                                               tensorboard_threshold_metrics)
     from utils.scoring import covered_evaluation_view
 
     model = get_cross_attention_model(p).to(device)
@@ -187,7 +188,7 @@ def run_score(p, device):
             timestep_labels=test_dataset.targets)
         for protocol, values in evaluation.items():
             for source in ("calibrated", "oracle"):
-                for name, value in values[source].items():
+                for name, value in tensorboard_threshold_metrics(values[source]):
                     logger.scalar_summary(f"test/{protocol}/{source}", name, value, 1)
             for name in ("vus_pr", "vus_roc"):
                 logger.scalar_summary(f"test/{protocol}", name, values[name], 1)

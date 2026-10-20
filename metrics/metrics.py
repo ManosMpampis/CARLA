@@ -27,7 +27,7 @@ def combine_all_evaluation_scores(pred_labels, y_test, window_size: int = 100):
     pa_f1_event = event_f1(y_test, events_gt, pred_labels)
     pa_affiliation = pr_from_events(events_pred, events_gt, Trange)
     pa_MCC_score = MCC(y_test, pred_labels)
-    pa_vus_results = get_range_vus_roc(pred_labels, y_test, 100) # default slidingWindow = 100
+    pa_vus_results = get_range_vus_roc(pred_labels, y_test, window_size)
 
     score_list = {"Affiliation precision": affiliation['precision'], 
                   "Affiliation recall": affiliation['recall'],

@@ -136,10 +136,12 @@ def main():
                 assert 0 <= oracle["calibration_quantile"] <= 1
                 assert 0 <= oracle["clean_anomaly_fraction"] <= 1
                 assert saved_metrics["evaluation"][protocol]["oracle"] == oracle
-                for name in ("calibration_quantile", "calibration_threshold",
-                             "calibration_threshold_in_range", "clean_anomaly_fraction"):
+                for name in ("calibration_quantile", "threshold"):
                     tag = f"test/{protocol}/oracle/{name}"
                     np.testing.assert_allclose(events.Scalars(tag)[0].value, oracle[name])
+                for name in ("calibration_threshold", "calibration_threshold_in_range",
+                             "clean_anomaly_fraction"):
+                    assert f"test/{protocol}/oracle/{name}" not in events.Tags()["scalars"]
             assert scored["coverage"]["non_overlap_window"]["stride"] == 16
             assert scored["coverage"]["non_overlap_window"]["window_count"] == 15
             saved_scores = np.load(os.path.join(run_dir, "scores.npz"))
@@ -170,6 +172,18 @@ def main():
         saved = np.load(steering_run["scores_path"])
         assert len(saved["window_scores"]) == len(saved["window_predictions"])
         assert len(saved["timeseries_scores"]) == len(saved["timeseries_predictions"])
+        # Suite reconstruction must use full scores even for aux-crop configs.
+        # This checkpoint has no aux, so ignoring the override would also fail.
+        from pathlib import Path
+        from utils.experiment_suite import Experiment, score_experiment
+        config["score_aux_crop"] = True
+        exp = Experiment("reconstruction", "default", "recon",
+                         Path(steering_config), dict(config))
+        suite_report = score_experiment(exp, env, "steering", fname="toy")
+        assert suite_report["evaluation_settings"]["score_aux_crop"] is False
+        assert exp.config["score_aux_crop"] is True
+        for protocol in ("window", "timeseries"):
+            assert suite_report["evaluation"][protocol] == report["evaluation"][protocol]
     print("AE/VAE reconstruction baseline verification passed")
 
 

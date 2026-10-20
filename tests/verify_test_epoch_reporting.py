@@ -14,7 +14,10 @@ def main():
     metric = {'calibrated': {'threshold': 0.5, 'f1_no_pa': 0.4,
                              'event_f1_no_pa': 0.3, 'calibration_quantile': 0.99},
               'oracle': {'threshold': 0.2, 'f1_no_pa': 0.7,
-                         'event_f1_no_pa': 0.6, 'calibration_quantile': 0.8}, 'vus_pr': 0.8, 'vus_roc': 0.9}
+                         'event_f1_no_pa': 0.6, 'calibration_quantile': 0.8,
+                         'calibration_threshold': 0.2,
+                         'calibration_threshold_in_range': True,
+                         'clean_anomaly_fraction': 0.2}, 'vus_pr': 0.8, 'vus_roc': 0.9}
     evaluation = {name: metric for name in ('window', 'timeseries', 'non_overlap_window')}
     dataset = SimpleNamespace(series=[], targets=[])
     with tempfile.TemporaryDirectory() as root:
@@ -36,6 +39,9 @@ def main():
         for name in ('event_f1_no_pa', 'vus_pr', 'vus_roc', 'oracle', 'calibrated', 'calibration_quantile'):
             assert name in logs, (name, logs)
         assert logger.scalar_summary.call_count == 2 * 3 * 10
+        names = {call.args[1] for call in logger.scalar_summary.call_args_list}
+        assert not names & {'calibration_threshold', 'calibration_threshold_in_range',
+                            'clean_anomaly_fraction'}, names
     print('Per-epoch test history, complete console metrics and TensorBoard: OK')
 
 

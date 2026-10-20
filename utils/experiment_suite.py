@@ -283,7 +283,8 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     from metrics.metrics import combine_all_evaluation_scores
     from utils.common_config import get_jepa_datasets
     from utils.reconstruction_baselines import (evaluate_from_scores,
-                                               evaluate_non_overlap_window, score_both)
+                                               evaluate_non_overlap_window, score_both,
+                                               tensorboard_threshold_metrics)
     from utils.scoring import covered_evaluation_view, evaluation_options
     from utils.trainer import Trainer
 
@@ -291,6 +292,9 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     fname = fname or exp.config["fname"]
     p = create_config(env_path, exp.config_path, fname, version,
                       update_dictionary=exp.config, output_dir=output_dir)
+    # Match training-time reconstruction monitoring for every suite variant.
+    if exp.runner == "recon":
+        p["score_aux_crop"] = False
     requested_device = str(p.get("device", "cpu"))
     device = torch.device(requested_device if not requested_device.startswith("cuda")
                           or torch.cuda.is_available() else "cpu")
@@ -375,7 +379,9 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
         "phase1_experiment": exp.config.get("phase1_experiment"),
         "run": version, "dataset": p["train_db_name"], "fname": fname, "runner": exp.runner,
         "selection": {"weights": str(weights), "source": "configured checkpoint" if p.get("score_checkpoint") else "validation loss"},
-        "evaluation_settings": {"input_window": window, "stride": stride, **options},
+        "evaluation_settings": {"input_window": window, "stride": stride,
+                                "eval_window_size": int(p.get("eval_window_size", 100)),
+                                **options},
         "calibration_source": "held-out clean train tail",
         "evaluation": evaluation,
         "honest": {k: float(v) for k, v in metric_dict.items() if not k.startswith("pa_")},
@@ -397,6 +403,8 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
         report["evaluation_settings"].update(
             context_crop=model.context_crop, target_crop=model.target_crop,
             crop_units="feature tokens", total_stride=model.total_stride)
+    if exp.runner == "recon":
+        report["evaluation_settings"]["score_aux_crop"] = False
     from utils.decision_trace import write_final_decision_trace
 
     trace_output = write_final_decision_trace(
@@ -439,7 +447,7 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     with SummaryWriter(str(Path(p["jepa_dir"]) / "suite_evaluation")) as writer:
         for procedure, values in evaluation.items():
             for source in ("calibrated", "oracle"):
-                for name, value in values[source].items():
+                for name, value in tensorboard_threshold_metrics(values[source]):
                     writer.add_scalar(f"test/{procedure}/{source}/{name}", value, 0)
             for name in ("vus_pr", "vus_roc"):
                 writer.add_scalar(f"test/{procedure}/{name}", values[name], 0)
