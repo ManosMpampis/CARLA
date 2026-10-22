@@ -227,7 +227,7 @@ class ClassificationLoss(nn.Module):
 
         # SigReg on the backbone output (optional, weight from config); added
         # unscaled to the total (not mixed by the shift gate).
-        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0)) if self.sigreg_weight != 0 else torch.tensor(0)
         total_loss = total_loss + self.sigreg_weight * sigreg
 
         out = {
@@ -272,7 +272,7 @@ class ClassificationLossPart(nn.Module):
             entropy_to_all_instances=False,
             disimilar_negatives=False,
             classification_loss_flag=True,
-            sigreg_weight=0.0,
+            sigreg={"weight": 0.0, "num_slices": 16, "freq_nodes": 8, "freq_min": 0.2, "freq_max": 4.0, "seed": 4},
         ):
             super(ClassificationLossPart, self).__init__()
             self.softmax = nn.Softmax(dim=1)
@@ -286,7 +286,14 @@ class ClassificationLossPart(nn.Module):
             self.disimilar_negatives = disimilar_negatives
             self.positive_entropy_weight = 1.0
             self.classification_loss_flag = classification_loss_flag
-            self.sigreg_weight = sigreg_weight
+            self.sigreg_weight = sigreg.get("weight", 0.0)
+            self.sigreg = SIGReg(
+                num_slices=sigreg.get("num_slices", 16),
+                freq_nodes=sigreg.get("freq_nodes", 8),
+                freq_min=sigreg.get("freq_min", 0.2),
+                freq_max=sigreg.get("freq_max", 4.0),
+                seed=sigreg.get("seed", 4)
+            ) if self.sigreg_weight != 0 else nn.Identity()
 
     def forward(self, anchors, nneighbors, fneighbors, fneighbor_mask=None):
         """
@@ -326,7 +333,7 @@ class ClassificationLossPart(nn.Module):
         classification_loss = (pos_bce_loss + neg_bce_loss) / 2.0
 
         # SigReg on the backbone output (optional, weight from config)
-        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0)) if self.sigreg_weight != 0 else torch.tensor(0)
         total_loss = classification_loss + self.sigreg_weight * sigreg
 
         out = {
@@ -364,6 +371,7 @@ class ClassificationLossMoCo(ClassificationLoss):
         queue_topk=32,
         queue_warmup=0,
         queue_anchor=True,
+        sigreg={"weight": 0.0, "num_slices": 16, "freq_nodes": 8, "freq_min": 0.2, "freq_max": 4.0, "seed": 4},
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -374,6 +382,14 @@ class ClassificationLossMoCo(ClassificationLoss):
         self._queues_ready = False
         self._ptr = 0
         self._filled = 0
+        self.sigreg_weight = sigreg.get("weight", 0.0)
+        self.sigreg = SIGReg(
+            num_slices=sigreg.get("num_slices", 16),
+            freq_nodes=sigreg.get("freq_nodes", 8),
+            freq_min=sigreg.get("freq_min", 0.2),
+            freq_max=sigreg.get("freq_max", 4.0),
+            seed=sigreg.get("seed", 4)
+        ) if self.sigreg_weight != 0 else nn.Identity()
 
     def _init_queues(self, num_classes, device, dtype):
         self.register_buffer(
@@ -597,7 +613,7 @@ class ClassificationLossMoCo(ClassificationLoss):
 
         # SigReg on the backbone output (optional, weight from config); added
         # unscaled to the total (not mixed by the shift gate).
-        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0))
+        sigreg = self.sigreg(torch.cat([anchors["backbone_features"], nneighbors["backbone_features"], fneighbors["backbone_features"]], dim=0)) if self.sigreg_weight != 0 else torch.tensor(0)
         total_loss = total_loss + self.sigreg_weight * sigreg
 
         # FIFO update happens after the loss use: current batch is queued for future steps
