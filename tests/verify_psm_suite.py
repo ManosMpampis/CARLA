@@ -18,7 +18,7 @@ sys.path.insert(0, str(REPO))
 from data.jepa_dataset import JEPADataset, make_synthetic_series
 from utils.config import create_config, experiment_base_dir
 from utils.experiment_suite import (build_plan, checkpoint_path, experiment_dir,
-                                    run_suite)
+                                    run_suite, load_suite_manifest)
 
 
 def expect_error(call):
@@ -82,9 +82,7 @@ def verify_plan(directory):
 
 def fixture_manifest(directory):
     manifest_path = REPO / "configs/psm/experiments.yml"
-    manifest = yaml.safe_load(manifest_path.read_text())
-    for entry in manifest["experiments"]:
-        entry["config"] = str((manifest_path.parent / entry["config"]).resolve())
+    manifest = load_suite_manifest(manifest_path)
     common = manifest["common"]
     common.update(epochs=1, device="cpu", wsz=128, stride=32, val_fraction=0.25,
                   batch_size=4, score_batch_size=8, eval_window_size=8,
@@ -94,6 +92,7 @@ def fixture_manifest(directory):
                                    "n_fft": 16, "hop_length": 4, "win_length": 16}
     common["aux_kwargs"] = {"aux_channels": [4, 4, 4]}
     common["cross_attention_kwargs"] = {"qk_channels": 4, "value_channels": 4,
+                                        "context_crop": None, "target_crop": None,
                                         "dropout": 0.0}
     common["criterion_kwargs"] = {"sigreg_kwargs": {"num_slices": 4}}
     common["recon_kwargs"] = {"dropout": 0.0}
@@ -104,7 +103,7 @@ def fixture_manifest(directory):
         if entry["runner"] in ("lewm", "cross_attention"):
             entry.setdefault("overrides", {})["criterion_kwargs"] = criterion
     manifest["experiments"].append({"framework": "vae", "experiment_name": "lr_0.1",
-                                    "runner": "vae", "config": str(REPO / "configs/baselines/smd_vae.yml"),
+                                    "runner": "vae", "config": str(REPO / "configs/baselines/vae.yml"),
                                     "overrides": {"optimizer_kwargs": {"lr": 0.1}}})
     # Same phase-two names beneath another encoder must have separate paths/rows.
     manifest["experiments"].extend([

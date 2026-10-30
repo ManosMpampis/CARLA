@@ -1,6 +1,8 @@
 """Checkpoint-only suite: real scoring of all runners on temporary PSM data."""
 
+import base64
 import copy
+import re
 import csv
 import json
 from pathlib import Path
@@ -29,8 +31,8 @@ def main():
         env.write_text(yaml.safe_dump({"root_dir": str(directory / "training-results")}))
         entries = []
         for framework, name, runner, config in (
-            ("ae", "default", "ae", "baselines/smd_ae.yml"),
-            ("vae", "default", "vae", "baselines/smd_vae.yml"),
+            ("ae", "default", "ae", "baselines/ae.yml"),
+            ("vae", "default", "vae", "baselines/vae.yml"),
             ("lewm_encoder", "time", "lewm", "lewm_encoder/time/phase1.yml"),
             ("reconstruction", "default", "recon", "lewm_encoder/time/reconstruction/default.yml"),
             ("cross_attention", "observed_input", "cross_attention", "lewm_encoder/time/cross_attention/observed_input.yml"),
@@ -103,31 +105,40 @@ def main():
             report = json.loads((job.output_dir / "metrics.json").read_text())
             assert {"timeseries", "window", "non_overlap_window"} == report["evaluation"].keys()
             assert report["selection"]["source"] == "configured checkpoint"
-            assert (job.output_dir / "scores.npz").is_file()
+            assert (job.output_dir / "Test_timeseries_scores.csv").is_file()
+            assert not (job.output_dir / "scores.npz").exists()
             assert (job.output_dir / "calibration.json").is_file()
             speed = report["inference_speed"]
             assert speed["measured_batches"] == 2
             assert speed["ms_per_window"] > 0 and speed["windows_per_second"] > 0
             assert abs(speed["ms_per_window"] * speed["windows_per_second"] - 1000) < 1e-6
-            from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-            events = EventAccumulator(str(job.output_dir / "suite_evaluation"))
-            events.Reload()
-            assert events.Scalars("inference/windows_per_second")[0].value > 0
+            assert not (job.output_dir / "suite_evaluation").exists()
+            for section in ("Test_window", "Test_non_overlap", "Test_timeseries"):
+                assert (job.output_dir / f"{section}_metrics.csv").is_file()
+                html = (job.output_dir / f"{section}.html").read_text()
+                assert len(html.encode()) < 500_000
+                encoded = re.search(r"const encodedTrace = '([^']+)'", html).group(1)
+                trace = json.loads(base64.b64decode(encoded))
+                assert trace['series_length'] == report['coverage']['total_timesteps']
+                windows = trace['checking_windows']
+                assert all(b-a == report['coverage']['input_window'] for a,b,_,_ in windows)
+                assert all(d-c == report['coverage']['output_window'] for _,_,c,d in windows)
+                if section == 'Test_timeseries':
+                    assert trace['score_count'] == report['coverage']['scored_timesteps']
+                else:
+                    assert trace['score_count'] == len(windows)
             if job.experiment.runner == "cross_attention":
                 large = job.case_name == "large"
-                assert report["coverage"]["output_window"] == (80 if large else 48)
-                assert report["coverage"]["first_scored_timestep"] == (48 if large else 16)
-                if job.checkpoint_name == "epoch_1":
-                    for kind in ("html", "json"):
-                        assert Path(report["decision_trace"][kind]).is_file()
+                assert report["coverage"]["output_window"] == (20 if large else 12)
+                assert report["coverage"]["first_scored_timestep"] == (12 if large else 4)
         # Failure isolation: missing checkpoint does not stop the next job.
         failed = copy.deepcopy(jobs[:2])
         failed[0].experiment.config["score_checkpoint"] = str(directory / "missing.pth.tar")
         rows = run_evaluation_suite(failed, output, env, version)
         assert [row["status"] for row in rows] == ["failed", "completed"]
         assert len(json.loads((output / "summary.json").read_text())) == 8
-        assert (output / "summary.csv").is_file()
-        with (output / "summary.csv").open() as stream:
+        assert (output / "Test_timeseries_summary.csv").is_file()
+        with (output / "Test_timeseries_summary.csv").open() as stream:
             summaries = list(csv.DictReader(stream))
         assert all(float(row["inference_ms_per_window"]) > 0 for row in summaries
                    if row["status"] == "completed")

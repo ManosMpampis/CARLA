@@ -99,7 +99,7 @@ results/psm/
       reconstruction/default/psm_v1/jepa/
       reconstruction/aux_crop/psm_v1/jepa/
   summaries/
-    psm_v1/summary.csv
+    psm_v1/Test_timeseries_summary.csv
     psm_v1/summary.json
 ```
 
@@ -113,8 +113,9 @@ output paths, including existing configs that use `experiment_name` as a
 descriptive display label.
 
 Each experiment saves a `resolved_config.yml`, training checkpoints and
-TensorBoard records, plus `metrics.json`, `calibration.json`, `scores.npz`, and
-suite evaluation TensorBoard records. Reusing a run checks its resolved
+training TensorBoard records, plus `metrics.json`, `calibration.json`, and
+independent CSV scores/metrics and HTML figures for all three evaluation modes.
+Final evaluation creates no TensorBoard records. Reusing a run checks its resolved
 configuration before resuming; extending epochs or changing runtime device,
 AMP, workers, or score batch size is allowed. Use a new experiment name or
 version for a changed model, loss, learning rate, or data/window configuration.
@@ -173,17 +174,16 @@ All experiments evaluate the test dataset every `eval_every` epochs (10 in
 this manifest), including the final epoch. Set `eval_every: 1` for every epoch,
 or `0` to disable monitoring. Each evaluation prints window, time-series, and
 non-overlap-window metrics (calibrated/oracle F1, event F1, VUS PR/ROC and
-thresholds), logs them under `test/` in TensorBoard, and appends the full report
+thresholds), logs them under `Test_window`, `Test_non_overlap`, and `Test_timeseries` in TensorBoard, and appends the full report
 with its one-based epoch to `test_evaluations.jsonl` in the run directory.
 Resumed runs append subsequent evaluations to the same history. Every
 procedure includes `calibration_quantile` under both `calibrated` (the configured
 clean-data quantile) and `oracle` (the clean-data quantile equivalent to the
 oracle threshold). These values appear during training and suite evaluation,
-including TensorBoard and saved reports.
+in saved reports. Final scoring creates JSON, CSV, and bounded HTML figures without TensorBoard events.
 
 All frameworks use the same window/time-series scoring and evaluation code.
-Point-adjusted metrics have a separate `point_adjust_comparability` section;
-saved predictions remain unadjusted. Test-oracle thresholds are explicitly
+PA F1 is computed last on copied predictions; saved predictions remain unadjusted. Test-oracle thresholds are explicitly
 separate from calibrated thresholds in `evaluation` and are excluded from the
 summary's F1 columns. Score reduction/model training still follows each arm's
 own implementation.

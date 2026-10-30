@@ -1,10 +1,8 @@
 """Two-phase LEWM harness: original pretraining, then crop cross attention."""
 
 import argparse
-import json
 import os
 
-import numpy as np
 import torch
 
 from models.builders import get_cross_attention_model
@@ -52,10 +50,9 @@ def scoring_options(p, model):
 
 
 def _logger(p):
-    logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
+    logger = Logger(p["version"], verbose=3, file_path=p["jepa_dir"],
                     use_tensorboard=True, delete_files=False)
     logger.log(f"Crop cross-attention LEWM stage '{p['stage']}'")
-    logger.log_hyperparams(p)
     return logger
 
 
@@ -110,95 +107,9 @@ def run_phase2(p, device):
 
 @torch.no_grad()
 def run_score(p, device):
-    from data.jepa_dataset import JEPADataset
-    from metrics.metrics import combine_all_evaluation_scores
-    from utils.reconstruction_baselines import (evaluate_from_scores, score_both,
-                                               tensorboard_threshold_metrics)
-    from utils.scoring import covered_evaluation_view
-
-    model = get_cross_attention_model(p).to(device)
-    weights = p.get("score_checkpoint") or p["jepa_model"]
-    if not os.path.isfile(weights):
-        raise FileNotFoundError(f"phase2 scoring weights not found: {weights}")
-    Trainer.load_weights(weights, model, strict=True)
-    options = scoring_options(p, model)
-    window, stride = options.pop("wsz"), options.pop("stride")
-    _, val_dataset = get_jepa_datasets(p)
-    if not hasattr(val_dataset, "series"):
-        raise ValueError("score one machine at a time; shared training checkpoints are supported")
-    test_dataset = JEPADataset(p, train=False)
-    logger = _logger(p)
-    try:
-        batch_size = int(p.get("score_batch_size", p["batch_size"]))
-        clean = score_both(model, val_dataset.series, window, stride,
-                           batch_size, device, **options)
-        test = score_both(model, test_dataset.series, window, stride,
-                          batch_size, device, **options)
-        quantile = float(p.get("calibration_kwargs", {}).get("quantile", 0.995))
-        evaluation = evaluate_from_scores(
-            clean, test, test_dataset.targets, {**p, "calibration_quantile": quantile})
-        calibration = {"source": "held-out clean train tail", "quantile": quantile,
-                       "target": model.target, "query_source": model.query_source,
-                       "score_mode": model.score_mode, "target_input_range": options["check_mask"],
-                       "window_threshold": evaluation["window"]["calibrated"]["threshold"],
-                       "timeseries_threshold": evaluation["timeseries"]["calibrated"]["threshold"]}
-        report = {"framework": p.get("framework", "lewm_cross_attention"), "task": model.get_extra_state(),
-                  "phase1_experiment": p.get("phase1_experiment"),
-                  "experiment_name": p.get("experiment_name"),
-                  "pretrained_from": p.get("pretrained_from"),
-                  "score_mode": model.score_mode,
-                  "selection": {"weights": str(weights), "checkpoint": "validation prediction loss"},
-                  "evaluation": evaluation}
-        covered_scores, covered_labels, _, _ = covered_evaluation_view(
-            test["timeseries_scores"], test_dataset.targets, test["starts"],
-            test["ends"], test["cover_counts"])
-        # The frozen metric engine point-adjusts its prediction array in
-        # place. Give it a private array so saved detections stay honest.
-        metric_dict = combine_all_evaluation_scores(
-            (covered_scores > calibration["timeseries_threshold"]).astype(np.int64),
-            covered_labels, int(p.get("eval_window_size", 100)))
-        report["honest"] = {key: float(value) for key, value in metric_dict.items()
-                            if not key.startswith("pa_")}
-        report["point_adjust_comparability"] = {
-            key.removeprefix("pa_"): float(value) for key, value in metric_dict.items()
-            if key.startswith("pa_")}
-        from utils.decision_trace import write_final_decision_trace
-
-        trace_output = write_final_decision_trace(
-            model, device, test_dataset.series, p,
-            calibration["timeseries_threshold"],
-            options={"wsz": window, "stride": stride, **options},
-            threshold_operator="gt", labels=test_dataset.targets)
-        if trace_output is not None:
-            report["decision_trace"] = trace_output
-        for path, payload in ((p["calibration_path"], calibration), (p["metrics_path"], report)):
-            with open(path, "w") as stream:
-                json.dump(payload, stream, indent=2)
-        np.savez_compressed(
-            p["scores_path"], window_scores=test["window_scores"],
-            timeseries_scores=test["timeseries_scores"],
-            start_idxs=test["starts"], end_idxs=test["ends"],
-            input_start_idxs=test["input_starts"], input_end_idxs=test["input_ends"],
-            cover_counts=test["cover_counts"],
-            window_predictions=test["window_scores"] > calibration["window_threshold"],
-            timeseries_predictions=(test["timeseries_scores"] > calibration["timeseries_threshold"])
-                                  & (test["cover_counts"] > 0),
-            window_labels=np.asarray([np.any(test_dataset.targets[s:e])
-                                      for s, e in zip(test["starts"], test["ends"])], dtype=np.int64),
-            timestep_labels=test_dataset.targets)
-        for protocol, values in evaluation.items():
-            for source in ("calibrated", "oracle"):
-                for name, value in tensorboard_threshold_metrics(values[source]):
-                    logger.scalar_summary(f"test/{protocol}/{source}", name, value, 1)
-            for name in ("vus_pr", "vus_roc"):
-                logger.scalar_summary(f"test/{protocol}", name, values[name], 1)
-        for section in ("honest", "point_adjust_comparability"):
-            for name, value in report[section].items():
-                logger.scalar_summary(f"test/{section}", name, value, 1)
-        logger.log(f"Cross-attention report: {p['metrics_path']}")
-        return report
-    finally:
-        logger.finalize()
+    """Export the same three-mode report as every experiment runner."""
+    from utils.experiment_suite import score_config
+    return score_config(p, "cross_attention")
 
 
 STAGES = {"pretrain": run_pretrain, "pretext": run_pretrain, "phase1": run_pretrain,

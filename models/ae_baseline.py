@@ -37,13 +37,13 @@ class ReconstructionBaseline(nn.Module):
     def forward(self, x: torch.Tensor, sample: bool | None = None) -> dict:
         h = self.encoder(x)
         if not self.variational:
-            return {"recon": self.decoder(h), "mu": None, "logvar": None}
+            return {"recon": self.decoder(h), "mu": None, "logvar": None, "latent": h}
         mu = self.mu(h)
         logvar = self.logvar(h).clamp(-20.0, 20.0)
         if sample is None:
             sample = self.training
         z = mu + torch.randn_like(mu) * torch.exp(0.5 * logvar) if sample else mu
-        return {"recon": self.decoder(z), "mu": mu, "logvar": logvar}
+        return {"recon": self.decoder(z), "mu": mu, "logvar": logvar, "latent": mu}
 
     @torch.no_grad()
     def score(self, x: torch.Tensor) -> dict:

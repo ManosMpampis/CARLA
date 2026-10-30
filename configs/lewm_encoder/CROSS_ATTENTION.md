@@ -213,12 +213,13 @@ existing phase-one encoder checkpoints remain usable.
 Outputs follow the shared encoder hierarchy:
 `results/<dataset>/lewm_encoder/<phase1>/cross_attention/<phase2>/<version>/<machine>/jepa_cross_attention_<source>_<target>/`.
 They include training/resume and best-validation weights, TensorBoard,
-`calibration.json`, `scores.npz`, and `metrics.json`. Thresholds use only the
+`calibration.json`, `metrics.json`, and separate score/metric CSVs and bounded
+HTML figures for window, non-overlap, and time-series evaluation. Thresholds use only the
 held-out clean training tail. Coverage counts exclude unscored context from
 time-series evaluation and calibration. Window labels refer to the target crop.
-The report includes the frozen metric engine's `honest` and
-`point_adjust_comparability` sections alongside window/time-series evaluation.
-Saved predictions remain unadjusted.
+The report keeps calibrated and oracle thresholds separate in each of the
+three evaluation modes. PA F1 is calculated last on a private prediction copy;
+saved predictions remain unadjusted. Final scoring creates no TensorBoard events.
 
 ```bash
 ./venv/bin/python tests/verify_lewm_cross_attention.py

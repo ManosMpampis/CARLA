@@ -75,10 +75,20 @@ def entry_overrides(args, updates=None):
     return overrides
 
 
+def dataset_output_dir(root_dir, config):
+    """Optional experiment group directly below the dataset output directory."""
+    base = os.path.join(root_dir, config["train_db_name"])
+    group = config.get("experiment_version")
+    if group is not None:
+        base = os.path.join(base, validate_experiment_name(group, "experiment_version"))
+    return base
+
+
 def experiment_base_dir(root_dir, config, fname, version):
     """Tags identify stable paths; explicit named versions add a run directory."""
     version = DEFAULT_VERSION if version is None else version
     validate_experiment_name(version, "version")
+    dataset_dir = dataset_output_dir(root_dir, config)
     run_parts = [] if version == DEFAULT_VERSION else [version]
     # Single-series datasets need no repeated dataset identifier. Machine
     # datasets retain their file component to isolate weights and reports.
@@ -99,10 +109,10 @@ def experiment_base_dir(root_dir, config, fname, version):
                 branch = ["cross_attention", experiment]
             else:
                 raise ValueError(f"framework {framework} cannot use phase1_experiment")
-            return os.path.join(root_dir, config["train_db_name"], "lewm_encoder",
+            return os.path.join(dataset_dir, "lewm_encoder",
                                 encoder, *branch, *run_parts, *series_parts)
-        return os.path.join(root_dir, config["train_db_name"], framework, experiment, *run_parts, *series_parts)
-    return os.path.join(root_dir, config["train_db_name"], *run_parts, *series_parts)
+        return os.path.join(dataset_dir, framework, experiment, *run_parts, *series_parts)
+    return os.path.join(dataset_dir, *run_parts, *series_parts)
 
 
 def create_config(config_file_env, config_file_exp, fname, version=None, update_dictionary=None,

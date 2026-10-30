@@ -1,7 +1,6 @@
 """Dataset-configured experiment planning, native training, and reporting."""
 
 import copy
-import csv
 from dataclasses import dataclass
 import importlib
 import json
@@ -12,7 +11,7 @@ from types import SimpleNamespace
 
 import yaml
 
-from utils.config import (DEFAULT_VERSION, create_config, experiment_base_dir,
+from utils.config import (DEFAULT_VERSION, create_config, dataset_output_dir, experiment_base_dir,
                           load_experiment_config, merge_config,
                           validate_experiment_name)
 
@@ -91,15 +90,19 @@ def resume_latest(exp, root_dir, version):
     directory = experiment_dir(exp, root_dir, version)
     run_parent = Path(experiment_base_dir(root_dir, exp.config,
                                          exp.config["train_db_name"], DEFAULT_VERSION))
-    filename = "last.pth.tar" if exp.runner in ("ae", "vae") else "checkpoint.pth.tar"
-    suffix = Path(*series_parts(exp.config), directory.name, filename)
-    candidates = list(run_parent.glob(f"*/{suffix}"))
-    stable = run_parent / suffix
-    if stable.is_file():
-        candidates.append(stable)
+    filenames = ("checkpoint.pth.tar", "last.pth.tar") if exp.runner in ("ae", "vae") else ("checkpoint.pth.tar",)
+    candidates = []
+    for filename in filenames:
+        suffix = Path(*series_parts(exp.config), directory.name, filename)
+        candidates.extend(run_parent.glob(f"*/{suffix}"))
+        stable = run_parent / suffix
+        if stable.is_file():
+            candidates.append(stable)
     if candidates:
         latest = max(candidates, key=lambda path: (path.stat().st_mtime_ns, str(path)))
-        exp.run_version = DEFAULT_VERSION if latest == stable else latest.relative_to(run_parent).parts[0]
+        exp.run_version = (DEFAULT_VERSION if latest == run_parent / Path(
+            *series_parts(exp.config), directory.name, latest.name)
+            else latest.relative_to(run_parent).parts[0])
     return exp
 
 
@@ -225,6 +228,8 @@ def build_plan(manifest_path, env_path, version, *, frameworks=None,
             if any(exp.config[field] != source.config[field]
                    for field in ("train_db_name", "fname")):
                 raise ValueError(f"{key}: dataset and fname must match {exp.dependency}")
+            if exp.config.get("experiment_version") != source.config.get("experiment_version"):
+                raise ValueError(f"{key}: experiment_version must match {exp.dependency}")
             if source.runner != "lewm":
                 raise ValueError(f"{key}: pretrained_experiment must use the lewm runner")
             if exp.config["model_kwargs"] != source.config["model_kwargs"]:
@@ -276,18 +281,6 @@ def _build_model(exp, config):
 
 def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     """All frameworks use validation-selected weights and the same evaluation."""
-    import numpy as np
-    import torch
-
-    from data.jepa_dataset import JEPADataset
-    from metrics.metrics import combine_all_evaluation_scores
-    from utils.common_config import get_jepa_datasets
-    from utils.reconstruction_baselines import (evaluate_from_scores,
-                                               evaluate_non_overlap_window, score_both,
-                                               tensorboard_threshold_metrics)
-    from utils.scoring import covered_evaluation_view, evaluation_options
-    from utils.trainer import Trainer
-
     version = exp.run_version or version
     fname = fname or exp.config["fname"]
     p = create_config(env_path, exp.config_path, fname, version,
@@ -295,9 +288,27 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     # Match training-time reconstruction monitoring for every suite variant.
     if exp.runner == "recon":
         p["score_aux_crop"] = False
+    return score_config(p, exp)
+
+
+def score_config(p, exp):
+    """All score entry points share artifacts and never open TensorBoard."""
+    import torch
+    from data.jepa_dataset import JEPADataset
+    from utils.common_config import get_jepa_datasets
+    from utils.reconstruction_baselines import (evaluate_from_scores,
+                                               evaluate_non_overlap_window, score_both)
+    from utils.scoring import evaluation_options
+    from utils.trainer import Trainer
+    if isinstance(exp, str):
+        exp = Experiment(p.get("framework", exp), p.get("experiment_name", "default"),
+                         exp, Path("."), dict(p))
     requested_device = str(p.get("device", "cpu"))
     device = torch.device(requested_device if not requested_device.startswith("cuda")
                           or torch.cuda.is_available() else "cpu")
+    p = dict(p)
+    if exp.runner == "recon":
+        p["score_aux_crop"] = False
     model = _build_model(exp, p).to(device)
     weights = Path(p.get("score_checkpoint") or Path(p["jepa_dir"]) / RUNNERS[exp.runner][2])
     if not weights.is_file():
@@ -321,9 +332,8 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
                 raise ValueError("evaluation segment lengths must be positive multiples of encoder stride")
             if int(geometry.get("input_window", p["wsz"])) != context_length + target_length:
                 raise ValueError("input_window must equal context_length + target_length")
-            model.context_crop = (0, context_length // model.total_stride)
-            model.target_crop = (context_length // model.total_stride,
-                                 (context_length + target_length) // model.total_stride)
+            model.context_crop = (0, context_length)
+            model.target_crop = (context_length, context_length + target_length)
         if "context_crop" in geometry or "target_crop" in geometry:
             if not {"context_crop", "target_crop"} <= geometry.keys():
                 raise ValueError("evaluation needs both context_crop and target_crop")
@@ -389,26 +399,17 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     evaluation["non_overlap_window"] = non_overlap
     thresholds = {name: values["calibrated"]["threshold"]
                   for name, values in evaluation.items()}
-    scores, labels, _, _ = covered_evaluation_view(
-        test["timeseries_scores"], test_dataset.targets, test["starts"],
-        test["ends"], test["cover_counts"])
-    metric_dict = combine_all_evaluation_scores(
-        (scores > thresholds["timeseries"]).astype(np.int64), labels,
-        int(p.get("eval_window_size", 100)))
     report = {
         "framework": exp.framework, "experiment_name": exp.name,
         "experiment_key": exp.key,
         "phase1_experiment": exp.config.get("phase1_experiment"),
-        "run": version, "dataset": p["train_db_name"], "fname": fname, "runner": exp.runner,
+        "run": p["version"], "dataset": p["train_db_name"], "fname": p["fname"], "runner": exp.runner,
         "selection": {"weights": str(weights), "source": "configured checkpoint" if p.get("score_checkpoint") else "validation loss"},
         "evaluation_settings": {"input_window": window, "stride": stride,
                                 "eval_window_size": int(p.get("eval_window_size", 100)),
                                 **options},
         "calibration_source": "held-out clean train tail",
         "evaluation": evaluation,
-        "honest": {k: float(v) for k, v in metric_dict.items() if not k.startswith("pa_")},
-        "point_adjust_comparability": {k[3:]: float(v) for k, v in metric_dict.items()
-                                      if k.startswith("pa_")},
         "coverage": {"scored_timesteps": int((test["cover_counts"] > 0).sum()),
                      "total_timesteps": len(test_dataset.series),
                      "first_scored_timestep": int(test["starts"].min()),
@@ -425,7 +426,7 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
         context, target = model.crop_ranges(window)
         report["evaluation_settings"].update(
             context_crop=model.context_crop, target_crop=model.target_crop,
-            crop_units="feature tokens", total_stride=model.total_stride,
+            crop_units="input timesteps", total_stride=model.total_stride,
             context_length=(context[1] - context[0]) * model.total_stride,
             target_length=(target[1] - target[0]) * model.total_stride,
             query_source=model.query_source)
@@ -433,15 +434,17 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
         report["inference_speed"] = inference_speed
     if exp.runner == "recon":
         report["evaluation_settings"]["score_aux_crop"] = False
-    from utils.decision_trace import write_final_decision_trace
-
-    trace_output = write_final_decision_trace(
-        scorer_model, device, test_dataset.series, p,
-        thresholds["timeseries"],
-        options={"wsz": window, "stride": stride, **options},
-        threshold_operator="gt", labels=test_dataset.targets)
-    if trace_output is not None:
-        report["decision_trace"] = trace_output
+    from utils.evaluation_artifacts import write_final_artifacts
+    report["figures"] = write_final_artifacts(
+        p["jepa_dir"], evaluation, test, test_dataset.targets, non_overlap_test)
+    # Replay is an explicit debugging artifact; regular evaluation uses
+    # bounded final score figures and never rescans every window for a replay.
+    if isinstance(p.get("decision_trace"), dict) and p["decision_trace"].get("enabled", False):
+        from utils.decision_trace import write_final_decision_trace
+        report["decision_trace"] = write_final_decision_trace(
+            scorer_model, device, test_dataset.series, p, thresholds["timeseries"],
+            options={"wsz": window, "stride": stride, **options},
+            threshold_operator="gt", labels=test_dataset.targets)
     calibration = {"source": "held-out clean train tail", "quantile": quantile,
                    "window_threshold": thresholds["window"],
                    "timeseries_threshold": thresholds["timeseries"],
@@ -449,40 +452,6 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     for path, payload in ((p["metrics_path"], report), (p["calibration_path"], calibration)):
         with open(path, "w") as stream:
             json.dump(payload, stream, indent=2)
-    np.savez_compressed(
-        p["scores_path"], window_scores=test["window_scores"],
-        timeseries_scores=test["timeseries_scores"],
-        start_idxs=test["starts"], end_idxs=test["ends"],
-        input_start_idxs=test["input_starts"], input_end_idxs=test["input_ends"],
-        cover_counts=test["cover_counts"],
-        non_overlap_window_scores=non_overlap_test["window_scores"],
-        non_overlap_window_start_idxs=non_overlap_test["starts"],
-        non_overlap_window_end_idxs=non_overlap_test["ends"],
-        non_overlap_window_cover_counts=non_overlap_test["cover_counts"],
-        non_overlap_window_predictions=(non_overlap_test["window_scores"]
-                                        > thresholds["non_overlap_window"]),
-        non_overlap_window_labels=np.asarray([
-            np.any(test_dataset.targets[s:e])
-            for s, e in zip(non_overlap_test["starts"], non_overlap_test["ends"])], dtype=np.int64),
-        window_predictions=test["window_scores"] > thresholds["window"],
-        timeseries_predictions=(test["timeseries_scores"] > thresholds["timeseries"])
-                              & (test["cover_counts"] > 0),
-        window_labels=np.asarray([np.any(test_dataset.targets[s:e])
-                                  for s, e in zip(test["starts"], test["ends"])], dtype=np.int64),
-        timestep_labels=test_dataset.targets)
-    from torch.utils.tensorboard import SummaryWriter
-
-    with SummaryWriter(str(Path(p["jepa_dir"]) / "suite_evaluation")) as writer:
-        if inference_speed is not None:
-            for name in ("batch_ms", "ms_per_window", "windows_per_second",
-                         "input_timesteps_per_second"):
-                writer.add_scalar(f"inference/{name}", inference_speed[name], 0)
-        for procedure, values in evaluation.items():
-            for source in ("calibrated", "oracle"):
-                for name, value in tensorboard_threshold_metrics(values[source]):
-                    writer.add_scalar(f"test/{procedure}/{source}/{name}", value, 0)
-            for name in ("vus_pr", "vus_roc"):
-                writer.add_scalar(f"test/{procedure}/{name}", values[name], 0)
     return report
 
 
@@ -500,19 +469,11 @@ def _save_resolved_config(exp, directory):
     path.write_text(yaml.safe_dump(exp.config, sort_keys=False))
 
 
-SUMMARY_FIELDS = ["framework", "experiment_name", "experiment_key", "phase1_experiment", "run", "status", "runner", "dataset", "fname",
-                  "timeseries_f1", "window_f1", "vus_pr", "vus_roc",
-                  "scored_timesteps", "total_timesteps", "output_window",
-                  "seconds", "checkpoint", "metrics_path", "error"]
-
-
 def write_summary(directory, rows):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "summary.json").write_text(json.dumps(rows, indent=2))
-    with (directory / "summary.csv").open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=SUMMARY_FIELDS)
-        writer.writeheader()
-        writer.writerows(rows)
+    from utils.evaluation_summary import write_mode_csvs
+    write_mode_csvs(directory, rows)
 
 
 def run_suite(plan, root_dir, env_path, version, *, score_only=False,
@@ -520,11 +481,12 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
     """Run dependencies once, save partial summaries, and isolate failed experiments."""
     rows, statuses = [], {}
     planned_keys = {exp.key for exp in plan}
-    identities = {(exp.config["train_db_name"], exp.config["fname"]) for exp in plan}
+    identities = {(exp.config["train_db_name"], exp.config["fname"],
+                   exp.config.get("experiment_version")) for exp in plan}
     if len(identities) != 1:
-        raise ValueError("a suite run must contain one dataset and one series")
-    dataset, fname = identities.pop()
-    summary_dir = Path(root_dir) / dataset / "summaries"
+        raise ValueError("a suite run must contain one dataset, series and experiment_version")
+    dataset, fname, _ = identities.pop()
+    summary_dir = Path(dataset_output_dir(root_dir, plan[0].config)) / "summaries"
     if version != DEFAULT_VERSION:
         summary_dir /= version
     if fname != dataset:
@@ -557,9 +519,9 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
                     train_experiment(exp, env_path, version)
                 report = score_experiment(exp, env_path, version)
                 values = report["evaluation"]
-                row.update(status="completed",
-                           timeseries_f1=values["timeseries"]["calibrated"]["f1_no_pa"],
-                           window_f1=values["window"]["calibrated"]["f1_no_pa"],
+                row.update(status="completed", evaluation=values,
+                           timeseries_f1=values["timeseries"]["calibrated"]["f1"],
+                           window_f1=values["window"]["calibrated"]["f1"],
                            vus_pr=values["timeseries"]["vus_pr"],
                            vus_roc=values["timeseries"]["vus_roc"],
                            **{k: report["coverage"][k] for k in
@@ -578,8 +540,8 @@ def run_suite(plan, root_dir, env_path, version, *, score_only=False,
             break
     print("\nExperiment                                      Status       Series F1  Window F1  VUS PR")
     for row in combined.values():
-        values = "  ".join(f"{row[k]:.4f}" if k in row else "   -  "
+        values = "  ".join(f"{row[k]:.4f}" if row.get(k) is not None else "   -  "
                             for k in ("timeseries_f1", "window_f1", "vus_pr"))
         print(f"{row.get('experiment_key', row['framework']+'/'+row['experiment_name']):<47} {row['status']:<12} {values}")
-    print(f"Summary: {summary_dir / 'summary.csv'}", flush=True)
+    print(f"Reports: {summary_dir}", flush=True)
     return rows

@@ -1,24 +1,24 @@
-"""Independent AE/VAE training and two-granularity reconstruction evaluation."""
+"""AE/VAE training and shared three-mode anomaly evaluation."""
 
-import json
 import os
 import random
 
 import numpy as np
 import torch
-from sklearn.metrics import f1_score, precision_recall_curve
-from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import precision_recall_curve
 
 from data.jepa_dataset import JEPADataset
-from metrics.affiliation.generics import convert_vector_to_events
-from metrics.f1_score_f1_pa import event_f1
-from metrics.vus.metrics import get_range_vus_roc
 from models.ae_baseline import reconstruction_objective
 from models.builders import get_ae_model, get_vae_model
 from utils.common_config import (get_jepa_datasets, get_optimizer, get_scheduler,
                                  get_train_dataloader, get_val_dataloader)
 from utils.config import create_config, entry_overrides, load_experiment_config
 from utils.evaluation_schedule import evaluation_interval, should_evaluate
+from utils.checkpointing import Checkpoints, inference_metadata
+from utils.utils import Logger
+from utils.evaluation_metrics import decision_metrics, score_metrics
+from utils.evaluation_logging import (log_evaluation, record_evaluation, loss_metrics,
+                                      log_losses, record_losses, latent_variance, truncate_epoch_history)
 from utils.scoring import (aggregate_score_maps, covered_evaluation_view,
                            evaluation_options)
 
@@ -72,8 +72,9 @@ def score_both(model, series: np.ndarray, window: int, stride: int,
 
 
 def _oracle_threshold(scores: np.ndarray, labels: np.ndarray) -> float:
+    scores = np.asarray(scores, dtype=np.float64)
     if not np.any(labels):
-        raise ValueError("test labels contain no anomalies; oracle F1 undefined")
+        return float(np.max(scores))
     precision, recall, thresholds = precision_recall_curve(labels, scores)
     f1 = np.divide(2 * precision[:-1] * recall[:-1],
                    precision[:-1] + recall[:-1],
@@ -85,11 +86,7 @@ def _oracle_threshold(scores: np.ndarray, labels: np.ndarray) -> float:
 
 
 def _classification(scores, labels, threshold) -> dict:
-    pred = (scores > threshold).astype(np.int64)
-    return {"threshold": float(threshold),
-            "f1_no_pa": float(f1_score(labels, pred, zero_division=0)),
-            "event_f1_no_pa": float(event_f1(
-                labels, convert_vector_to_events(labels), pred))}
+    return decision_metrics(scores, labels, threshold)
 
 
 def calibration_at_threshold(clean_scores, threshold) -> dict:
@@ -122,16 +119,17 @@ def calibration_at_threshold(clean_scores, threshold) -> dict:
 def _evaluate_protocol(scores, labels, clean_scores, quantile, vus_window):
     calibrated = float(np.quantile(clean_scores, quantile))
     oracle = _oracle_threshold(scores, labels)
-    vus = get_range_vus_roc(scores, labels, vus_window)
+    independent = score_metrics(scores, labels, vus_window)
     calibrated_metrics = _classification(scores, labels, calibrated)
     calibrated_metrics["calibration_quantile"] = float(quantile)
     oracle_metrics = _classification(scores, labels, oracle)
     oracle_metrics.update(calibration_at_threshold(clean_scores, oracle))
+    for metrics in (calibrated_metrics, oracle_metrics):
+        metrics["pa_f1"] = metrics.pop("pa_f1")
     return {
         "calibrated": calibrated_metrics,
         "oracle": oracle_metrics,
-        "vus_pr": float(vus["VUS_PR"]),
-        "vus_roc": float(vus["VUS_ROC"]),
+        **independent,
     }
 
 
@@ -206,7 +204,7 @@ def evaluate_non_overlap_window(model, val_series, test_series, test_labels,
 def _run_epoch(model, loader, optimizer, device, beta: float, writer,
                epoch: int, training: bool) -> dict:
     model.train(training)
-    totals = {"loss": 0.0, "mse": 0.0, "kl": 0.0}
+    totals = {}
     count = 0
     context = torch.enable_grad() if training else torch.no_grad()
     with context:
@@ -219,75 +217,23 @@ def _run_epoch(model, loader, optimizer, device, beta: float, writer,
             if training:
                 losses["loss"].backward()
                 optimizer.step()
+            latent = outputs["latent"].detach().float()
+            losses = loss_metrics(losses, reconstruction_key="mse")
+            losses["latent_var"] = latent_variance(latent)
             for name, value in losses.items():
-                totals[name] += float(value.detach()) * x.size(0)
+                totals[name] = totals.get(name, 0.0) + float(value.detach()) * x.size(0)
             count += x.size(0)
     if count == 0:
         raise ValueError("empty data loader; lower batch size or window length")
     averages = {name: value / count for name, value in totals.items()}
     prefix = "train" if training else "validation"
-    for name, value in averages.items():
-        writer.add_scalar(f"{prefix}/{name}", value, epoch)
+    log_losses(writer, prefix, averages, epoch)
     return averages
 
 
-def _save(path, model, optimizer, scheduler, epoch, losses, evaluation,
-          config, train_dataset, selection) -> None:
-    payload = {
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(),
-        "epoch": epoch,
-        "losses": losses,
-        "evaluation": evaluation,
-        "selection": selection,
-        "inference": {
-            "arm": "vae" if model.variational else "ae",
-            "model_kwargs": dict(config["model_kwargs"]),
-            "recon_kwargs": dict(config.get("recon_kwargs", {})),
-            "window_length": int(config["wsz"]),
-            "stride": int(config["stride"]),
-            "score_mode": model.score_mode,
-            "score": "mean_timestep_score_map",
-            "overlap": "cover_count_mean",
-            "vae_latent": "posterior_mean" if model.variational else None,
-            "normalization_mean": np.asarray(train_dataset.mean).tolist(),
-            "normalization_std": np.asarray(train_dataset.std).tolist(),
-        },
-        "config": dict(config),
-    }
-    torch.save(payload, path)
-
-
-def tensorboard_threshold_metrics(metrics):
-    """Keep decision metrics on dashboards; retain calibration diagnostics in JSON."""
-    diagnostics = {"calibration_threshold", "calibration_threshold_in_range",
-                   "clean_anomaly_fraction"}
-    return ((name, value) for name, value in metrics.items() if name not in diagnostics)
-
-
-def _log_evaluation(writer, evaluation, epoch):
-    for protocol, metrics in evaluation.items():
-        for threshold_source in ("calibrated", "oracle"):
-            for name, value in tensorboard_threshold_metrics(metrics[threshold_source]):
-                writer.add_scalar(f"test/{protocol}/{threshold_source}/{name}",
-                                  value, epoch)
-        writer.add_scalar(f"test/{protocol}/vus_pr", metrics["vus_pr"], epoch)
-        writer.add_scalar(f"test/{protocol}/vus_roc", metrics["vus_roc"], epoch)
-
-
-def record_test_evaluation(config, evaluation, epoch, log):
-    """Persist every scheduled evaluation and display all available metrics."""
-    with open(os.path.join(config["jepa_dir"], "test_evaluations.jsonl"), "a") as stream:
-        stream.write(json.dumps({"epoch": epoch, "evaluation": evaluation}) + "\n")
-    for protocol, metrics in evaluation.items():
-        parts = []
-        for source in ("calibrated", "oracle"):
-            values = ", ".join(f"{name}={value:.6f}"
-                               for name, value in metrics[source].items())
-            parts.append(f"{source}: {values}")
-        parts.extend(f"{name}={metrics[name]:.6f}" for name in ("vus_pr", "vus_roc"))
-        log(f"Test eval [{epoch}] {protocol} | " + " | ".join(parts))
+# Compatibility exports for callers; reporting itself has one implementation.
+_log_evaluation = log_evaluation
+record_test_evaluation = record_evaluation
 
 
 def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
@@ -319,7 +265,7 @@ def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
 
     _log_evaluation(Writer(), metrics, epoch)
     record_test_evaluation(config, metrics, epoch, logger.log)
-    return metrics["timeseries"]["calibrated"]["f1_no_pa"]
+    return metrics
 
 
 def run_arm(arm, args, update_dictionary=None):
@@ -368,24 +314,28 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
     out_dir = config["jepa_dir"]
-    writer = SummaryWriter(os.path.join(out_dir, "tensorboard"))
+    logger = Logger(config["version"], verbose=3, file_path=out_dir, delete_files=False)
     beta = float(config.get("beta", 0.3)) if arm == "vae" else 0.0
     if beta < 0:
         raise ValueError("beta must be nonnegative")
     eval_every = evaluation_interval(config)
-    best = {"validation_loss": float("inf")}
-    for protocol in ("window", "timeseries", "non_overlap_window"):
-        for key in ("calibrated_f1", "oracle_f1", "vus_pr", "vus_roc"):
-            best[f"{protocol}_{key}"] = float("-inf")
-    last_path = os.path.join(out_dir, "last.pth.tar")
-    first_epoch = 1
+    last_path = config["jepa_checkpoint"]
+    if not os.path.exists(last_path):
+        last_path = os.path.join(out_dir, "last.pth.tar")  # legacy AE/VAE resume
+    first_epoch, best = 1, None
     if os.path.exists(last_path):
         checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
-        best.update(checkpoint["best"])
+        best = checkpoint.get("best")
         first_epoch = int(checkpoint["epoch"]) + 1
+    if first_epoch > 1:
+        logger.resume_from(first_epoch - 1)
+        truncate_epoch_history(out_dir, first_epoch - 1)
+    writer = logger.experiment
+    checkpoints = Checkpoints(config, model, optimizer, scheduler, best=best,
+                              extra={"inference": inference_metadata(config, train_dataset)})
     try:
         for epoch in range(first_epoch, int(config["epochs"]) + 1):
             train_losses = _run_epoch(model, train_loader, optimizer, device,
@@ -395,6 +345,10 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
             scheduler.step()
             losses = {"train": train_losses, "validation": val_losses,
                       "beta": beta}
+            for split, values in (("train", train_losses), ("validation", val_losses)):
+                record_losses(config, split, values, epoch,
+                              logger.log)
+            writer.add_scalar("train/learning_rate", optimizer.param_groups[0]["lr"], epoch)
             # Validation selects weights independently of test monitoring.
             # Unscheduled checkpoints deliberately carry evaluation=None.
             do_eval = should_evaluate(epoch, int(config["epochs"]), eval_every)
@@ -404,67 +358,8 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
             if evaluation is not None:
                 _log_evaluation(writer, evaluation, epoch)
                 record_test_evaluation(config, evaluation, epoch,
-                                       lambda message: print(message, flush=True))
-            candidates = {"validation_loss": (val_losses["loss"], "min",
-                                              "best_validation_loss.pth.tar",
-                                              {"metric": "loss", "source": "validation"})}
-            if evaluation is not None:
-                for protocol, metrics in evaluation.items():
-                    for source in ("calibrated", "oracle"):
-                        key = f"{protocol}_{source}_f1"
-                        candidates[key] = (
-                            metrics[source]["f1_no_pa"], "max",
-                            f"best_test_{key}.pth.tar",
-                            {"metric": "f1_no_pa", "source": "test",
-                             "procedure": protocol, "threshold_source": source,
-                             "threshold": metrics[source]["threshold"]})
-                    for metric in ("vus_pr", "vus_roc"):
-                        key = f"{protocol}_{metric}"
-                        candidates[key] = (
-                            metrics[metric], "max", f"best_test_{key}.pth.tar",
-                            {"metric": metric, "source": "test",
-                             "procedure": protocol,
-                             "threshold_source": "independent"})
-            for key, (value, mode, filename, selection) in candidates.items():
-                improved = value < best[key] if mode == "min" else value > best[key]
-                if improved and np.isfinite(value):
-                    best[key] = float(value)
-                    _save(os.path.join(out_dir, filename), model, optimizer,
-                          scheduler, epoch, losses, evaluation, config,
-                          train_dataset, selection)
-            torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
-                        "scheduler": scheduler.state_dict(), "epoch": epoch,
-                        "best": best, "losses": losses, "evaluation": evaluation},
-                       last_path)
-            with open(os.path.join(out_dir, "epochs.jsonl"), "a") as stream:
-                stream.write(json.dumps({"epoch": epoch, "losses": losses,
-                                         "evaluation": evaluation}) + "\n")
-            print(f"{arm.upper()} epoch {epoch}: val loss={val_losses['loss']:.6f}"
-                  + ("; test evaluated" if do_eval else ""), flush=True)
-        with open(os.path.join(out_dir, "best_metrics.json"), "w") as stream:
-            json.dump(best, stream, indent=2)
-        selected_weights = os.path.join(out_dir, "best_validation_loss.pth.tar")
-        if config.get("decision_trace") is not False and os.path.isfile(selected_weights):
-            # Ordinary AE/VAE training also exports the final validation-selected
-            # replay; --score and suite scoring refresh it through score_experiment.
-            from utils.decision_trace import write_final_decision_trace
-
-            selected = torch.load(selected_weights, map_location="cpu", weights_only=False)
-            model.load_state_dict(selected["model"])
-            options = evaluation_options(config)
-            window, stride = options.pop("wsz"), options.pop("stride")
-            clean = score_both(model, val_dataset.series, window, stride,
-                               int(config.get("score_batch_size", config["batch_size"])),
-                               device, **options)
-            quantile = float(config.get("calibration_kwargs", {}).get(
-                "quantile", config.get("calibration_quantile", 0.99)))
-            threshold = float(np.quantile(
-                clean["timeseries_scores"][clean["cover_counts"] > 0], quantile))
-            artifact = write_final_decision_trace(
-                model, device, test_dataset.series, config, threshold,
-                options={"wsz": window, "stride": stride, **options},
-                threshold_operator="gt", labels=test_dataset.targets)
-            print(f"{arm.upper()} validation-selected decision replay: {artifact['html']}", flush=True)
-        return best
+                                       logger.log)
+            checkpoints.update(epoch, losses, evaluation, evaluated=do_eval)
+        return checkpoints.best
     finally:
-        writer.close()
+        logger.finalize()

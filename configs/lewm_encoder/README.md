@@ -34,78 +34,83 @@ Checkpoints, TensorBoard logs, calibration, scores, and metrics live in each
 final `jepa*` directory. AE/VAE keep their framework/experiment layout.
 
 AE, VAE, LEWM pretraining/adaptation, reconstruction, and cross-attention
-validate after every training epoch. All use top-level `eval_every` for test monitoring: the default is
-10, evaluation runs at each multiple and at the final epoch, and `0` disables
-it. Set `common.eval_every` in a suite manifest to apply the same cadence to
-every arm. The older `stage_c.eval_every` is a fallback when top-level
-`eval_every` is absent. At every evaluation, all three procedures (window,
-time-series, non-overlap window) print calibrated/oracle F1, event F1,
-thresholds, and VUS PR/ROC, and append full metrics with the epoch to
-`test_evaluations.jsonl`. TensorBoard receives the same metrics under `test/`.
+share the same logging and snapshot policy. Training and validation log every
+loss component once per epoch, including `reconstruction loss` and `latent_var`.
+Variance is the sample-weighted mean of per-batch, per-channel population
+variance across samples and latent positions (averaged across latent levels).
+For phase-one and latent-target heads, `reconstruction loss` denotes their
+latent prediction objective. For AE/VAE it is MSE; the mirrored head uses L1.
+The total `loss` includes the arm's regularizers and selects validation weights.
 
-Validation and periodic `test/*` TensorBoard scalars use completed epochs
-starting at 1 and continue after resume. Validation improvements do not trigger
-extra test evaluations; an AE/VAE validation checkpoint saved between evaluation
-epochs has `evaluation: null`. Use the scoring entry point to evaluate its saved
-weights. Training objectives still differ by arm, so their loss values need not
-match.
+`eval_every` defaults to 10 and evaluates at multiples and the final epoch;
+0 disables test monitoring. `stage_c.eval_every` is a fallback if the top-level
+setting is absent. Three independent TensorBoard sections and CSV histories are:
 
-Final suite scoring adds `non_overlap_window` alongside `window` and `timeseries`.
-`eval_window_size` sets the maximum VUS buffer parameter in original timesteps
-(default: 100), with no hidden multiplier. Time-series VUS sweeps 0 through this
-value. Window-level evaluation converts it to score samples using
-`max(1, eval_window_size // stride)`; non-overlap evaluation uses the scored
-region length as its stride. This conversion is approximate at coarse resolution.
-The setting also applies to point-adjusted VUS. Changing this convention requires
-re-scoring existing runs to compare their VUS values.
-For every reconstruction experiment, suite scoring forces `score_aux_crop: false`
-to match training-time test monitoring, even when the experiment config enables
-auxiliary crops. The effective value is recorded in `evaluation_settings`.
-It reuses the scorer with evaluation stride equal to the scored region length
-(the full input window, or the target crop for cross-attention) and
-`include_last_window: false`. Each covered timestep contributes to exactly one
-window score; window labels still use any anomalous timestep in that region.
-Input context can overlap, and initial context or an incomplete tail can remain
-unscored. `coverage.non_overlap_window` records the actual coverage and stride.
-This additional pass has its own clean-tail threshold; its metrics are under
-`test/non_overlap_window/*` in `suite_evaluation` and
-`evaluation.non_overlap_window` in `metrics.json`. Scores, intervals, labels,
-predictions, and coverage counts use the `non_overlap_window_` prefix in
-`scores.npz`. Training-time monitoring retains its original two families.
+- `Test_window` / `Test_window.csv`: overlapping windows, one mean score per window.
+- `Test_non_overlap` / `Test_non_overlap.csv`: disjoint scored regions.
+- `Test_timeseries` / `Test_timeseries.csv`: overlap-averaged timestep scores.
 
-Final suite scoring reports `test/<procedure>/oracle/calibration_quantile`
-in `suite_evaluation` and the corresponding `evaluation.<procedure>.oracle`
-fields in `metrics.json`. This inverts the default linear calibration quantile
-on the held-out clean train tail at the test-oracle F1 threshold.
-`clean_anomaly_fraction` is the fraction of those clean scores strictly above
-the oracle threshold. `calibration_threshold` shows the threshold produced by
-the reported quantile; `calibration_threshold_in_range` is false if the oracle
-lies outside the clean-score range, in which case the quantile is clamped to
-0 or 1. Window and timeseries quantiles can differ. To reproduce a reported
-quantile in suite scoring, set `calibration_kwargs.quantile` (for example under
-the manifest's `common`). These are test-oracle diagnostics, not a normal-only
-tuning procedure, and do not change the configured calibration.
+The reported metrics are event F1, F1, range F1, affiliation F1, PA F1,
+VUS PR/ROC and AUC PR/ROC. Calibrated and oracle decisions stay separate;
+continuous-score metrics appear once per mode. Ordinary decision metrics use
+`f1` and `event_f1`; adjusted F1 is `pa_f1`. TensorBoard also records
+`<source>/threshold` and `<source>/quantile` for calibrated and oracle decisions. PA F1 runs last on a private
+prediction array. Event intervals use exclusive end indices; the PA wrapper
+also handles events starting at index zero. Undefined score metrics (single-class labels) are null in JSON
+and empty in CSV. AUC PR uses trapezoidal PR area; range F1 uses flat positional
+bias and alpha=0.2 existence reward. Epochs are one-based in logs and snapshots.
+`test_evaluations.jsonl` retains the complete scheduled evaluation history;
+`train.csv` and `validation.csv` retain the individual epoch losses and variance.
 
-TensorBoard keeps `threshold` and `calibration_quantile` for each threshold
-source. The additional `calibration_threshold`,
-`calibration_threshold_in_range`, and `clean_anomaly_fraction` diagnostics
-are retained in JSON reports only. Existing event files retain their old tags.
+All runners save:
 
-AE/VAE training and final scoring export `decision_trace.html` and
-`decision_trace.json` alongside the weights. The HTML replays test-window
-arrivals using validation-selected weights and a clean-tail threshold; labels
-only annotate the display. Purple bands show ground-truth anomalies, colored
-dots show predicted decisions, and two white lines mark the current checking
-interval `[start, end)` rather than the input/context window.
+- `best_validation_loss.pth.tar` for the best validation loss.
+- `best_test_<mode>_oracle_f1.pth.tar` for each mode's best oracle F1.
+- One rolling `checkpoint.pth.tar`, overwritten at `save_every` multiples
+  (default 10), evaluation epochs, and the final epoch. No `epoch_NNNN` archives
+  are created. `save_every: 0` disables periodic saves.
+- `final.pth.tar` at completion.
 
-Use the arrival slider to replay updates and the timestep slider to choose a
-position inside that arrival's checking window. The top chart shows the latest
-running mean at each scored timestep. The lower chart tracks the selected
-timestep's mean only across arrivals that scored it, up to the replay position.
-Scroll to zoom, drag to pan, or use the chart buttons; “Show checking window”
-fits the top chart to the current checking interval. The default replay contains
-the first 256 windows; set `decision_trace.max_windows: null` for all windows or
-`decision_trace: false` to disable export.
+Each checkpoint is saved directly under its stable filename as a regular file.
+`model.pth.tar` stores the best validation snapshot; `model_best_eval.pth.tar`
+stores the best timeseries oracle snapshot. `best_metrics.json` records the latest
+epoch and a `checkpoints` entry with the epoch and selection for each saved file.
+Existing epoch archives from older runs are preserved.
+
+Snapshots include weights, optimizer/scheduler state, configuration, current
+losses/evaluation, selection metadata and best-metric tracking for resume.
+Resume discards stale scalar/CSV history beyond the saved epoch while keeping
+best-snapshot selection values, including improvements after a periodic save.
+Validation selection stays independent of test-oracle selections. Between
+evaluation epochs a snapshot has `evaluation: null`.
+
+Final `--score` and evaluation-suite passes create no TensorBoard writer.
+They export `metrics.json`, `calibration.json`, and, per mode,
+`Test_<mode>_metrics.csv`, `Test_<mode>_scores.csv`, and `Test_<mode>.html` using
+the three names above. These replace the old `scores.npz` and
+`suite_evaluation` event stream. Suite summaries also have three independent
+`Test_<mode>_summary.csv` files. Existing artifacts are left in place.
+
+HTML figures reuse the original interactive interface: logarithmic scale by
+default, a linear-scale option, scroll/button zoom, drag pan, reset controls,
+timestep selection, tooltips, and a full anomaly overview. The primary slider
+moves through the actual evaluation checking windows and shows their start,
+end and width, separately from the input/context window. Both charts highlight
+the selected checking region. All original timestep coordinates and all exact
+scores are retained once in compact typed arrays. The overview caps visible SVG
+marks per pixel; zooming reveals individual timesteps. Wheel/drag redraws are batched. There is no resize-observer feedback loop.
+Metrics and score CSVs use full resolution. Detailed window-arrival replay
+remains optional: `decision_trace: {enabled: true, max_windows: 32}`.
+
+Non-overlap evaluation uses the scored region length as its stride and never
+adds an overlapping tail window. Initial context and incomplete tails can
+remain unscored; coverage is recorded in JSON. Reconstruction evaluation forces
+`score_aux_crop: false` to match training-time monitoring. Cross-attention
+`context_crop` and `target_crop` are expressed in input timesteps.
+
+`eval_window_size` is converted to window-score units for window evaluation.
+Oracle calibration diagnostics (equivalent clean-tail quantile and anomaly
+fraction) remain in JSON; they do not change the configured clean calibration.
 
 ## Naming and configuration
 
@@ -183,8 +188,7 @@ separate scoring config, including the auxiliary-crop arm.
 ```
 
 AE/VAE use `best_validation_loss.pth.tar`; LEWM and its phase-two frameworks
-use their best-validation `model.pth.tar` (LEWM can fall back to its resume
-checkpoint). `--score_checkpoint` selects an explicit weights file.
+use their best-validation `model.pth.tar` . `--score_checkpoint` selects an explicit weights file.
 
 The PSM manifest uses `pretrained_experiment: lewm_encoder/<phase1 name>` to
 train each source once before its dependent arms. Complete phase-two keys

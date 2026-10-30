@@ -2,10 +2,12 @@ import os
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from utils.utils import AverageMeter
 from utils.evaluation_schedule import should_evaluate
+from utils.checkpointing import Checkpoints, inference_metadata
+from utils.evaluation_logging import (loss_metrics, record_losses, latent_variance,
+                                      truncate_epoch_history)
 
 
 class Trainer:
@@ -86,13 +88,6 @@ class Trainer:
             if self._codebook_samples is not None and i < 8:
                 for name, z in extras["latents"].items():
                     self._codebook_samples[name].append(z.detach().cpu())
-            for key, value in losses.items():
-                if f"meter_{key}" not in meters:
-                    meters[f"meter_{key}"] = AverageMeter(key, ":.4e")
-                meters[f"meter_{key}"].update(value.item())
-                self.logger.scalar_summary("Train Loss", key, value.item(),
-                                           epoch * len(loader) + i)
-
             self.scaler.scale(losses["loss"]).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -100,21 +95,19 @@ class Trainer:
             self.model.update_ema()
             self.model.update_running_stats(extras["latents"])
 
-            if i % 100 == 0:
-                var = self.model.latent_variance(extras["latents"])
-                self.logger.scalar_summary("Train Loss", "latent_var",
-                                           var, epoch * len(loader) + i)
-                progress = " | ".join(
-                    f"{k[6:]} {m.avg:.4e}" for k, m in sorted(meters.items())
-                )
-                self.logger.log(f"Epoch [{epoch+1}] batch [{i}/{len(loader)}] "
-                                f"latent_var {var:.4f} {progress}")
+            values = loss_metrics(losses)
+            values["latent_var"] = latent_variance(extras["latents"])
+            for key, value in values.items():
+                if key not in meters:
+                    meters[key] = AverageMeter(key, ":.4e")
+                scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
+                meters[key].update(scalar, extras["ts"].size(0))
 
         if self._codebook_samples is not None:
             self.model.codebook.init_from_latents(self._codebook_samples,
                                                   logger=self.logger)
             self._codebook_samples = None
-        return {key[6:]: meter.avg for key, meter in meters.items()}
+        return {key: meter.avg for key, meter in meters.items()}
 
     @torch.no_grad()
     def validate(self, loader) -> float:
@@ -126,73 +119,61 @@ class Trainer:
         train-calibrated threshold scale. Default None = legacy dense path.
         """
         self.model.eval()
-        total, count = 0.0, 0
+        totals, count = {}, 0
         for batch in loader:
             ts = self._to_model_input(batch["ts"], self.device)
             mask = self._make_mask(self.val_collator, ts.size(0), ts.size(-1),
                                    self.model.level_strides, ts)
             outputs = self.model(ts, mask=mask)
             losses = self.criterion(outputs)
-            total += losses["pred_loss"].item() * ts.size(0)
+            values = loss_metrics(losses)
+            values["latent_var"] = latent_variance(outputs["latents"])
+            for key, value in values.items():
+                scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
+                totals[key] = totals.get(key, 0.0) + scalar * ts.size(0)
             count += ts.size(0)
-        return total / max(count, 1)
+        if count == 0:
+            raise ValueError("empty validation loader")
+        self.validation_metrics = {key: value / count for key, value in totals.items()}
+        return self.validation_metrics["loss"]
 
     # ------------------------------------------------------------------ #
     def fit(self, train_loader, val_loader, start_epoch: int = 0,
-            best_val_loss: float = np.inf, best_test_f1: float = 0.0,
+            best_val_loss: float = np.inf,
             eval_every: int = 0, eval_fn=None):
-        """Epoch loop with best-val checkpointing.
-
-        ``eval_fn`` (when given with ``eval_every > 0``) runs after
-        validation every ``eval_every`` epochs and after the final epoch:
-        ``eval_fn(epoch_1indexed)``. It is monitoring-only by contract --
-        checkpoint selection stays on the train-tail val loss, so whatever
-        the hook observes (e.g. test labels) can never steer model
-        selection. Default (0/None) preserves the legacy loop exactly.
-        """
-        epochs = self.p["epochs"]
+        """Log complete losses and save validation/oracle/periodic snapshots."""
+        if start_epoch:
+            self.logger.resume_from(start_epoch)
+            truncate_epoch_history(self.p["jepa_dir"], start_epoch)
+        previous = {}
+        path = self.p.get("jepa_checkpoint")
+        if start_epoch and path and os.path.exists(path):
+            previous = torch.load(path, map_location="cpu", weights_only=False)
+            if "scaler" in previous:
+                self.scaler.load_state_dict(previous["scaler"])
+        best = {**previous.get("best", {}), "validation_loss": best_val_loss}
+        checkpoints = Checkpoints(self.p, self.model, self.optimizer, self.scheduler,
+                                  best=best, extra={
+                                      "anti_collapse": self.model.anti_collapse,
+                                      "inference": inference_metadata(
+                                          self.p, getattr(train_loader, "dataset", None))})
+        epochs = int(self.p["epochs"])
         for epoch in range(start_epoch, epochs):
-            self.logger.log(f"Epoch {epoch + 1}/{epochs}")
-            self.logger.log("-" * 15)
-            lr = self.optimizer.param_groups[0]["lr"]
-            self.logger.log(f"Adjusted learning rate to {lr:.5g}")
-
+            step = epoch + 1
             train_losses = self.train_one_epoch(train_loader, epoch)
             self.scheduler.step()
-
-            val_loss = self.validate(val_loader)
-            self.logger.scalar_summary("validation", "pred_loss", val_loss, epoch + 1)
-            self.logger.scalar_summary("", "Learning Rate", lr, epoch + 1)
-            self.logger.metrics_summary("train", train_losses, epoch + 1)
-            self.logger.log(f"Epoch [{epoch+1}] val pred_loss {val_loss:.6f} "
-                            f"(best {best_val_loss:.6f})")
-
-            if eval_fn is not None and should_evaluate(epoch + 1, epochs, eval_every):
-                test_f1 = eval_fn(epoch + 1)
-                if test_f1 >= best_test_f1:
-                    best_test_f1 = test_f1
-                    torch.save(self.model.state_dict(), self.p["jepa_model_best"])
-
-            if val_loss < best_val_loss or (epoch + 1) == epochs:
-                improved = val_loss < best_val_loss
-                best_val_loss = min(best_val_loss, val_loss)
-                if improved:
-                    torch.save(self.model.state_dict(), self.p["jepa_model"])
-                self.save_checkpoint(epoch, best_val_loss)
-        return best_val_loss
-
-    def save_checkpoint(self, epoch: int, best_val_loss: float) -> None:
-        save_dict = {
-            "model": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.scheduler.state_dict(),
-            "epoch": epoch,
-            "next_epoch": epoch + 1,
-            "best_val_loss": best_val_loss,
-            "stage": self.p.get("stage", "pretrain"),
-            "anti_collapse": self.model.anti_collapse,
-        }
-        torch.save(save_dict, self.p["jepa_checkpoint"])
+            self.validate(val_loader)
+            val_losses = self.validation_metrics
+            for split, values in (("train", train_losses), ("validation", val_losses)):
+                self.logger.metrics_summary(split, values, step)
+                record_losses(self.p, split, values, step, self.logger.log)
+            self.logger.scalar_summary("train", "learning_rate",
+                                       self.optimizer.param_groups[0]["lr"], step)
+            do_eval = eval_fn is not None and should_evaluate(step, epochs, eval_every)
+            evaluation = eval_fn(step) if do_eval else None
+            checkpoints.update(step, {"train": train_losses, "validation": val_losses},
+                               evaluation, evaluated=do_eval, scaler=self.scaler)
+        return checkpoints.best["validation_loss"]
 
     @staticmethod
     def resume(p, model, optimizer, scheduler, logger, map_location="cpu"):

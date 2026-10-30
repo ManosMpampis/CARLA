@@ -14,7 +14,6 @@ the frozen pretext TimeAuxiliary to propose latent crops at inference
 import argparse
 import os
 
-import numpy as np
 import torch
 
 from models.builders import get_recon_model
@@ -45,10 +44,9 @@ class _GraphWrapper(torch.nn.Module):
 
 
 def _make_logger(p):
-    logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
+    logger = Logger(p["version"], verbose=3, file_path=p["jepa_dir"],
                     use_tensorboard=True, delete_files=False)
     logger.log(f"LeWM reconstruction stage '{p.get('stage', 'recon')}' --> ")
-    logger.log_hyperparams(p)
     return logger
 
 
@@ -147,8 +145,8 @@ def run_recon(p, device):
     trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger,
                       collator=None, amp=bool(p.get("amp", False)) and device.type == "cuda")
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
-    # Monitoring-only test eval every X epochs (default 10): logs test/ to
-    # TensorBoard + log.txt; checkpoint selection stays on val (no leakage).
+    # Scheduled test monitoring selects separate oracle snapshots; the
+    # default handoff remains selected by validation loss.
     from utils.evaluation_schedule import evaluation_interval
     eval_every = evaluation_interval(p)
     best_val_loss = trainer.fit(
@@ -163,101 +161,9 @@ def run_recon(p, device):
 
 @torch.no_grad()
 def run_score(p, device):
-    """Score both complete windows and overlap-averaged time series."""
-    import json
-
-    from data.jepa_dataset import JEPADataset
-    from utils.reconstruction_baselines import (score_both, evaluate_from_scores,
-                                               tensorboard_threshold_metrics)
-    from utils.scoring import evaluation_options
-
-    logger = _make_logger(p)
-    model = get_recon_model(p)
-    _assert_divisible(p, model)
-    if bool(p.get("score_aux_crop", False)) and model.aux is None:
-        raise ValueError("score_aux_crop=true needs recon_kwargs.with_aux=true "
-                         "and aux weights in the recon checkpoint")
-    weights = p.get("score_checkpoint") or (
-        p["jepa_model_best"] if p.get("score_with_best_f1", False)
-        else p["jepa_model"])
-    if not os.path.exists(str(weights)):
-        raise FileNotFoundError(f"reconstruction weights not found: {weights}")
-    Trainer.load_weights(str(weights), model, logger, strict=True)
-    model = model.to(device).eval()
-    _, val_dataset = get_jepa_datasets(p)
-    test_dataset = JEPADataset(p, train=False)
-    options = evaluation_options(p)
-    wsz, stride = options.pop("wsz"), options.pop("stride")
-    batch_size = int(p.get("score_batch_size", p.get("batch_size", 256)))
-    clean = score_both(model, val_dataset.series, wsz, stride,
-                       batch_size, device, **options)
-    test = score_both(model, test_dataset.series, wsz, stride,
-                      batch_size, device, **options)
-    eval_config = dict(p)
-    quantile = float(p.get("calibration_kwargs", {}).get("quantile", 0.99))
-    eval_config["calibration_quantile"] = quantile
-    evaluation = evaluate_from_scores(clean, test, test_dataset.targets,
-                                      eval_config)
-    baseline_model = get_recon_model(p).to(device).eval()
-    baseline_clean = score_both(baseline_model, val_dataset.series, wsz,
-                                stride, batch_size, device, **options)
-    baseline_test = score_both(baseline_model, test_dataset.series, wsz,
-                               stride, batch_size, device, **options)
-    baseline_evaluation = evaluate_from_scores(
-        baseline_clean, baseline_test, test_dataset.targets, eval_config)
-    with open(p["calibration_path"], "w") as stream:
-        json.dump({"source": "held-out validation tail", "quantile": quantile,
-                   "score_mode": model.score_mode,
-                   "window_threshold": evaluation["window"]["calibrated"]["threshold"],
-                   "timeseries_threshold": evaluation["timeseries"]["calibrated"]["threshold"]},
-                  stream, indent=2)
-    report = {"score_mode": model.score_mode,
-              "framework": "reconstruction",
-              "phase1_experiment": p.get("phase1_experiment"),
-              "experiment_name": p.get("experiment_name"),
-              "pretrained_from": p.get("pretrained_from"),
-              "selection": {"weights": str(weights),
-                            "threshold_source": "validation and test oracle, separate"},
-              "evaluation": evaluation,
-              "no_training_baseline": baseline_evaluation}
-    from utils.decision_trace import write_final_decision_trace
-
-    trace_options = {"wsz": wsz, "stride": stride, **options}
-    trace_output = write_final_decision_trace(
-        model, device, test_dataset.series, p,
-        evaluation["timeseries"]["calibrated"]["threshold"],
-        options=trace_options, threshold_operator="gt", labels=test_dataset.targets)
-    if trace_output is not None:
-        report["decision_trace"] = trace_output
-    with open(p["metrics_path"], "w") as stream:
-        json.dump(report, stream, indent=2)
-    np.savez_compressed(
-        p["scores_path"],
-        window_scores=test["window_scores"],
-        timeseries_scores=test["timeseries_scores"],
-        start_idxs=test["starts"], end_idxs=test["ends"],
-        input_start_idxs=test["input_starts"],
-        input_end_idxs=test["input_ends"],
-        cover_counts=test["cover_counts"],
-        window_predictions=(test["window_scores"] >
-                            evaluation["window"]["calibrated"]["threshold"]),
-        timeseries_predictions=(test["timeseries_scores"] >
-                                evaluation["timeseries"]["calibrated"]["threshold"]),
-        window_labels=np.asarray([np.any(test_dataset.targets[s:e])
-                                  for s, e in zip(test["starts"], test["ends"])],
-                                 dtype=np.int64),
-        timestep_labels=np.asarray(test_dataset.targets, dtype=np.int64),
-    )
-    for procedure, values in evaluation.items():
-        for source in ("calibrated", "oracle"):
-            for metric, value in tensorboard_threshold_metrics(values[source]):
-                logger.scalar_summary(f"test/{procedure}/{source}", metric,
-                                      value, 1)
-        logger.scalar_summary(f"test/{procedure}", "vus_pr", values["vus_pr"], 1)
-        logger.scalar_summary(f"test/{procedure}", "vus_roc", values["vus_roc"], 1)
-    logger.log(f"Reconstruction score report: {p['metrics_path']}")
-    logger.finalize()
-    return report
+    """Export the same three-mode report as every experiment runner."""
+    from utils.experiment_suite import score_config
+    return score_config(p, "recon")
 
 
 STAGES = {

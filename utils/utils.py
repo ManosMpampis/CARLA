@@ -195,7 +195,10 @@ class Logger:
         return self._version
         
     def _init_logger(self):
-        self.logger = logging.getLogger(name=self.name)
+        self.logger = logging.getLogger(name=f"{self.name}:{os.path.abspath(self.log_dir)}")
+        for old_handler in self.logger.handlers[:]:
+            old_handler.close()
+            self.logger.removeHandler(old_handler)
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
 
@@ -316,6 +319,14 @@ class Logger:
 
     def _add_graph(self, model, input_to_model):
         self.experiment.add_graph(model, input_to_model, False, False)
+
+    def resume_from(self, completed_epoch):
+        """Hide stale scalar steps when replaying work after a checkpoint."""
+        if self.use_tensorboard:
+            from torch.utils.tensorboard import SummaryWriter
+            self.experiment.close()
+            self.experiment = SummaryWriter(log_dir=self.experiment_dir,
+                                            purge_step=completed_epoch + 1)
 
     def finalize(self, eval_every_n_epoch: int = 50):
         handlers = self.logger.handlers[:]

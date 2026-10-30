@@ -48,7 +48,7 @@ def _device(p):
 
 
 def _make_logger(p):
-    logger = Logger(p["version"], verbose=2, file_path=p["jepa_dir"],
+    logger = Logger(p["version"], verbose=3, file_path=p["jepa_dir"],
                     use_tensorboard=True, delete_files=False)
     domain = p.get("predictor_kwargs", {}).get("domain", "frequency")
     with_aux = bool(p.get("aux_kwargs", {}).get("with_aux", True))
@@ -57,7 +57,6 @@ def _make_logger(p):
              "auxiliary without FiLM" if with_aux else "no auxiliary head")
     logger.log(f"LeWM {domain} predictor ({label}), stage "
                f"'{p.get('stage', 'pretrain')}' --> ")
-    logger.log_hyperparams(p)
     return logger
 
 
@@ -173,11 +172,9 @@ def run_adapt(p, device):
 
 @torch.no_grad()
 def run_score(p, device):
-    """Score stage: identical report flow through the shared engine."""
-    from utils.reporting import score_with_model
-
-    logger = _make_logger(p)
-    return score_with_model(p, device, get_lewm_model, logger, input_resolution=True)
+    """Export the same three-mode report as every experiment runner."""
+    from utils.experiment_suite import score_config
+    return score_config(p, "lewm")
 
 
 STAGES = {

@@ -36,7 +36,7 @@ Stable output examples:
 results/smd/ae/default/machine-1-1.txt/jepa_ae/
 results/smd/lewm_encoder/time/phase1/machine-1-1.txt/jepa_time_predictor/
 results/smd/lewm_encoder/time/cross_attention/observed_input/machine-1-1.txt/jepa_cross_attention_observed_input/
-results/smd/summaries/machine-1-1.txt/summary.csv
+results/smd/summaries/machine-1-1.txt/Test_timeseries_summary.csv
 ```
 
 An explicit `--version myrun` inserts `myrun/` immediately before the machine
@@ -52,3 +52,30 @@ For multiple checkpoints and input/crop cases, edit `evaluation.yml` and run:
 
 This uses the machine configured in `experiments.yml`; the generic evaluator
 has no default dataset. See `README_EVALUATION.md` for crop units and reports.
+
+## Group experiments below the dataset
+
+Set `common.experiment_version` in a suite manifest to insert a directory
+immediately after the dataset. For example, `configs/smd/logging_check_10e.yml`
+sets `experiment_version: logging_check_10e` and runs five models for 10 epochs
+on `machine-1-1.txt`:
+
+```bash
+./venv/bin/python experiments_smd_all.py \
+  --manifest configs/smd/logging_check_10e.yml --version run1 --fail-fast
+```
+
+Example output paths:
+
+```text
+results/smd/logging_check_10e/ae/default/run1/machine-1-1.txt/jepa_ae/
+results/smd/logging_check_10e/lewm_encoder/frequency/phase1/run1/machine-1-1.txt/jepa_frequency_predictor/
+results/smd/logging_check_10e/summaries/run1/machine-1-1.txt/
+```
+
+`experiment_version` groups the architectures; `--version` selects a run inside
+that group. Without `--version`, the extra run directory is omitted. Leaving
+`experiment_version` unset preserves the original layout. Shared encoder
+handoffs, resume lookup, suite summaries, and default evaluation-suite outputs
+all follow the group. Explicit evaluation `output_dir` still takes precedence.
+Existing result directories are preserved; this setting selects a new location.

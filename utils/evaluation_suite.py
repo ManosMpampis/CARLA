@@ -9,9 +9,9 @@ import traceback
 
 import yaml
 
-from utils.config import DEFAULT_VERSION, load_experiment_config, merge_config, validate_experiment_name
+from utils.config import DEFAULT_VERSION, dataset_output_dir, load_experiment_config, merge_config, validate_experiment_name
 from utils.experiment_suite import Experiment, build_plan, checkpoint_path, score_experiment, series_parts, _load_yaml
-from utils.evaluation_summary import flatten_evaluation, write_csv
+from utils.evaluation_summary import write_mode_csvs
 
 
 @dataclass
@@ -62,13 +62,14 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
                             experiments=[entry["experiment"] for entry in selected],
                             fname=fname, dataset_root=dataset_root)
     sources = {exp.key: exp for exp in plan}
-    identities = {(exp.config["train_db_name"], exp.config["fname"]) for exp in plan}
+    identities = {(exp.config["train_db_name"], exp.config["fname"],
+                   exp.config.get("experiment_version")) for exp in plan}
     if len(identities) != 1:
-        raise ValueError("an evaluation manifest must select one dataset and one series")
-    dataset, _ = identities.pop()
+        raise ValueError("an evaluation manifest must select one dataset, series and experiment_version")
+    dataset, _, _ = identities.pop()
     output_root = manifest.get("output_dir")
     output_root = ((manifest_path.parent / output_root).resolve() if output_root
-                   else Path(root).resolve() / dataset / "evaluations" / name)
+                   else Path(dataset_output_dir(root, plan[0].config)).resolve() / "evaluations" / name)
     if not manifest.get("output_dir"):
         output_root = output_root.joinpath(*series_parts(plan[0].config))
     elif fname is not None and fname != dataset:
@@ -132,7 +133,8 @@ def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=Fals
         saved = combined.get(job.key)
         if (skip_completed and saved and saved.get("status") == "completed"
                 and (job.output_dir / "metrics.json").is_file()
-                and (job.output_dir / "suite_evaluation").is_dir()):
+                and all((job.output_dir / f"{section}_metrics.csv").is_file()
+                        for section in ("Test_window", "Test_non_overlap", "Test_timeseries"))):
             print(f"SKIP {job.key} (completed)", flush=True)
             rows.append(saved)
             continue
@@ -164,7 +166,7 @@ def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=Fals
         combined[job.key] = row
         output_root.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(list(combined.values()), indent=2))
-        write_csv(output_root / "summary.csv", [flatten_evaluation(r) for r in combined.values()])
+        write_mode_csvs(output_root, list(combined.values()))
         speed = row.get("inference_speed", {}).get("windows_per_second")
         timing = f", {speed:.1f} windows/s" if speed is not None else ""
         print(f"{row['status'].upper()} {job.key}: {row['seconds']:.2f}s{timing}", flush=True)

@@ -36,7 +36,7 @@ def main():
         np.testing.assert_allclose(result["calibration_quantile"], q, atol=1e-14)
         np.testing.assert_allclose(result["calibration_threshold"], threshold, atol=1e-14)
     clean = np.asarray([0., 10., 20.])
-    with patch('utils.reconstruction_baselines.get_range_vus_roc',
+    with patch('utils.evaluation_metrics.get_range_vus_roc',
                return_value={'VUS_PR': 0.5, 'VUS_ROC': 0.5}):
         result = _evaluate_protocol(np.asarray([1., 5., 15., 18.]),
                                     np.asarray([0, 0, 1, 1]), clean, 0.95, 1)

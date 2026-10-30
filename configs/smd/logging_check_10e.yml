@@ -1,0 +1,60 @@
+# Isolated five-model logging/checkpoint check on one SMD machine.
+# Outputs: results/smd/logging_check_10e/<architecture>/...
+# --version optionally selects a separate run inside this experiment group.
+# This manifest is independent of the active experiments.yml roster.
+common:
+  experiment_version: logging_check_10e
+  train_db_name: smd
+  val_db_name: smd
+  fname: machine-1-1.txt
+  epochs: 10
+  eval_every: 2
+  save_every: 5
+  seed: 4
+  device: cuda
+  amp: false
+  wsz: 1024
+  stride: 10
+  val_fraction: 0.1
+  batch_size: 32
+  num_workers: 0
+  score_batch_size: 256
+  model_kwargs:
+    in_channels: 38
+    enc_channels: [32, 64, 128]
+    enc_strides: [2, 2, 2]
+    norm: batch
+    dropout: 0.1
+  stage_a: {corpus: single}
+  calibration_quantile: 0.995
+  calibration_kwargs: {quantile: 0.995}
+  eval_window_size: 100
+  decision_trace: false
+
+experiments:
+  - framework: ae
+    experiment_name: default
+    runner: ae
+    config: ../baselines/ae.yml
+
+  - framework: vae
+    experiment_name: default
+    runner: vae
+    config: ../baselines/vae.yml
+
+  - framework: lewm_encoder
+    experiment_name: frequency
+    runner: lewm
+    config: ../lewm_encoder/frequency/phase1.yml
+
+  - framework: reconstruction
+    experiment_name: default
+    runner: recon
+    config: ../lewm_encoder/frequency/reconstruction/default.yml
+    pretrained_experiment: lewm_encoder/frequency
+
+  - framework: cross_attention
+    experiment_name: observed_features
+    runner: cross_attention
+    config: ../lewm_encoder/frequency/cross_attention/observed_features.yml
+    pretrained_experiment: lewm_encoder/frequency
