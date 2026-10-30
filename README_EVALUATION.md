@@ -2,6 +2,49 @@
 
 ## Configured checkpoint evaluation suite
 
+### SMD inference window sweep
+
+```bash
+./venv/bin/python evaluate_suite.py --manifest configs/smd/inference_window_sweep.yml \
+    --all-machines --cpu-threads 4 --skip-completed
+```
+
+This reuses all existing validation-selected checkpoints without training.
+All models run total input lengths 512, 256 and 128. Cross-attention models
+also run consecutive context/target lengths (512,256), (512,128), (256,128),
+giving total inputs 768, 640, 384. The extra cases specify `context_length`
+and `target_length` in raw timesteps; these must sum to `input_window` and
+be divisible by encoder stride. Existing `context_crop`/`target_crop` token
+intervals remain supported as an alternative. Query source and target domain
+remain as trained; context-query variants still form queries from context.
+
+The manifest's `experiments: all` selects every training-manifest experiment.
+Top-level `evaluations` apply to every model (cross-attention uses equal halves
+unless specified). `cross_attention_evaluations` adds only cross-attention cases.
+Use `--fname machine-3-2.txt` or `--machines ...` for a subset, and `--dry-run`
+to preview checkpoint paths and geometry. `--skip-completed` resumes outputs
+from this same manifest; use a new suite name after changing its settings.
+
+Outputs are under `results/smd/evaluations/inference_window_sweep/`:
+
+- `summary.csv`: all machine/experiment/case results, including inference speed.
+- `summary_aggregated.csv`: mean, sample standard deviation and count across
+  completed machines, grouped by experiment, checkpoint and case.
+- `cases/<case>/summary*.csv`: the same summaries separated by inference case.
+- `<machine>/<experiment>/selected/<case>/`: metrics, calibration, scores,
+  effective configuration and `suite_evaluation/` TensorBoard events.
+
+`inference_benchmark` enables fp32 timing of `model.score` on device-resident
+batches. Defaults are 5 warmup batches and 20 timed batches, configurable with
+`warmup_batches` and `measured_batches`. CUDA synchronizes before and after
+timing. `inference_windows_per_second` and `inference_ms_per_window` describe
+batched model throughput and amortized time per window, not single-request
+latency. `inference_batch_size` records the actual batch size. Loading,
+host/device transfers, calibration, overlap aggregation, metrics and disk I/O
+are excluded. `seconds` separately records total job duration. Performance
+also appears under `inference/` in TensorBoard. Decision replays are disabled
+for this sweep to avoid exporting thousands of full-history replay files.
+
 Select a dataset-specific manifest (`configs/psm/evaluation.yml` or
 `configs/smd/evaluation.yml`), then run:
 

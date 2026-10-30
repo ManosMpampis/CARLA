@@ -1,6 +1,7 @@
 """Checkpoint-only suite: real scoring of all runners on temporary PSM data."""
 
 import copy
+import csv
 import json
 from pathlib import Path
 import sys
@@ -87,6 +88,7 @@ def main():
                                            evaluations=cases))
         manifest = directory / "evaluation.yml"
         document = dict(name="test", experiments_manifest="experiments.yml",
+                        common={"inference_benchmark": {"warmup_batches": 1, "measured_batches": 2}},
                         output_dir="evaluation-results", experiments=evaluation_entries)
         manifest.write_text(yaml.safe_dump(document))
         jobs, output, version = build_evaluation_plan(manifest, env)
@@ -103,6 +105,14 @@ def main():
             assert report["selection"]["source"] == "configured checkpoint"
             assert (job.output_dir / "scores.npz").is_file()
             assert (job.output_dir / "calibration.json").is_file()
+            speed = report["inference_speed"]
+            assert speed["measured_batches"] == 2
+            assert speed["ms_per_window"] > 0 and speed["windows_per_second"] > 0
+            assert abs(speed["ms_per_window"] * speed["windows_per_second"] - 1000) < 1e-6
+            from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+            events = EventAccumulator(str(job.output_dir / "suite_evaluation"))
+            events.Reload()
+            assert events.Scalars("inference/windows_per_second")[0].value > 0
             if job.experiment.runner == "cross_attention":
                 large = job.case_name == "large"
                 assert report["coverage"]["output_window"] == (80 if large else 48)
@@ -117,6 +127,32 @@ def main():
         assert [row["status"] for row in rows] == ["failed", "completed"]
         assert len(json.loads((output / "summary.json").read_text())) == 8
         assert (output / "summary.csv").is_file()
+        with (output / "summary.csv").open() as stream:
+            summaries = list(csv.DictReader(stream))
+        assert all(float(row["inference_ms_per_window"]) > 0 for row in summaries
+                   if row["status"] == "completed")
+        # All-experiment sweeps reuse weights with raw-timestep asymmetric crops.
+        sweep = dict(document, experiments="all", evaluations=[dict(name="half", input_window=32)],
+                     cross_attention_evaluations=[dict(name="asymmetric", input_window=48,
+                                                       context_length=32, target_length=16)])
+        # Select standard checkpoints from the explicit fixtures above.
+        for entry in entries:
+            config = next(exp for exp in plan if exp.runner == entry["runner"])
+            from utils.experiment_suite import checkpoint_path
+            selected = checkpoint_path(config, directory / "training-results", "default")
+            selected.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(_build_model(config, config.config).state_dict(), selected)
+            (selected.parent / "resolved_config.yml").write_text(yaml.safe_dump(config.config))
+        sweep["output_dir"] = "sweep-results"
+        manifest.write_text(yaml.safe_dump(sweep))
+        sweep_jobs, sweep_output, sweep_version = build_evaluation_plan(manifest, env)
+        assert len(sweep_jobs) == 6
+        sweep_rows = run_evaluation_suite(sweep_jobs, sweep_output, env, sweep_version)
+        assert all(row["status"] == "completed" for row in sweep_rows), sweep_rows
+        asymmetric = next(row for row in sweep_rows if row["case"] == "asymmetric")
+        assert asymmetric["evaluation_settings"]["context_length"] == 32
+        assert asymmetric["evaluation_settings"]["target_length"] == 16
+        assert all(path.read_bytes() == content for path, content in original_bytes.items())
         # Duplicate names must never overwrite another evaluation job.
         document["experiments"].append(document["experiments"][0])
         manifest.write_text(yaml.safe_dump(document))

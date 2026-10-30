@@ -19,6 +19,9 @@ cross_attention_kwargs:
   kernel_size: 3
   num_heads: 1
   attention_dropout: 0.0
+  position_encoding: none # none | sinusoidal; attention only, content SIGReg unchanged
+  position_on: both # query | key | both
+  position_scale: 1.0 # nonnegative strength; 0 disables the addition
   norm: batch
   dropout: 0.1
 

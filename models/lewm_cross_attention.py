@@ -1,5 +1,7 @@
 """Frozen LEWM features -> convolutional Q/K/V -> attention -> mirrored head."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,24 +38,56 @@ class CrossAttentionPredictor(nn.Module):
     """Scaled cross attention and reconstruction, without a Query residual bypass."""
 
     def __init__(self, head, qk_channels=8, value_channels=8, num_heads=1,
-                 dropout=0.0, input_projection=None):
+                 dropout=0.0, input_projection=None, position_encoding="none",
+                 position_on="both", position_scale=1.0):
         super().__init__()
         if num_heads < 1 or qk_channels % num_heads or value_channels % num_heads:
             raise ValueError("num_heads must divide both qk_channels and value_channels")
         if not 0 <= dropout < 1:
             raise ValueError("attention dropout must be in [0, 1)")
+        if position_encoding not in ("none", "sinusoidal"):
+            raise ValueError("position_encoding must be none or sinusoidal")
+        if position_on not in ("query", "key", "both"):
+            raise ValueError("position_on must be query, key, or both")
+        if (isinstance(position_scale, bool) or not isinstance(position_scale, (int, float))
+                or not math.isfinite(position_scale) or position_scale < 0):
+            raise ValueError("position_scale must be finite and nonnegative")
         self.head = head
         self.input_projection = input_projection if input_projection is not None else nn.Identity()
         self.num_heads = num_heads
         self.dropout = dropout
+        self.position_encoding = position_encoding
+        self.position_on = position_on
+        self.position_scale = float(position_scale)
 
-    def forward(self, qkv):
+    def _with_position(self, z, start):
+        """Add fixed sinusoids in feature-token units, supporting any length/width."""
+        channels, length = z.shape[1:]
+        positions = torch.arange(start, start + length, device=z.device, dtype=torch.float32)
+        frequencies = torch.exp(torch.arange(0, channels, 2, device=z.device,
+                                            dtype=torch.float32) * (-math.log(10000.0) / channels))
+        angles = frequencies[:, None] * positions[None, :]
+        encoding = torch.empty(channels, length, device=z.device, dtype=torch.float32)
+        encoding[0::2] = angles.sin()
+        encoding[1::2] = angles[:channels // 2].cos()
+        return z + self.position_scale * encoding.to(z.dtype).unsqueeze(0)
+
+    def forward(self, qkv, *, query_start=0):
+        # Enrich attention addressing only. Keep content Q/K/V unchanged for
+        # SIGReg and the clean Query reconstruction target.
+        query, key = qkv["query"], qkv["key"]
+        if self.position_encoding != "none" and self.position_scale:
+            if self.position_on in ("query", "both"):
+                query = self._with_position(query, query_start)
+            if self.position_on in ("key", "both"):
+                key = self._with_position(key, -key.size(-1))
+
         def heads(z):
             b, c, t = z.shape
             return z.reshape(b, self.num_heads, c // self.num_heads, t).transpose(-1, -2)
 
         attended = F.scaled_dot_product_attention(
-            heads(qkv["query"]), heads(qkv["key"]), heads(qkv["value"]),
+            heads(query), heads(key), heads(qkv["value"]),
             dropout_p=self.dropout if self.training else 0.0)
         b, _, t, _ = attended.shape
         attended = attended.transpose(-1, -2).reshape(b, -1, t)
@@ -75,7 +109,8 @@ class CrossAttentionLeWM(nn.Module):
                  context_crop=None, target_crop=None, feature_extraction="separate",
                  qk_channels=8, value_channels=8, kernel_size=3, num_heads=1,
                  attention_dropout=0.0, head_channels=None, norm="batch",
-                 dropout=0.0, score_mode="l1"):
+                 dropout=0.0, score_mode="l1", position_encoding="none",
+                 position_on="both", position_scale=1.0):
         super().__init__()
         if target not in ("features", "input", "query"):
             raise ValueError("target must be features, input, or query")
@@ -115,7 +150,10 @@ class CrossAttentionLeWM(nn.Module):
         input_projection.apply(_init_weights)
         self.predictor = CrossAttentionPredictor(head, qk_channels, value_channels,
                                                  num_heads, attention_dropout,
-                                                 input_projection=input_projection)
+                                                 input_projection=input_projection,
+                                                 position_encoding=position_encoding,
+                                                 position_on=position_on,
+                                                 position_scale=position_scale)
         self.score_mode = normalize_score_mode(score_mode)
         self.level_names = ["L0"]
         self.level_dims = [value_channels]
@@ -131,6 +169,8 @@ class CrossAttentionLeWM(nn.Module):
                           qk_channels=qk_channels, value_channels=value_channels,
                           kernel_size=kernel_size, num_heads=num_heads,
                           attention_dropout=attention_dropout,
+                          position_encoding=position_encoding,
+                          position_on=position_on, position_scale=float(position_scale),
                           reconstructor="encoder_mirror_v2",
                           freeze_encoder=freeze_encoder, norm=norm, dropout=dropout,
                           total_stride=self.total_stride,
@@ -151,6 +191,10 @@ class CrossAttentionLeWM(nn.Module):
         return self._task
 
     def set_extra_state(self, state):
+        # Checkpoints predating positional attention retain their original
+        # no-position behavior; enabled/changed positional tasks cannot resume them.
+        state = {"position_encoding": "none", "position_on": "both",
+                 "position_scale": 1.0, **state}
         if state != self._task:
             raise ValueError(f"checkpoint task differs from configured task: {state} != {self._task}")
 
@@ -169,7 +213,7 @@ class CrossAttentionLeWM(nn.Module):
                 raise ValueError("default half split requires an even feature length >= 2")
             context, target = (0, tokens // 2), (tokens // 2, tokens)
         else:
-            context, target = self.context_crop, self.target_crop
+            context, target = (self.context_crop[0] // self.total_stride, self.context_crop[1] // self.total_stride), (self.target_crop[0] // self.total_stride, self.target_crop[1] // self.total_stride)
         if not context[1] <= target[0] < target[1] <= tokens:
             raise ValueError("context must precede target without overlap, inside the feature map")
         return context, target
@@ -193,6 +237,10 @@ class CrossAttentionLeWM(nn.Module):
             context, size=second.size(-1), mode="linear", align_corners=False)
         return self.qkv_encoder(context, query_input)
 
+    def _query_start(self):
+        """Target offset from the context's exclusive end, in feature tokens."""
+        return 0 if self.target_crop is None else self.target_crop[0] - self.context_crop[1]
+
     def forward(self, x, mask=None, action=None):
         if action is not None:
             raise ValueError("use mask with input or X_inj for injected LEWM training")
@@ -209,7 +257,7 @@ class CrossAttentionLeWM(nn.Module):
         else:
             inj_first, inj_second = first, second
         qkv = self._qkv(inj_first, inj_second)
-        prediction = self.predictor(qkv)
+        prediction = self.predictor(qkv, query_start=self._query_start())
         a, b = self.target_input_range(x.size(-1))
         target = {"features": second, "input": x[..., a:b],
                   "query": clean_qkv["query"]}[self.target]
@@ -239,7 +287,8 @@ class CrossAttentionLeWM(nn.Module):
                 raise ValueError("target_tokens must be a positive integer")
             query_input = F.interpolate(first, size=target_tokens, mode="linear",
                                         align_corners=False)
-            return self.predictor(self.qkv_encoder(first, query_input))
+            return self.predictor(self.qkv_encoder(first, query_input),
+                                  query_start=self._query_start())
         finally:
             self.train(was_training)
 

@@ -205,6 +205,110 @@ def verify_transfer(directory):
     print("Strict phase-one transfer and task checkpoint guards: OK")
 
 
+def verify_positions():
+    # Position alone can distinguish identical content queries; odd widths
+    # and variable lengths are supported without modifying content tensors.
+    for length in (3, 9):
+        qkv = {"query": torch.zeros(2, 3, length), "key": torch.zeros(2, 3, 7),
+               "value": torch.arange(7.0).expand(2, 5, 7).clone()}
+        snapshot = {name: z.clone() for name, z in qkv.items()}
+        plain = CrossAttentionPredictor(torch.nn.Identity(), 3, 5).eval()
+        positioned = CrossAttentionPredictor(torch.nn.Identity(), 3, 5,
+                                            position_encoding="sinusoidal").eval()
+        out = positioned(qkv)
+        assert out.shape == (2, 5, length) and torch.isfinite(out).all()
+        assert not torch.allclose(out[..., 0], out[..., 1])
+        assert not torch.allclose(out, positioned(qkv, query_start=6))
+        assert all(torch.equal(qkv[name], z) for name, z in snapshot.items())
+        positioned.position_scale = 0.0
+        assert torch.equal(plain(qkv), positioned(qkv))
+
+    content = {"query": torch.randn(2, 3, 5), "key": torch.randn(2, 3, 7),
+               "value": torch.randn(2, 5, 7)}
+    for on in ("query", "key", "both"):
+        attention = CrossAttentionPredictor(torch.nn.Identity(), 3, 5,
+                                            position_encoding="sinusoidal", position_on=on)
+        initial = attention(content)
+        shifted = attention(content, query_start=8)
+        assert torch.equal(initial, shifted) == (on == "key")
+    for patch in ({"position_encoding": "learned"}, {"position_on": "value"},
+                  {"position_scale": -1}, {"position_scale": float("nan")},
+                  {"position_scale": float("inf")}, {"position_scale": True}):
+        expect_error(lambda: CrossAttentionPredictor(torch.nn.Identity(), **patch))
+
+    for source in ("observed", "context"):
+        for target in ("features", "input", "query"):
+            for extraction in (("separate", "full") if source == "observed" else ("separate",)):
+                p = config(target, source)
+                p["cross_attention_kwargs"].update(position_encoding="sinusoidal",
+                                                   feature_extraction=extraction)
+                model = get_cross_attention_model(p).eval()
+                frozen = {name: z.clone() for name, z in model.encoder.state_dict().items()}
+                x = torch.randn(3, 4, 64)
+                injected = {"X_inj": x + 0.2 * torch.randn_like(x)}
+                positioned = model(x, mask=injected)
+                model.predictor.position_encoding = "none"
+                plain = model(x, mask=injected)
+                model.predictor.position_encoding = "sinusoidal"
+                assert not torch.allclose(positioned["recon"], plain["recon"])
+                assert torch.equal(positioned["target"], plain["target"])
+                for stream in ("qkv", "clean_qkv"):
+                    assert all(torch.equal(positioned[stream][name], plain[stream][name])
+                               for name in positioned[stream])
+                # Same SIGReg draws: only prediction loss can change.
+                criterion = get_criterion(p)
+                torch.manual_seed(17)
+                losses = criterion(positioned)
+                torch.manual_seed(17)
+                old_losses = criterion(plain)
+                for name in ("sigreg", "sigreg_tgt"):
+                    assert torch.equal(losses[name], old_losses[name])
+                losses["loss"].backward()
+                assert all(param.grad is None for param in model.encoder.parameters())
+                for param in model.qkv_encoder.parameters():
+                    assert param.grad is not None and torch.isfinite(param.grad).all()
+                    assert param.grad.abs().sum() > 0
+                if source == "context":
+                    clean = model(x)
+                    assert torch.allclose(clean["recon"], model.predict_next(x[..., 4:36]), atol=1e-6)
+                    model.target_crop = (9, 15)  # same length, different horizon
+                    assert not torch.allclose(clean["recon"], model(x)["recon"])
+                    model.target_crop = (10, 16)
+                assert torch.isfinite(model.score(x)["fused"]).all()
+                torch.optim.AdamW(model.parameters(), lr=1e-3).step()
+                assert all(torch.equal(z, frozen[name]) for name, z in model.encoder.state_dict().items())
+
+    # Legacy no-position checkpoints remain loadable; changed task semantics fail.
+    p = config()
+    baseline = get_cross_attention_model(p)
+    legacy = copy.deepcopy(baseline.state_dict())
+    for name in ("position_encoding", "position_on", "position_scale"):
+        del legacy["_extra_state"][name]
+    restored = get_cross_attention_model(p).eval()
+    restored.load_state_dict(legacy)
+    baseline.eval()
+    x = torch.randn(3, 4, 64)
+    assert torch.equal(baseline(x)["recon"], restored(x)["recon"])
+    p["cross_attention_kwargs"]["position_encoding"] = "sinusoidal"
+    positional = get_cross_attention_model(p)
+    expect_error(lambda: positional.load_state_dict(legacy))
+    saved = copy.deepcopy(positional.state_dict())
+    get_cross_attention_model(p).load_state_dict(saved)
+    for patch in ({"position_on": "query"}, {"position_scale": 0.5}):
+        altered = copy.deepcopy(p)
+        altered["cross_attention_kwargs"].update(patch)
+        expect_error(lambda: get_cross_attention_model(altered).load_state_dict(saved))
+
+    # Shared template controls resolve into every encoder preset's child arms.
+    paths = sorted((REPO / "configs/lewm_encoder").glob("*/cross_attention/*.yml"))
+    assert paths
+    for path in paths:
+        kwargs = load_experiment_config(path)["cross_attention_kwargs"]
+        assert kwargs["position_encoding"] == "none"
+        assert kwargs["position_on"] == "both" and kwargs["position_scale"] == 1.0
+    print("Positional attention, unchanged SIGReg/targets, frozen encoder, and checkpoint compatibility: OK")
+
+
 def verify_runs(directory):
     env = directory / "env.yml"
     env.write_text(yaml.safe_dump({"root_dir": str(directory / "results")}))
@@ -226,6 +330,7 @@ def verify_runs(directory):
             path = REPO / f"configs/lewm_encoder/time/cross_attention/{query_source}_{target}.yml"
             patch = {**base, **config(target, query_source), "stride": 32,
                      "pretrained_from": str(source)}
+            patch["cross_attention_kwargs"]["position_encoding"] = "sinusoidal"
             args = SimpleNamespace(config_env=str(env), config_exp=str(path),
                                    fname="toy", version="phase2")
             run_stage(args, patch)
@@ -282,6 +387,7 @@ def main():
     torch.set_num_threads(1)
     torch.manual_seed(4)
     verify_models()
+    verify_positions()
     with tempfile.TemporaryDirectory(prefix="lewm-cross-attention-") as temp:
         directory = Path(temp)
         verify_transfer(directory)

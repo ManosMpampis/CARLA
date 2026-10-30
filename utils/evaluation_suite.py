@@ -1,7 +1,6 @@
 """Evaluate explicit checkpoints with independent window/crop cases."""
 
 import copy
-import csv
 from dataclasses import dataclass, replace
 import json
 from pathlib import Path
@@ -12,6 +11,7 @@ import yaml
 
 from utils.config import DEFAULT_VERSION, load_experiment_config, merge_config, validate_experiment_name
 from utils.experiment_suite import Experiment, build_plan, checkpoint_path, score_experiment, series_parts, _load_yaml
+from utils.evaluation_summary import flatten_evaluation, write_csv
 
 
 @dataclass
@@ -26,7 +26,8 @@ class EvaluationJob:
         return f"{self.experiment.key}/{self.checkpoint_name}/{self.case_name}"
 
 
-def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=None):
+def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=None,
+                          fname=None, dataset_root=None):
     """Read-only planning; explicit checkpoint paths are relative to this manifest."""
     manifest_path = Path(manifest_path).resolve()
     manifest = _load_yaml(manifest_path)
@@ -34,6 +35,19 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
     version = manifest.get("version", DEFAULT_VERSION)
     source = manifest_path.parent / manifest["experiments_manifest"]
     entries = manifest.get("experiments")
+    if entries == "all":
+        available, _ = build_plan(source, env_path, version, fname=fname,
+                                   dataset_root=dataset_root)
+        entries = []
+        for exp in available:
+            cases = copy.deepcopy(manifest.get("evaluations", [{"name": "default"}]))
+            if exp.runner == "cross_attention":
+                for case in cases:
+                    if not {"context_length", "target_length", "context_crop", "target_crop"} & case.keys():
+                        case.update(context_crop=None, target_crop=None)
+                cases.extend(copy.deepcopy(manifest.get("cross_attention_evaluations", [])))
+            entries.append(dict(experiment=exp.key, checkpoints=[dict(name="selected")],
+                                evaluations=cases))
     if not isinstance(entries, list) or not entries:
         raise ValueError("evaluation manifest needs a nonempty experiments list")
     selected = [entry for entry in entries if entry.get("enabled", True)]
@@ -45,7 +59,8 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
     if not selected:
         raise ValueError("selection contains no evaluation experiments")
     plan, root = build_plan(source, env_path, version,
-                            experiments=[entry["experiment"] for entry in selected])
+                            experiments=[entry["experiment"] for entry in selected],
+                            fname=fname, dataset_root=dataset_root)
     sources = {exp.key: exp for exp in plan}
     identities = {(exp.config["train_db_name"], exp.config["fname"]) for exp in plan}
     if len(identities) != 1:
@@ -56,11 +71,13 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
                    else Path(root).resolve() / dataset / "evaluations" / name)
     if not manifest.get("output_dir"):
         output_root = output_root.joinpath(*series_parts(plan[0].config))
+    elif fname is not None and fname != dataset:
+        output_root /= fname
     jobs, keys = [], set()
     for entry in selected:
         exp = sources[entry["experiment"]]
         checkpoints = entry.get("checkpoints")
-        cases = entry.get("evaluations", [{"name": "default"}])
+        cases = entry.get("evaluations", manifest.get("evaluations", [{"name": "default"}]))
         if not isinstance(checkpoints, list) or not checkpoints:
             raise ValueError(f"{exp.key}: checkpoints must be a nonempty list")
         if not isinstance(cases, list) or not cases:
@@ -83,9 +100,16 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
                 config = merge_config(config, entry.get("overrides", {}))
                 config = merge_config(config, checkpoint.get("overrides", {}))
                 config["evaluation"] = merge_config(config.get("evaluation", {}) or {}, case)
+                if {"context_length", "target_length"} & case.keys():
+                    for key in ("context_crop", "target_crop"):
+                        if key not in case:
+                            config["evaluation"].pop(key, None)
                 if device is not None:
                     config["device"] = device
                 config.update(stage="score", score_checkpoint=str(weights))
+                config["fname"] = exp.config["fname"]
+                if dataset_root is not None:
+                    config["dataset_root"] = str(dataset_root)
                 job = EvaluationJob(replace(exp, config_path=config_path, config=config,
                                             dependency=None, run_version=None),
                                     label, case_name, output_root / exp.key / label / case_name)
@@ -96,7 +120,8 @@ def build_evaluation_plan(manifest_path, env_path, *, experiments=None, device=N
     return jobs, output_root, version
 
 
-def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=False):
+def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=False,
+                         skip_completed=False):
     """Never train dependencies; persist every outcome and a partial suite summary."""
     rows = []
     output_root = Path(output_root)
@@ -104,9 +129,18 @@ def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=Fals
     existing = json.loads(summary_path.read_text()) if summary_path.exists() else []
     combined = {row["job"]: row for row in existing}
     for job in jobs:
+        saved = combined.get(job.key)
+        if (skip_completed and saved and saved.get("status") == "completed"
+                and (job.output_dir / "metrics.json").is_file()
+                and (job.output_dir / "suite_evaluation").is_dir()):
+            print(f"SKIP {job.key} (completed)", flush=True)
+            rows.append(saved)
+            continue
         started = time.monotonic()
         row = {"job": job.key, "checkpoint": job.experiment.config["score_checkpoint"],
-               "output_dir": str(job.output_dir)}
+               "output_dir": str(job.output_dir), "experiment_key": job.experiment.key,
+               "checkpoint_name": job.checkpoint_name, "case": job.case_name,
+               "fname": job.experiment.config["fname"]}
         print(f"EVALUATE {job.key} -> {job.output_dir}", flush=True)
         try:
             if not Path(row["checkpoint"]).is_file():
@@ -117,6 +151,8 @@ def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=Fals
             report = score_experiment(job.experiment, env_path, version,
                                       output_dir=job.output_dir)
             row.update(status="completed", evaluation=report["evaluation"],
+                       evaluation_settings=report["evaluation_settings"],
+                       inference_speed=report.get("inference_speed", {}),
                        metrics_path=str(job.output_dir / "metrics.json"))
         except Exception as exc:
             row.update(status="failed", error=str(exc))
@@ -128,21 +164,10 @@ def run_evaluation_suite(jobs, output_root, env_path, version, *, fail_fast=Fals
         combined[job.key] = row
         output_root.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(list(combined.values()), indent=2))
-        fields = ["job", "status", "checkpoint", "output_dir", "seconds", "error",
-                  "timeseries_f1", "window_f1", "non_overlap_window_f1", "vus_pr", "vus_roc"]
-        with (output_root / "summary.csv").open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=fields)
-            writer.writeheader()
-            for saved in combined.values():
-                flat = {key: saved[key] for key in fields if key in saved}
-                evaluation = saved.get("evaluation", {})
-                for procedure in ("timeseries", "window", "non_overlap_window"):
-                    if procedure in evaluation:
-                        flat[f"{procedure}_f1"] = evaluation[procedure]["calibrated"]["f1_no_pa"]
-                if "timeseries" in evaluation:
-                    for metric in ("vus_pr", "vus_roc"):
-                        flat[metric] = evaluation["timeseries"][metric]
-                writer.writerow(flat)
+        write_csv(output_root / "summary.csv", [flatten_evaluation(r) for r in combined.values()])
+        speed = row.get("inference_speed", {}).get("windows_per_second")
+        timing = f", {speed:.1f} windows/s" if speed is not None else ""
+        print(f"{row['status'].upper()} {job.key}: {row['seconds']:.2f}s{timing}", flush=True)
         if fail_fast and row["status"] != "completed":
             break
     return rows

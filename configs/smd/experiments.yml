@@ -1,6 +1,6 @@
 # Same experiment variants as the PSM suite, with SMD data settings.
 # Config paths inherited from the parent retain their original location.
-extends: ../psm/experiments.yml
+extends: ../experiments.yml
 common:
   train_db_name: smd
   val_db_name: smd

@@ -1,0 +1,30 @@
+# Inference only: reuse every experiment's existing validation-selected weights.
+name: inference_window_sweep
+experiments_manifest: experiments.yml
+experiments: all
+common:
+  device: cuda
+  score_batch_size: 256
+  eval_window_size: 100
+  evaluation: {stride: 10}
+  decision_trace: false
+  inference_benchmark: {warmup_batches: 5, measured_batches: 20}
+evaluations:
+  - {name: input_512, input_window: 512}
+  - {name: input_256, input_window: 256}
+  - {name: input_128, input_window: 128}
+# Additional cross-attention cases. Lengths are RAW TIMESTEPS, not feature tokens.
+# Context supplies K/V; the target sets query length. Query source stays as trained.
+cross_attention_evaluations:
+  - name: context_512_target_256
+    input_window: 768
+    context_length: 512
+    target_length: 256
+  - name: context_512_target_128
+    input_window: 640
+    context_length: 512
+    target_length: 128
+  - name: context_256_target_128
+    input_window: 384
+    context_length: 256
+    target_length: 128

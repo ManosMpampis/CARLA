@@ -310,6 +310,20 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
         # Load the checkpoint's original task strictly before changing only
         # evaluation geometry. Training/resume task checks remain unchanged.
         geometry = p.get("evaluation", {}) or {}
+        if {"context_length", "target_length"} & geometry.keys():
+            if not {"context_length", "target_length"} <= geometry.keys():
+                raise ValueError("evaluation needs both context_length and target_length")
+            if {"context_crop", "target_crop"} & geometry.keys():
+                raise ValueError("use raw lengths or token crops, not both")
+            context_length, target_length = int(geometry["context_length"]), int(geometry["target_length"])
+            if min(context_length, target_length) < 1 or any(
+                    length % model.total_stride for length in (context_length, target_length)):
+                raise ValueError("evaluation segment lengths must be positive multiples of encoder stride")
+            if int(geometry.get("input_window", p["wsz"])) != context_length + target_length:
+                raise ValueError("input_window must equal context_length + target_length")
+            model.context_crop = (0, context_length // model.total_stride)
+            model.target_crop = (context_length // model.total_stride,
+                                 (context_length + target_length) // model.total_stride)
         if "context_crop" in geometry or "target_crop" in geometry:
             if not {"context_crop", "target_crop"} <= geometry.keys():
                 raise ValueError("evaluation needs both context_crop and target_crop")
@@ -320,7 +334,7 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
             model.context_crop, model.target_crop = context, target
         options = scoring_options(p, model)
     else:
-        if {"context_crop", "target_crop"} & (p.get("evaluation", {}) or {}).keys():
+        if {"context_crop", "target_crop", "context_length", "target_length"} & (p.get("evaluation", {}) or {}).keys():
             raise ValueError("evaluation crops require the cross_attention runner")
         options = evaluation_options(p)
     window, stride = options.pop("wsz"), options.pop("stride")
@@ -352,6 +366,14 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
 
     scorer_model = InputResolutionScores()
     batch_size = int(p.get("score_batch_size", p["batch_size"]))
+    benchmark = p.get("inference_benchmark", False)
+    inference_speed = None
+    if benchmark is not False and benchmark is not None:
+        from utils.inference_benchmark import benchmark_inference
+
+        inference_speed = benchmark_inference(
+            scorer_model, test_dataset.series, window, batch_size, device,
+            {} if benchmark is True else benchmark)
     clean = score_both(scorer_model, val_dataset.series, window, stride,
                        batch_size, device, **options)
     test = score_both(scorer_model, test_dataset.series, window, stride,
@@ -400,9 +422,15 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
                          "include_last_window": False}},
     }
     if exp.runner == "cross_attention":
+        context, target = model.crop_ranges(window)
         report["evaluation_settings"].update(
             context_crop=model.context_crop, target_crop=model.target_crop,
-            crop_units="feature tokens", total_stride=model.total_stride)
+            crop_units="feature tokens", total_stride=model.total_stride,
+            context_length=(context[1] - context[0]) * model.total_stride,
+            target_length=(target[1] - target[0]) * model.total_stride,
+            query_source=model.query_source)
+    if inference_speed is not None:
+        report["inference_speed"] = inference_speed
     if exp.runner == "recon":
         report["evaluation_settings"]["score_aux_crop"] = False
     from utils.decision_trace import write_final_decision_trace
@@ -445,6 +473,10 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     from torch.utils.tensorboard import SummaryWriter
 
     with SummaryWriter(str(Path(p["jepa_dir"]) / "suite_evaluation")) as writer:
+        if inference_speed is not None:
+            for name in ("batch_ms", "ms_per_window", "windows_per_second",
+                         "input_timesteps_per_second"):
+                writer.add_scalar(f"inference/{name}", inference_speed[name], 0)
         for procedure, values in evaluation.items():
             for source in ("calibrated", "oracle"):
                 for name, value in tensorboard_threshold_metrics(values[source]):

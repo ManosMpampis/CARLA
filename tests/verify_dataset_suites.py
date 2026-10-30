@@ -31,7 +31,8 @@ def main():
         env = directory / "env.yml"
         env.write_text(yaml.safe_dump({"root_dir": str(root)}))
         psm, _ = build_plan(REPO / "configs/psm/experiments.yml", env, DEFAULT_VERSION)
-        smd, _ = build_plan(REPO / "configs/smd/experiments.yml", env, DEFAULT_VERSION)
+        smd, _ = build_plan(REPO / "configs/smd/experiments.yml", env, DEFAULT_VERSION,
+                            fname="machine-1-1.txt")
         assert {exp.key for exp in psm} == {exp.key for exp in smd}
         assert all(exp.config["train_db_name"] == "smd" and exp.config["model_kwargs"]["in_channels"] == 38 for exp in smd)
         assert all(exp.config["train_db_name"] == "psm" and exp.config["model_kwargs"]["in_channels"] == 25 for exp in psm)
@@ -57,7 +58,7 @@ def main():
         configs = {str(exp.config_path) for exp in smd if exp.key in selected}
         document["experiments"] = [entry for entry in document["experiments"] if entry["config"] in configs]
         document["common"].update(
-            dataset_root=str(data_root), epochs=1, eval_every=0, device="cpu", wsz=64,
+            dataset_root=str(data_root), fname=machines[0], epochs=1, eval_every=0, device="cpu", wsz=64,
             stride=32, batch_size=4, score_batch_size=16, eval_window_size=8,
             val_fraction=0.25, decision_trace=False,
             model_kwargs=dict(in_channels=38, enc_channels=[4, 8], enc_strides=[2, 2], dropout=0.0),

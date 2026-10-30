@@ -93,6 +93,42 @@ and diagnostic test-oracle metrics are reported separately.
 
 ## Configuration
 
+### Optional position information
+
+All six cross-attention templates expose these settings. Override them in a
+child YAML to enable position-aware matching while retaining observed queries:
+
+```yaml
+cross_attention_kwargs:
+  freeze_encoder: true
+  query_source: observed
+  position_encoding: sinusoidal # none (default) | sinusoidal
+  position_on: both             # query | key | both
+  position_scale: 1.0           # finite, nonnegative; 0 disables the addition
+```
+
+The predictor adds fixed sinusoidal position vectors **after** the Q/K
+convolutions, solely for computing attention weights. Values remain content
+features. Clean/injected Q/K/V passed to SIGReg and the `target: query` target
+remain the original convolution outputs; the regularizer does not try to
+Gaussianize deterministic position vectors. The extractor stays frozen, no
+EMA or Query residual is introduced, and no new trainable parameters are added.
+
+Positions use feature-token units relative to the context's exclusive end:
+context tokens are `-N,...,-1`; target tokens are `gap,...,gap+M-1`. The gap
+comes from the configured crop intervals and is zero for adjacent crops. This
+convention is shared by training, scoring, and `predict_next`, including
+unequal lengths and cropped windows. Sinusoids support variable lengths
+without a fixed embedding table; this does not guarantee length generalization.
+
+Position information can distinguish where otherwise similar patterns occur,
+but can also favor timing over content similarity. Compare `none` against
+`sinusoidal` and tune `position_scale` for the intended task. Defaults preserve
+existing behavior. Older checkpoints without these three settings load with
+defaults; changing positional settings requires a fresh phase-two run/version.
+
+### Crop, projection, and scoring settings
+
 - `context_crop` and `target_crop` are half-open **feature token** intervals.
   With total extractor stride `S`, `[a,b]` maps to raw input `[a*S,b*S]`.
   The context must precede the target without overlap. Unequal lengths and
