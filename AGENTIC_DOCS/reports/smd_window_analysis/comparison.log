@@ -1,0 +1,88 @@
+                                                                   cal_f1  oracle_f1  vus_pr  vus_roc     gap  near_oracle_selected  oracle_in_range  tail_cal_std  tail_threshold_cv  val_tail_cv  val_cal_spearman  cal_epoch_near_peak_fraction  oracle_epoch_near_peak_fraction  selected_vs_peak_cal  above_trivial_f1  test_normal_fpr  precision  recall
+experiment                                                                                                                                                                                                                                                                                                                                                     
+lewm_encoder/frequency                                             0.5201     0.7490  0.7039   0.7028  0.2289                0.1429           0.2500        0.0622             0.0876       0.1164           -0.0231                        0.2298                           0.4929               -0.0006           -0.0364           0.4211     0.5604  0.6849
+lewm_encoder/frequency_aux                                         0.5189     0.7562  0.7060   0.7083  0.2373                0.0714           0.2500        0.0572             0.1041       0.1762           -0.0995                        0.1369                           0.4405               -0.0397           -0.0376           0.4379     0.5696  0.7202
+lewm_encoder/frequency_aux_no_film                                 0.5082     0.7622  0.7105   0.7066  0.2539                0.0714           0.1786        0.0525             0.1165       0.1677           -0.0791                        0.1143                           0.5024               -0.0081           -0.0483           0.4228     0.5584  0.7089
+ae/default                                                         0.5108     0.7308  0.6754   0.6759  0.2200                0.1071           0.2143        0.0072             0.0223       0.0368           -0.1925                        0.6000                           0.5893                0.0247           -0.0457           0.5932     0.5423  0.7868
+vae/default                                                        0.5002     0.7274  0.6708   0.6667  0.2272                0.1071           0.2500        0.0058             0.0276       0.0384            0.1164                        0.4560                           0.7000                0.0409           -0.0563           0.5758     0.5376  0.7674
+lewm_encoder/time                                                  0.3476     0.6675  0.5603   0.5764  0.3199                0.1071           0.3929        0.0530             0.1214       0.1551           -0.0198                        0.1655                           0.5155                0.1556           -0.2089           0.4105     0.4082  0.5083
+lewm_encoder/frequency/reconstruction/default                      0.5125     0.7264  0.6718   0.6755  0.2139                0.0714           0.2500        0.0082             0.0172       0.0163           -0.0445                        0.4952                           0.7298                0.0317           -0.0440           0.5811     0.5365  0.7816
+lewm_encoder/frequency_aux/cross_attention/observed_query          0.4150     0.6404  0.5692   0.7059  0.2254                0.1071           0.3929        0.0059             0.0316       0.0346           -0.0092                        0.5786                           0.5738                0.0181            0.0199           0.3791     0.4678  0.6666
+lewm_encoder/frequency_aux_no_film/cross_attention/observed_query  0.4207     0.6363  0.5642   0.7013  0.2157                0.2143           0.3214        0.0056             0.0360       0.0404           -0.1399                        0.4833                           0.5536                0.0202            0.0255           0.3887     0.4818  0.6887
+lewm_encoder/frequency_aux/cross_attention/observed_features       0.4046     0.6489  0.5655   0.7024  0.2443                0.1786           0.4286        0.0013             0.0053       0.0092           -0.0550                        0.9440                           0.9595                0.0047            0.0095           0.3734     0.4708  0.6574
+{
+  "paired_comparisons": [
+    {
+      "a": "lewm_encoder/frequency",
+      "b": "ae/default",
+      "mean_difference": 0.009347652725983016,
+      "machines_a_better": 18,
+      "paired_machine_bootstrap_ci95": [
+        -0.07372256003025954,
+        0.08867712614468137
+      ]
+    },
+    {
+      "a": "lewm_encoder/frequency_aux",
+      "b": "lewm_encoder/frequency",
+      "mean_difference": -0.0012326485330953446,
+      "machines_a_better": 15,
+      "paired_machine_bootstrap_ci95": [
+        -0.05884752977130494,
+        0.0478895380727932
+      ]
+    },
+    {
+      "a": "lewm_encoder/frequency_aux_no_film",
+      "b": "lewm_encoder/frequency_aux",
+      "mean_difference": -0.010669181660587211,
+      "machines_a_better": 14,
+      "paired_machine_bootstrap_ci95": [
+        -0.03477703960371907,
+        0.011172673120071381
+      ]
+    }
+  ],
+  "divergence_example": [
+    {
+      "experiment": "lewm_encoder/time_aux/cross_attention/observed_query",
+      "machine": "machine-2-3.txt",
+      "prevalence": 0.2023809523809523,
+      "vus_pr": 0.6109794865955006,
+      "vus_roc": 0.724573162468997,
+      "cal_f1": 0.3851203501094092,
+      "oracle_f1": 0.6770981507823614,
+      "vanilla_ap": 0.7404315734628363,
+      "vanilla_roc": 0.8253214681855789,
+      "tpr_at_fpr_1pct": 0.5185185185185185,
+      "tpr_at_fpr_5pct": 0.5577342047930284,
+      "top_5pct_precision": 1.0
+    },
+    {
+      "experiment": "lewm_encoder/frequency_aux/cross_attention/observed_query",
+      "machine": "machine-2-3.txt",
+      "prevalence": 0.2023809523809523,
+      "vus_pr": 0.5057107264345343,
+      "vus_roc": 0.8004757220094855,
+      "cal_f1": 0.5508982035928144,
+      "oracle_f1": 0.584931506849315,
+      "vanilla_ap": 0.5829414998327155,
+      "vanilla_roc": 0.8387028787314939,
+      "tpr_at_fpr_1pct": 0.23311546840958605,
+      "tpr_at_fpr_5pct": 0.3093681917211329,
+      "top_5pct_precision": 0.8947368421052632
+    }
+  ],
+  "correlation_means": {
+    "pr_roc_spearman": {
+      "512": 0.8617131062951496,
+      "1024": 0.8991726990692862
+    },
+    "cal_pr_spearman": {
+      "512": 0.3615676319205992,
+      "1024": 0.2682022431606449
+    }
+  },
+  "full_span_always_positive_f1_mean": 0.5565183555059452,
+  "half_span_always_positive_f1_mean": 0.3951123523983378
+}

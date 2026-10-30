@@ -1,0 +1,19 @@
+{
+  "base_runs": 1019,
+  "complete_families": 36,
+  "complete_runs": 1008,
+  "partial_families": {
+    "lewm_encoder/frequency_aux/cross_attention/observed_features_pos_enc": 5,
+    "lewm_encoder/frequency_aux/cross_attention/observed_query_pos_enc": 6
+  },
+  "history_rows": 30570,
+  "scalar_rows": 1800600,
+  "sweep_rows": 4536,
+  "seeds": [
+    4
+  ],
+  "max_cal_f1_reconstruction_error": 0.0,
+  "max_oracle_f1_reconstruction_error": 2.220446049250313e-16,
+  "duplicate_epoch_runs": 0,
+  "duplicate_tb_runs": 0
+}

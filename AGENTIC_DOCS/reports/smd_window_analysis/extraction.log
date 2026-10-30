@@ -1,0 +1,67 @@
+Extracted 100/1019 runs
+Extracted 200/1019 runs
+Extracted 300/1019 runs
+Extracted 400/1019 runs
+Extracted 500/1019 runs
+Extracted 600/1019 runs
+Extracted 700/1019 runs
+Extracted 800/1019 runs
+Extracted 900/1019 runs
+Extracted 1000/1019 runs
+{
+  "base_runs": 1019,
+  "complete_families": 36,
+  "complete_runs": 1008,
+  "partial_families": {
+    "lewm_encoder/frequency_aux/cross_attention/observed_features_pos_enc": 5,
+    "lewm_encoder/frequency_aux/cross_attention/observed_query_pos_enc": 6
+  },
+  "history_rows": 30570,
+  "scalar_rows": 1800600,
+  "sweep_rows": 4536,
+  "seeds": [
+    4
+  ],
+  "max_cal_f1_reconstruction_error": 0.0,
+  "max_oracle_f1_reconstruction_error": 2.220446049250313e-16,
+  "duplicate_epoch_runs": 0,
+  "duplicate_tb_runs": 0
+}
+                                                                        cal_f1  oracle_f1    vus_pr   vus_roc  tail_cal_std  tail_threshold_cv
+experiment                                                                                                                                    
+lewm_encoder/frequency                                                0.520128   0.749013  0.703890  0.702761      0.062153           0.087640
+lewm_encoder/frequency_aux                                            0.518895   0.756154  0.705989  0.708332      0.057213           0.104075
+lewm_encoder/frequency/reconstruction/default                         0.512503   0.726389  0.671849  0.675545      0.008205           0.017232
+ae/default                                                            0.510780   0.730804  0.675447  0.675923      0.007165           0.022338
+lewm_encoder/frequency_aux_no_film                                    0.508226   0.762168  0.710506  0.706557      0.052462           0.116528
+lewm_encoder/frequency_aux/reconstruction/auxilary_added              0.505337   0.729995  0.675916  0.687200      0.003880           0.012038
+lewm_encoder/time_aux_no_film/reconstruction/default                  0.502682   0.722696  0.674395  0.684177      0.007102           0.015604
+lewm_encoder/time_aux_no_film/reconstruction/auxilary_added           0.502682   0.722696  0.674395  0.684177      0.007102           0.015604
+lewm_encoder/time/reconstruction/default                              0.502522   0.722653  0.670507  0.661044      0.008732           0.018698
+vae/default                                                           0.500243   0.727448  0.670803  0.666726      0.005808           0.027597
+lewm_encoder/frequency_aux_no_film/reconstruction/auxilary_added      0.496005   0.731725  0.683531  0.689945      0.004916           0.014283
+lewm_encoder/frequency_aux_no_film/reconstruction/default             0.496005   0.731725  0.683531  0.689945      0.004916           0.014283
+lewm_encoder/frequency_aux/reconstruction/default                     0.495422   0.727990  0.676715  0.688476      0.004118           0.011067
+lewm_encoder/time_aux/reconstruction/auxilary_added                   0.489908   0.728998  0.683678  0.688370      0.007186           0.017757
+lewm_encoder/time_aux/reconstruction/default                          0.488586   0.731848  0.685481  0.687848      0.008081           0.019236
+lewm_encoder/time_aux                                                 0.484005   0.741425  0.690360  0.678749      0.046696           0.139445
+lewm_encoder/time_aux_no_film                                         0.456563   0.724881  0.673208  0.660328      0.051765           0.139292
+lewm_encoder/frequency_aux_no_film/cross_attention/observed_query     0.420652   0.636317  0.564174  0.701251      0.005603           0.035988
+lewm_encoder/frequency/cross_attention/observed_query                 0.419357   0.629144  0.539942  0.676687      0.003864           0.029332
+lewm_encoder/frequency_aux/cross_attention/observed_query             0.414969   0.640365  0.569239  0.705930      0.005873           0.031604
+lewm_encoder/time_aux/cross_attention/observed_query                  0.409468   0.629952  0.538873  0.667143      0.009811           0.042578
+lewm_encoder/frequency_aux_no_film/cross_attention/observed_features  0.406038   0.656352  0.564653  0.698375      0.001185           0.007494
+lewm_encoder/frequency_aux/cross_attention/observed_features          0.404639   0.648936  0.565509  0.702399      0.001299           0.005259
+lewm_encoder/time_aux/cross_attention/observed_features               0.399600   0.638118  0.540844  0.667269      0.003751           0.021757
+lewm_encoder/time/cross_attention/observed_query                      0.398642   0.580080  0.502476  0.642636      0.007907           0.031518
+lewm_encoder/frequency/cross_attention/observed_features              0.393945   0.629560  0.539172  0.674275      0.006837           0.036218
+lewm_encoder/time_aux_no_film/cross_attention/observed_features       0.385676   0.612767  0.530696  0.670889      0.004744           0.016412
+lewm_encoder/time_aux_no_film/cross_attention/observed_query          0.382691   0.609957  0.532764  0.672118      0.006135           0.038335
+lewm_encoder/time_aux_no_film/cross_attention/observed_input          0.373116   0.586514  0.499652  0.652621      0.019206           0.042141
+lewm_encoder/time_aux/cross_attention/observed_input                  0.360673   0.582387  0.498413  0.644347      0.017026           0.034323
+lewm_encoder/time/cross_attention/observed_input                      0.360097   0.596136  0.512311  0.672296      0.013304           0.039243
+lewm_encoder/frequency_aux_no_film/cross_attention/observed_input     0.354095   0.592170  0.509625  0.650433      0.014940           0.040176
+lewm_encoder/frequency/cross_attention/observed_input                 0.352823   0.588762  0.504371  0.649743      0.012385           0.036495
+lewm_encoder/time                                                     0.347613   0.667514  0.560286  0.576388      0.053033           0.121438
+lewm_encoder/frequency_aux/cross_attention/observed_input             0.345050   0.585248  0.498006  0.651217      0.014620           0.039946
+lewm_encoder/time/cross_attention/observed_features                   0.314602   0.561464  0.459882  0.620919      0.013919           0.040509

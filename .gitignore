@@ -8,3 +8,7 @@ venv/
 datasets/
 datasets
 .vscode/
+.aws/
+.codex/
+.mypy_cache/
+pretext_results/

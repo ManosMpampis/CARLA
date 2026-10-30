@@ -1,0 +1,132 @@
+machine-1-1.txt: timeline 0.431/0.608; window 0.534/0.730; replay flips 2
+machine-1-2.txt: timeline 0.384/0.521; window 0.579/0.585; replay flips 0
+machine-1-3.txt: timeline 0.218/0.352; window 0.221/0.550; replay flips 0
+machine-1-4.txt: timeline 0.255/0.280; window 0.545/0.546; replay flips 0
+machine-1-5.txt: timeline 0.117/0.514; window 0.494/0.725; replay flips 0
+machine-1-6.txt: timeline 0.318/0.884; window 0.789/0.823; replay flips 0
+machine-1-7.txt: timeline 0.090/0.453; window 0.264/0.650; replay flips 0
+machine-1-8.txt: timeline 0.167/0.324; window 0.629/0.630; replay flips 0
+machine-2-1.txt: timeline 0.313/0.336; window 0.652/0.657; replay flips 0
+machine-2-2.txt: timeline 0.466/0.470; window 0.695/0.791; replay flips 0
+machine-2-3.txt: timeline 0.107/0.266; window 0.525/0.532; replay flips 0
+machine-2-4.txt: timeline 0.318/0.368; window 0.316/0.654; replay flips 0
+machine-2-5.txt: timeline 0.300/0.356; window 0.321/0.731; replay flips 0
+machine-2-6.txt: timeline 0.169/0.453; window 0.601/0.630; replay flips 0
+machine-2-7.txt: timeline 0.693/0.822; window 0.290/0.622; replay flips 0
+machine-2-8.txt: timeline 0.030/0.937; window 0.092/0.977; replay flips 0
+machine-2-9.txt: timeline 0.472/0.758; window 0.548/0.792; replay flips 0
+machine-3-1.txt: timeline 0.042/0.578; window 0.179/0.589; replay flips 0
+machine-3-10.txt: timeline 0.381/0.655; window 0.310/0.464; replay flips 0
+machine-3-11.txt: timeline 0.022/0.496; window 0.095/0.917; replay flips 0
+machine-3-2.txt: timeline 0.000/0.135; window 0.075/0.570; replay flips 0
+machine-3-3.txt: timeline 0.037/0.074; window 0.088/0.746; replay flips 0
+machine-3-4.txt: timeline 0.089/0.798; window 0.362/0.492; replay flips 0
+machine-3-5.txt: timeline 0.106/0.540; window 0.464/0.507; replay flips 4
+machine-3-6.txt: timeline 0.615/0.736; window 0.776/0.870; replay flips 0
+machine-3-7.txt: timeline 0.086/0.485; window 0.275/0.325; replay flips 2
+machine-3-8.txt: timeline 0.199/0.303; window 0.433/0.500; replay flips 0
+machine-3-9.txt: timeline 0.038/0.559; window 0.178/0.565; replay flips 0
+{
+  "timesteps": 25300.714285714286,
+  "covered_timesteps": 24788.714285714286,
+  "output_window": 512.0,
+  "windows": 2429.0714285714284,
+  "timeline_threshold": 0.4884996230748376,
+  "timeline_oracle_threshold": 9.068276599121056,
+  "window_threshold": 0.12759340106310055,
+  "window_oracle_threshold": 2.4765562969259913,
+  "timeline_prevalence": 0.04286739632908094,
+  "window_prevalence": 0.26267411503138394,
+  "timeline_vus_pr": 0.4201487966153185,
+  "timeline_vus_roc": 0.8605490524369215,
+  "window_vus_pr": 0.565508927714515,
+  "window_vus_roc": 0.7023986139177502,
+  "trace_max_abs_difference": 0.0274746693695812,
+  "trace_rmse": 0.0009193156715400704,
+  "trace_npz_decision_flips": 0.2857142857142857,
+  "trace_window_max_abs_difference": 0.0035188215681796376,
+  "trace_window_decision_flips": 0.03571428571428571,
+  "timeline_events": 11.5,
+  "events_calibrated_hit": 6.964285714285714,
+  "events_oracle_hit": 5.857142857142857,
+  "event_recall_calibrated": 0.7032934122527719,
+  "event_recall_oracle": 0.5674083681780726,
+  "event_coverage_calibrated_median": 0.6258992440258709,
+  "normal_median": 0.45166399676629526,
+  "anomaly_median": 21.33145569112006,
+  "normal_p99": 4.896852720412497,
+  "recall_at_1pct_fpr": 0.4041971609620773,
+  "recall_at_5pct_fpr": 0.5694568711173813,
+  "false_positive_runs_calibrated": 29.892857142857142,
+  "peak_timestep": 18632.714285714286,
+  "peak_is_anomaly": 0.9285714285714286,
+  "top_1pct_precision": 0.5868316267482265,
+  "window_always_positive_f1": 0.3951123523983378,
+  "timeline_always_positive_f1": 0.07989186100490846,
+  "timeline_cal_f1": 0.23075838787515288,
+  "timeline_cal_precision": 0.20484183769112255,
+  "timeline_cal_recall": 0.6396310784397258,
+  "timeline_cal_fpr": 0.21221590118223047,
+  "timeline_cal_tp": 647.25,
+  "timeline_cal_fp": 5156.071428571428,
+  "timeline_cal_fn": 401.07142857142856,
+  "timeline_cal_tn": 18584.321428571428,
+  "timeline_oracle_f1": 0.5021580942790026,
+  "timeline_oracle_precision": 0.5777073667757547,
+  "timeline_oracle_recall": 0.5436036398471635,
+  "timeline_oracle_fpr": 0.05178167880742627,
+  "timeline_oracle_tp": 612.4285714285714,
+  "timeline_oracle_fp": 1144.7857142857142,
+  "timeline_oracle_fn": 435.89285714285717,
+  "timeline_oracle_tn": 22595.60714285714,
+  "timeline_ap": 0.46318703265404804,
+  "timeline_roc": 0.8810957893140109,
+  "timeline_oracle_near_lo": 6.068453697050421,
+  "timeline_oracle_near_hi": 14.255298829995743,
+  "timeline_oracle_near_relative_width": 0.5671610256757116,
+  "npz_timeline_cal_f1": 0.2307588228954122,
+  "npz_timeline_cal_precision": 0.20484143158039508,
+  "npz_timeline_cal_recall": 0.6396310784397258,
+  "npz_timeline_cal_fpr": 0.2122098756871756,
+  "npz_timeline_cal_tp": 647.25,
+  "npz_timeline_cal_fp": 5155.928571428572,
+  "npz_timeline_cal_fn": 401.07142857142856,
+  "npz_timeline_cal_tn": 18584.464285714286,
+  "window_cal_f1": 0.40463928938975335,
+  "window_cal_precision": 0.47082478393306604,
+  "window_cal_recall": 0.657361242444796,
+  "window_cal_fpr": 0.3734334206304636,
+  "window_cal_tp": 358.39285714285717,
+  "window_cal_fp": 726.6785714285714,
+  "window_cal_fn": 261.42857142857144,
+  "window_cal_tn": 1082.5714285714287,
+  "window_oracle_f1": 0.6489357579993984,
+  "window_oracle_precision": 0.6545924977500458,
+  "window_oracle_recall": 0.7456870783793337,
+  "window_oracle_fpr": 0.2887846409102827,
+  "window_oracle_tp": 495.42857142857144,
+  "window_oracle_fp": 412.7142857142857,
+  "window_oracle_fn": 124.39285714285714,
+  "window_oracle_tn": 1396.5357142857142,
+  "window_ap": 0.637830922359784,
+  "window_roc": 0.758668926126577,
+  "window_oracle_near_lo": 1.9574049271510117,
+  "window_oracle_near_hi": 3.372367998585105,
+  "window_oracle_near_relative_width": 0.501626330982593,
+  "replay_window_cal_f1": 0.40463318049958774,
+  "replay_window_cal_precision": 0.4708201670283593,
+  "replay_window_cal_recall": 0.657361242444796,
+  "replay_window_cal_fpr": 0.3734478798554491,
+  "replay_window_cal_tp": 358.39285714285717,
+  "replay_window_cal_fp": 726.7142857142857,
+  "replay_window_cal_fn": 261.42857142857144,
+  "replay_window_cal_tn": 1082.5357142857142,
+  "replay_window_oracle_f1": 0.6489395771862883,
+  "replay_window_oracle_precision": 0.6545943081950101,
+  "replay_window_oracle_recall": 0.7456870783793337,
+  "replay_window_oracle_fpr": 0.28879953013445486,
+  "replay_window_oracle_tp": 495.42857142857144,
+  "replay_window_oracle_fp": 412.7142857142857,
+  "replay_window_oracle_fn": 124.39285714285714,
+  "replay_window_oracle_tn": 1396.5357142857142
+}

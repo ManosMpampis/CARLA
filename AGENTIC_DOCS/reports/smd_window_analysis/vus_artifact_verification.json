@@ -1,0 +1,50 @@
+[
+  {
+    "experiment": "ae/default",
+    "machine": "machine-1-1.txt",
+    "window_count": 2747,
+    "requested_buffer": 10,
+    "saved_vus_pr": 0.852959464896809,
+    "saved_vus_roc": 0.9287573153322394,
+    "current_double_cpu_vus_pr": 0.8606734779534835,
+    "current_double_cpu_vus_roc": 0.932898146130363,
+    "direct_single_cpu_vus_pr": 0.8529594570412523,
+    "direct_single_cpu_vus_roc": 0.9287573061301099,
+    "double_pr_minus_saved": 0.007714013056674518,
+    "double_roc_minus_saved": 0.0041408307981236625,
+    "single_pr_minus_saved": -7.855556649616346e-09,
+    "single_roc_minus_saved": -9.20212950283883e-09
+  },
+  {
+    "experiment": "lewm_encoder/frequency_aux/phase1",
+    "machine": "machine-1-1.txt",
+    "window_count": 2747,
+    "requested_buffer": 10,
+    "saved_vus_pr": 0.6518249836834994,
+    "saved_vus_roc": 0.759112228046764,
+    "current_double_cpu_vus_pr": 0.6652424258261508,
+    "current_double_cpu_vus_roc": 0.7717668747305169,
+    "direct_single_cpu_vus_pr": 0.6518249931981327,
+    "direct_single_cpu_vus_roc": 0.7591122241684659,
+    "double_pr_minus_saved": 0.013417442142651392,
+    "double_roc_minus_saved": 0.012654646683752824,
+    "single_pr_minus_saved": 9.514633303453479e-09,
+    "single_roc_minus_saved": -3.878298127091284e-09
+  },
+  {
+    "experiment": "lewm_encoder/frequency_aux/cross_attention/observed_query",
+    "machine": "machine-1-1.txt",
+    "window_count": 2747,
+    "requested_buffer": 10,
+    "saved_vus_pr": 0.7117282910780474,
+    "saved_vus_roc": 0.8607302904129028,
+    "current_double_cpu_vus_pr": 0.7137694573828719,
+    "current_double_cpu_vus_roc": 0.8632259571300379,
+    "direct_single_cpu_vus_pr": 0.7117282772129271,
+    "direct_single_cpu_vus_roc": 0.8607302953757388,
+    "double_pr_minus_saved": 0.0020411663048245376,
+    "double_roc_minus_saved": 0.002495666717135081,
+    "single_pr_minus_saved": -1.3865120274125786e-08,
+    "single_roc_minus_saved": 4.962835919997133e-09
+  }
+]

@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-10-30T14:27:08.285548+02:00",
+  "json_inputs": [
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-1.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 104980479,
+      "sha256": "6ce4f7376cdd490d397f2582567b41f5194e8fbab8fa91f60154b6c4fb403407"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-2.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87922080,
+      "sha256": "ec1578f58de7129ed322a5c4948f49c1161c0d6350ee359a0b253753f49cd135"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-3.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 86930530,
+      "sha256": "dc2a02994b63a4ed5367670141480cdd4cf7c6b5a3874e3c88e01e6b60dc4025"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-4.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87273722,
+      "sha256": "c249655a8fcbd62bc4e6bfb5d8d17d2ac44e8db912a67a3b76a545719fcd1171"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-5.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 86875391,
+      "sha256": "174bbe2b9e7a23fca98531777ab29a3847c9974adfaa470ac7546b2eddf94720"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-6.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 85214570,
+      "sha256": "d99fcbfff9f3b4e2d9155e1136c5c9a72090a953d4a55cbe9928acdc9e937748"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-7.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87403041,
+      "sha256": "ce2121817c6c38eea2cc63b97131ae37af886bebd912e8c7389296ca9afa01cc"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-1-8.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87183551,
+      "sha256": "bd12ac1c53deae3968e1a60f111fa75831184e9892b2c685944a13fad8acd70d"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-1.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87628133,
+      "sha256": "83b2b6129fbb215b10ff9635dae697e825ef470732eacfd475aedbecf7fa4e13"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-2.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87144129,
+      "sha256": "61aa6cfa428c80b83cd246e17375da65339447d807a647ea9d47c4b09bfff3bf"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-3.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87255968,
+      "sha256": "cade0e57d106e1b8e8facf3962a91468eb6fa671b0857179b53da8898ce5de95"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-4.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87051451,
+      "sha256": "b49e36975d4a0a986ec8cb03243c02337165fd70032087463965eac979394880"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-5.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87155657,
+      "sha256": "39d05df0c77bac336b0b3f5c8935f34c7f1128ce2d21dd5965c5aac3a0ae1999"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-6.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 106993834,
+      "sha256": "bb6c4c362fc0fc4d72da1af8b347424016df06baccbda22f181cf1bbaf9589fd"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-7.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87361365,
+      "sha256": "98973f8f34068fe783f899fffb640458fcc5ca465fbe5ad72aa341ae711bb320"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-8.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 85805993,
+      "sha256": "d5da31e38f2d49fbf704e6c8e5864399e88635f8ca743566a127adc2fb929d46"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-2-9.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 106027857,
+      "sha256": "4525a7f600fa7ff991cfff883e9af13f421da732f27d733bd46f3d3d09356c2d"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-1.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 105593786,
+      "sha256": "f3a8e41e8d749a031025e66214ae857b454eae249d4e28334f06be69a952327c"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-10.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 86868346,
+      "sha256": "fec601cb4522fcba53976856f538bf2eddc871f87c3ce768df14846a9dcd3cb4"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-11.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 105093997,
+      "sha256": "9fec75e6fab34127262ab3ff52f54cd3998bfb05c776235a9f811510bb540eae"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-2.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87527702,
+      "sha256": "95f6891a267aa0ba64d1f6ddf695ad0a8a63ecde89e8be74fbadd9f79e76e3c0"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-3.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87225468,
+      "sha256": "00ca64822ebee9602950dee449fe8a5ddc55fcddb695db5fa05c4bfae60d1895"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-4.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 83468491,
+      "sha256": "1256e7dbc054d1d8773cbbac949e6e0a38a4765a16bc3278662c18a6e8820e49"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-5.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 87160271,
+      "sha256": "3b61b6baa6669c13fc437483f308db04b3abc547f7c561447937024a9eb6b320"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-6.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 106696721,
+      "sha256": "4aa15a4b5b3349924f8de66978ec15c0f0e22ac802ced37ef58815910ad42a08"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-7.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 105753980,
+      "sha256": "6c63d62b073e89741572ce5434f6b83e6eb4053ddcd14219a41e7bb89b638225"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-8.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 106332209,
+      "sha256": "7b657208579317033f9188a129840d87ef66e8b93defdb1c6eb945b1eb3eb1f2"
+    },
+    {
+      "path": "results/smd/lewm_encoder/frequency_aux/cross_attention/observed_features/machine-3-9.txt/jepa_cross_attention_observed_features/decision_trace.json",
+      "bytes": 105599240,
+      "sha256": "797703042fa880bb7b4edb62ea26d94b15a531b3ee90d2bd0d6b6b987ca4a35a"
+    }
+  ],
+  "machines": 28,
+  "images": 28,
+  "method": "Final replay values reconstructed from original JSON; no new model inference; pointwise diagnostics separated from official window metrics"
+}

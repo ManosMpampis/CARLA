@@ -1,0 +1,76 @@
+{
+  "paired_comparisons": [
+    {
+      "a": "lewm_encoder/frequency",
+      "b": "ae/default",
+      "mean_difference": 0.009347652725983016,
+      "machines_a_better": 18,
+      "paired_machine_bootstrap_ci95": [
+        -0.07372256003025954,
+        0.08867712614468137
+      ]
+    },
+    {
+      "a": "lewm_encoder/frequency_aux",
+      "b": "lewm_encoder/frequency",
+      "mean_difference": -0.0012326485330953446,
+      "machines_a_better": 15,
+      "paired_machine_bootstrap_ci95": [
+        -0.05884752977130494,
+        0.0478895380727932
+      ]
+    },
+    {
+      "a": "lewm_encoder/frequency_aux_no_film",
+      "b": "lewm_encoder/frequency_aux",
+      "mean_difference": -0.010669181660587211,
+      "machines_a_better": 14,
+      "paired_machine_bootstrap_ci95": [
+        -0.03477703960371907,
+        0.011172673120071381
+      ]
+    }
+  ],
+  "divergence_example": [
+    {
+      "experiment": "lewm_encoder/time_aux/cross_attention/observed_query",
+      "machine": "machine-2-3.txt",
+      "prevalence": 0.2023809523809523,
+      "vus_pr": 0.6109794865955006,
+      "vus_roc": 0.724573162468997,
+      "cal_f1": 0.3851203501094092,
+      "oracle_f1": 0.6770981507823614,
+      "vanilla_ap": 0.7404315734628363,
+      "vanilla_roc": 0.8253214681855789,
+      "tpr_at_fpr_1pct": 0.5185185185185185,
+      "tpr_at_fpr_5pct": 0.5577342047930284,
+      "top_5pct_precision": 1.0
+    },
+    {
+      "experiment": "lewm_encoder/frequency_aux/cross_attention/observed_query",
+      "machine": "machine-2-3.txt",
+      "prevalence": 0.2023809523809523,
+      "vus_pr": 0.5057107264345343,
+      "vus_roc": 0.8004757220094855,
+      "cal_f1": 0.5508982035928144,
+      "oracle_f1": 0.584931506849315,
+      "vanilla_ap": 0.5829414998327155,
+      "vanilla_roc": 0.8387028787314939,
+      "tpr_at_fpr_1pct": 0.23311546840958605,
+      "tpr_at_fpr_5pct": 0.3093681917211329,
+      "top_5pct_precision": 0.8947368421052632
+    }
+  ],
+  "correlation_means": {
+    "pr_roc_spearman": {
+      "512": 0.8617131062951496,
+      "1024": 0.8991726990692862
+    },
+    "cal_pr_spearman": {
+      "512": 0.3615676319205992,
+      "1024": 0.2682022431606449
+    }
+  },
+  "full_span_always_positive_f1_mean": 0.5565183555059452,
+  "half_span_always_positive_f1_mean": 0.3951123523983378
+}
