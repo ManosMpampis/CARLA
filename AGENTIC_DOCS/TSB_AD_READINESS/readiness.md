@@ -2,6 +2,10 @@
 
 Audited 2026-10-30 at commit `9ef876c`. This is an assessment, not an implemented adapter.
 
+Historical assessment: the integration described below was subsequently merged
+from `codex/tsb-ad-benchmark`. See [merge_validation.md](merge_validation.md) for
+the resulting behavior, verification, and remaining limits.
+
 ## Verdict
 
 The data are installed and the current model families can accept one-channel inputs,

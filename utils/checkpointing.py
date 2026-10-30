@@ -47,6 +47,8 @@ class Checkpoints:
         self.save_every = int(config.get("save_every", config.get("checkpoint_every", 10)))
         if self.save_every < 0:
             raise ValueError("save_every must be nonnegative (0 disables periodic snapshots)")
+        if config.get("benchmark_protocol") == "tsb_ad":
+            self.save_every = 1
 
     @staticmethod
     def _save(payload, path):
@@ -89,6 +91,8 @@ class Checkpoints:
                    "best": dict(self.best), "best_val_loss": self.best["validation_loss"],
                    "losses": losses, "evaluation": evaluation,
                    "config": dict(self.config), "stage": self.config.get("stage", "pretrain"),
+                   "initialize_from": self.config.get("initialize_from"),
+                   "benchmark_protocol": self.config.get("benchmark_protocol"),
                    **self.extra}
         if scaler is not None:
             payload["scaler"] = scaler.state_dict()

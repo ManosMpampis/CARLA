@@ -305,23 +305,33 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     model = builder(config).to(device)
     if int(config["wsz"]) % model.total_stride:
         raise ValueError("window length must be divisible by encoder stride")
+    out_dir = config["jepa_dir"]
+    last_path = config["jepa_checkpoint"]
+    if not os.path.exists(last_path):
+        last_path = os.path.join(out_dir, "last.pth.tar")  # legacy AE/VAE resume
+    initialization_source = None
+    if config.get("initialize_from") and not os.path.exists(last_path):
+        # Fine-tuning starts a new optimizer and schedule. An existing run's
+        # complete state always takes precedence over a weights-only source.
+        from utils.trainer import Trainer
+
+        initialization_source = str(config["initialize_from"])
+        Trainer.load_weights(initialization_source, model, strict=True)
     train_dataset, val_dataset = get_jepa_datasets(config)
     if not isinstance(train_dataset, JEPADataset) or train_dataset._corpus is not None:
         raise ValueError("these comparison arms require a single machine")
-    test_dataset = JEPADataset(config, train=False)
+    benchmark = config.get("benchmark_protocol") == "tsb_ad"
+    eval_every = 0 if benchmark else evaluation_interval(config)
+    test_dataset = (JEPADataset(config, train=False)
+                    if eval_every > 0 else None)
     train_loader = get_train_dataloader(config, train_dataset)
     val_loader = get_val_dataloader(config, val_dataset)
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
-    out_dir = config["jepa_dir"]
     logger = Logger(config["version"], verbose=3, file_path=out_dir, delete_files=False)
     beta = float(config.get("beta", 0.3)) if arm == "vae" else 0.0
     if beta < 0:
         raise ValueError("beta must be nonnegative")
-    eval_every = evaluation_interval(config)
-    last_path = config["jepa_checkpoint"]
-    if not os.path.exists(last_path):
-        last_path = os.path.join(out_dir, "last.pth.tar")  # legacy AE/VAE resume
     first_epoch, best = 1, None
     if os.path.exists(last_path):
         checkpoint = torch.load(last_path, map_location="cpu", weights_only=False)
@@ -330,6 +340,8 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
         scheduler.load_state_dict(checkpoint["scheduler"])
         best = checkpoint.get("best")
         first_epoch = int(checkpoint["epoch"]) + 1
+        initialization_source = checkpoint.get("initialize_from")
+    config["initialize_from"] = initialization_source
     if first_epoch > 1:
         logger.resume_from(first_epoch - 1)
         truncate_epoch_history(out_dir, first_epoch - 1)
@@ -337,6 +349,18 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     checkpoints = Checkpoints(config, model, optimizer, scheduler, best=best,
                               extra={"inference": inference_metadata(config, train_dataset)})
     try:
+        logger.log(f"{arm.upper()} training; train/validation batches "
+                   f"{len(train_loader)}/{len(val_loader)}")
+        logger.log_hyperparams(config)
+        if initialization_source:
+            logger.log(f"Weights initialized from {initialization_source}")
+        if os.path.exists(last_path):
+            logger.log(f"Restart from checkpoint {last_path}; next epoch {first_epoch}")
+            from utils.trainer import Trainer
+
+            Trainer.apply_resume_learning_rate(config, optimizer, scheduler, logger)
+        if benchmark:
+            logger.log("TSB-AD protocol: training and selection use train data only")
         for epoch in range(first_epoch, int(config["epochs"]) + 1):
             train_losses = _run_epoch(model, train_loader, optimizer, device,
                                       beta, writer, epoch, training=True)

@@ -104,6 +104,40 @@ class JEPADataset(Dataset):
                 self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
             else:
                 self.series = series
+        elif source == "tsb_ad":
+            from data.tsb_ad import read_tsb_series
+
+            if not p.get("dataset_root"):
+                raise ValueError("TSB-AD requires dataset_root pointing at the CSV directory")
+            sample = read_tsb_series(
+                os.path.join(p["dataset_root"], p["fname"]), p.get("tsb_train_end")
+            )
+            self.train_end = sample.train_end
+            self.features = sample.features
+            prefix = sample.data[:sample.train_end]
+            val_fraction = float(p.get("val_fraction", 0.1))
+            if not np.isfinite(val_fraction) or not 0 < val_fraction < 1:
+                raise ValueError("TSB-AD val_fraction must be strictly between 0 and 1")
+            cut = int(len(prefix) * (1.0 - val_fraction))
+            if self.wsz <= 0 or self.stride <= 0:
+                raise ValueError("TSB-AD wsz and stride must both be positive")
+            if min(cut, len(prefix) - cut) < self.wsz:
+                raise ValueError(
+                    f"{sample.path.name}: training prefix has {len(prefix)} rows, "
+                    f"split into {cut} training and {len(prefix) - cut} validation "
+                    f"rows; both splits need at least wsz={self.wsz} rows. "
+                    "Lower wsz or change val_fraction."
+                )
+            scaler = StandardScaler().fit(prefix)
+            self.mean, self.std = scaler.mean_, scaler.scale_
+            if train:
+                series = scaler.transform(prefix).astype(np.float32)
+                self.series = series[:cut]
+                self.val_series = series[cut:]
+                self.targets = np.zeros(cut, dtype=np.int64)
+            else:
+                self.series = scaler.transform(sample.data).astype(np.float32)
+                self.targets = sample.labels
         elif source == "smd":
             fname = p["fname"]
             root = p.get("dataset_root", MyPath.db_root_dir("smd"))
