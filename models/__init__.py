@@ -1,26 +1,14 @@
 """Backbone registry for LeWM experiments."""
 
-__all__ = ["BACKBONE_REGISTRY", "get_backbone", "FRAMEWORK_REGISTRY", "get_framework"]
+from models.input_engines import ForecastEngine, MaskedEngine
+from models.encoders import ResNetEncoder
+from models.actions import MaskedRepresentationAction, MaskedRepresentationAuxiliaryGuidedAction, TCNEncodedAction
+from models.ae_baseline import ReconstructionBaseline
+from models.lewm import LeWM
+from models.blocks import Identity
+from utils.reconstruction_scores import reconstruction_score_map
 
-
-def _build_lewm_resnet(**kwargs):
-    from models.lewm import LeWMResNetEncoder
-
-    encoder = LeWMResNetEncoder(**kwargs)
-    return {"model": encoder, "dim": [encoder.output_dims]}
-
-
-BACKBONE_REGISTRY = {
-    "lewm_resnet": _build_lewm_resnet,
-}
-
-
-def get_backbone(name, **kwargs):
-    """Build a registered backbone by config name."""
-    if name not in BACKBONE_REGISTRY:
-        raise ValueError("Invalid backbone {}".format(name))
-    return BACKBONE_REGISTRY[name](**kwargs)
-
+__all__ = ["decoders", "encoders", "actions", "get_framework"]
 
 def _build_cross_attention(encoder, **kwargs):
     from models.lewm_cross_attention import CrossAttentionLeWM
@@ -28,10 +16,16 @@ def _build_cross_attention(encoder, **kwargs):
     return CrossAttentionLeWM(encoder, **kwargs)
 
 
-def _build_lewm(encoder, **kwargs):
-    from models.lewm import LeWMModel
+def _build_cross_attention_tcn(encoder, **kwargs):
+    from models.lewm_cross_attention_tcn import CrossAttentionTCNLeWM
 
-    return LeWMModel(encoder, **kwargs)
+    return CrossAttentionTCNLeWM(encoder, **kwargs)
+
+
+def _build_rec_ca(encoder, **kwargs):
+    from models.lewm_rec_ca import RecCALeWM
+
+    return RecCALeWM(encoder, **kwargs)
 
 
 def _build_reconstruction(encoder, **kwargs):
@@ -39,30 +33,85 @@ def _build_reconstruction(encoder, **kwargs):
 
     return ReconModel(encoder, **kwargs)
 
-
-def _build_ae(encoder, **kwargs):
-    from models.ae_baseline import ReconstructionBaseline
-
-    return ReconstructionBaseline(encoder=encoder, variational=False, **kwargs)
-
-
-def _build_vae(encoder, **kwargs):
-    from models.ae_baseline import ReconstructionBaseline
-
-    return ReconstructionBaseline(encoder=encoder, variational=True, **kwargs)
-
-
 FRAMEWORK_REGISTRY = {
-    "lewm": _build_lewm,
+    "lewm": LeWM,
     "lewm_reconstruction": _build_reconstruction,
     "lewm_cross_attention": _build_cross_attention,
-    "ae": _build_ae,
-    "vae": _build_vae,
+    "lewm_cross_attention_tcn": _build_cross_attention_tcn,
+    "lewm_rec_ca": _build_rec_ca,
+    "ae": ReconstructionBaseline,
+    "vae": ReconstructionBaseline,
 }
 
+ENCODER_REGISTRY = {
+    "resnet": ResNetEncoder,
+    "none": Identity,
+}
 
-def get_framework(name, encoder, **kwargs):
+ACTION_REGISTRY = {
+    "masked": "MaskedAction",
+    "tcn": "TCNAction",
+    "convolutional": "ConvolutionalAction",
+    "auxilary": "AuxiliaryAction",
+    "none": Identity,
+}
+
+DECODER_REGISTRY = {
+    "fft": "MirroredDecoder",
+    "convolutional": "ConvolutionalDecoder",
+    "none": Identity,
+}
+
+INPUT_ENGINE_REGISTRY = {
+    "mask": MaskedEngine,
+    "forecast": ForecastEngine,
+    "none": Identity,
+}
+
+SCORE_FUNCTIONS = {
+    "reconstruction": reconstruction_score_map,
+}
+
+def get_framework(name, **kwargs):
     """Build a registered framework around a registered backbone."""
     if name not in FRAMEWORK_REGISTRY:
         raise ValueError(f"Invalid framework {name}")
-    return FRAMEWORK_REGISTRY[name](encoder, **kwargs)
+    if name == "vae":
+        kwargs["variational"] = True
+    return FRAMEWORK_REGISTRY[name]( **kwargs)
+
+def get_input_engine(input_engine):
+    """Build a registered input engine by config name."""
+    if input_engine["name"] not in INPUT_ENGINE_REGISTRY:
+        raise ValueError(f"Invalid input engine {input_engine['name']}")
+    return INPUT_ENGINE_REGISTRY[input_engine.pop("name")](**input_engine)
+
+def engines(engine):
+    """Build a registered input engine by config name."""
+    if engine["name"] not in INPUT_ENGINE_REGISTRY:
+        raise ValueError(f"Invalid input engine {engine['name']}")
+    return INPUT_ENGINE_REGISTRY[engine.pop("name")](**engine)
+
+def encoders(encoder):
+    """Build a registered encoder by config name."""
+    if encoder["name"] not in ENCODER_REGISTRY:
+        raise ValueError(f"Invalid encoder {encoder['name']}")
+    return ENCODER_REGISTRY[encoder.pop("name")](**encoder)
+
+def actions(action):
+    """Build a registered action module by config name."""
+    if action["name"] not in ACTION_REGISTRY:
+        raise ValueError(f"Invalid action {action['name']}")
+    return ACTION_REGISTRY[action.pop("name")](**action)
+
+def decoders(decoder):
+    """Build a registered decoder by config name."""
+    if decoder["name"] not in DECODER_REGISTRY:
+        raise ValueError(f"Invalid decoder {decoder['name']}")
+    return DECODER_REGISTRY[decoder.pop("name")](**decoder)
+
+def score_functions(score_mode):
+    """Build a registered score function by config name."""
+    if score_mode["name"] not in SCORE_FUNCTIONS:
+        raise ValueError(f"Invalid score mode {score_mode}")
+    return SCORE_FUNCTIONS[score_mode.pop("name")](**score_mode)

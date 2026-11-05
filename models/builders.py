@@ -35,7 +35,7 @@ def get_recon_model(p):
     """LeWM encoder + mirrored recon head (+ optional frozen aux)."""
     from models import get_backbone, get_framework
     from models.recon_head import build_mirrored_head
-    from models.lewm import TimeAuxiliary
+    from models.steped_predictor import TimeAuxiliary
 
     enc_kwargs = dict(p.get("model_kwargs", {}))
     built = get_backbone(p.get("backbone", "lewm_resnet"), **enc_kwargs)
@@ -74,7 +74,10 @@ def get_cross_attention_model(p):
     attention_kwargs = dict(p.get("cross_attention_kwargs", {}))
     attention_kwargs.setdefault("norm", enc_kwargs.get("norm", "batch"))
     attention_kwargs.setdefault("dropout", enc_kwargs.get("dropout", 0.0))
-    return get_framework("lewm_cross_attention", encoder,
+    framework = p.get("cross_attention_model", "lewm_cross_attention")
+    if framework not in ("lewm_cross_attention", "lewm_cross_attention_tcn", "lewm_rec_ca"):
+        raise ValueError(f"Invalid cross_attention_model {framework}")
+    return get_framework(framework, encoder,
                          **attention_kwargs,
                          score_mode=p.get("score_mode", "l1"))
 
