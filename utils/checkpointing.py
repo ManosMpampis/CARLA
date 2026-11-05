@@ -47,8 +47,6 @@ class Checkpoints:
         self.save_every = int(config.get("save_every", config.get("checkpoint_every", 10)))
         if self.save_every < 0:
             raise ValueError("save_every must be nonnegative (0 disables periodic snapshots)")
-        if config.get("benchmark_protocol") == "tsb_ad":
-            self.save_every = 1
 
     @staticmethod
     def _save(payload, path):

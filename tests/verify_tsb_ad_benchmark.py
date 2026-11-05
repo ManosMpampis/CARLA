@@ -73,6 +73,8 @@ def main():
         env = workspace / "env.yml"
         env.write_text(yaml.safe_dump({"root_dir": str(output)}))
         overrides = {
+            # Exercise the optional upstream-compatible full-series export mode.
+            "tsb_evaluation_scope": "full", "eval_every": 0,
             "model_kwargs": {"enc_channels": [4, 8], "enc_strides": [2, 2], "dropout": 0.0},
             "predictor_kwargs": {"stem_channels": 4, "neck_widths": [8, 8, 8],
                                  "n_fft": 16, "hop_length": 4, "win_length": 16},
@@ -123,7 +125,7 @@ def main():
             report = json.loads((directory / "metrics.json").read_text())
             assert report["metric_status"] == "deferred" and "tsb_ad" not in report
             assert Path(report["checkpoint"]) == checkpoint_path(exp, output, "suite").resolve()
-            assert report["calibrated"]["source"] == "declared_train_prefix_validation_tail"
+            assert report["calibrated"]["source"] == "declared_train_prefix_full"
             assert report["score_length"] == len(sample.data)
             assert report["coverage"]["covered"] + report["coverage"]["uncovered"] == len(score)
             with np.load(directory / "scores.npz", allow_pickle=False) as archive:
@@ -212,16 +214,16 @@ def main():
 
         short_path = dataset / "002_Short_id_1_Facility_tr_80_1st_100.csv"
         write_series(short_path, length=128)
-        short_rows = cli("short", filename=short_path.name, expected=1,
+        short_rows = cli("short", filename=short_path.name, expected=0,
                          extra=("--experiments", "ae/default", "lewm_encoder/frequency", "--no-trace"))
         short_status = {row["experiment"]: row["status"] for row in short_rows}
-        assert short_status == {"ae/default": "completed", "lewm_encoder/frequency": "failed"}, short_rows
+        assert short_status == {"ae/default": "completed", "lewm_encoder/frequency": "completed"}, short_rows
         odd_path = dataset / "003_Odd_id_1_Facility_tr_140_1st_184.csv"
         write_series(odd_path)
         odd_plan = build_benchmark_plan(manifest, env, "odd", read_tsb_series(odd_path), output,
                                         overrides=overrides, epochs=1, device="cpu", experiments=[cross.key])
         odd_target = next(exp for exp in odd_plan if exp.key == cross.key)
-        assert odd_target.config["wsz"] == 24
+        assert odd_target.config["wsz"] == 32
         get_cross_attention_model(odd_target.config).crop_ranges(odd_target.config["wsz"])
 
     print("TSB-AD benchmark verified: all 36 variants, score alignment/replay, resume, warm start, and provenance")

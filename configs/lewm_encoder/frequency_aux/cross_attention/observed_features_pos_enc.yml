@@ -3,3 +3,6 @@ extends: [../phase1.yml, ../../_templates/cross_attention_observed_features_pos_
 framework: cross_attention
 phase1_experiment: frequency_aux
 experiment_name: observed_features_pos_enc
+
+common:
+  wsz: 769

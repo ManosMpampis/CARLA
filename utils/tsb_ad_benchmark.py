@@ -45,13 +45,13 @@ def select_files(dataset_root, *, files=None, file_list=None):
 
 
 def adapt_geometry(config, train_end, policy="shrink", *, runner=None):
-    """Resolve short benchmark prefixes without crossing train/validation splits."""
+    """Resolve windows against the full prefix; short splits reuse the prefix."""
     config = merge_config(config, {})
     fraction = float(config.get("val_fraction", 0.2))
     if not 0 < fraction < 1:
         raise ValueError("val_fraction must lie strictly between 0 and 1")
     cut = int(train_end * (1 - fraction))
-    available = min(cut, train_end - cut)
+    available = train_end
     strides = config.get("model_kwargs", {}).get("enc_strides", [1])
     step = int(np.prod(strides))
     if step < 1:
@@ -69,12 +69,20 @@ def adapt_geometry(config, train_end, policy="shrink", *, runner=None):
     minimum = step * (8 if runner == "lewm" and config.get("predictor_kwargs", {}).get("domain") == "frequency" else 2)
     if window < minimum or window > available or window % lattice:
         raise ValueError(f"prefix {train_end} provides train/validation lengths {cut}/{train_end-cut}; "
-                         f"window {window} must fit both, be divisible by {lattice}, and be >= {minimum}. "
+                         f"window {window} must fit the full prefix, be divisible by {lattice}, and be >= {minimum}. "
                          "Adjust --window, --val-fraction, or the model configuration.")
+    if runner == "cross_attention":
+        from models.lewm_cross_attention import CrossAttentionLeWM
+
+        CrossAttentionLeWM.resolve_crop_ranges(
+            window, step, crops.get("context_crop"), crops.get("target_crop"))
     stride = min(int(config["stride"]), window)
     if stride < 1:
         raise ValueError("stride must be positive")
-    windows = (cut - window) // stride + 1
+    from data.jepa_dataset import training_split_bounds
+
+    train_length, _ = training_split_bounds(train_end, window, fraction)
+    windows = (train_length - window) // stride + 1
     config.update(wsz=window, stride=stride, batch_size=min(int(config["batch_size"]), windows))
     if config["batch_size"] < 1:
         raise ValueError("batch_size must be positive")
@@ -90,7 +98,7 @@ def build_benchmark_plan(manifest, env_path, version, series, root, *,
                          epochs=None, device=None, window_policy="shrink"):
     settings = merge_config(overrides or {}, {
         "model_kwargs": {"in_channels": series.channels},
-        "benchmark_protocol": "tsb_ad", "eval_every": 0,
+        "benchmark_protocol": "tsb_ad",
         "decision_trace": False, "stage_a": {"corpus": "single"},
     })
     plan, _ = build_plan(manifest, env_path, version, frameworks=frameworks,
@@ -100,6 +108,7 @@ def build_benchmark_plan(manifest, env_path, version, series, root, *,
                          root_dir_override=str(root))
     resolved = []
     for exp in plan:
+        exp.config.setdefault("tsb_evaluation_scope", "test")
         try:
             config = adapt_geometry(exp.config, series.train_end, window_policy, runner=exp.runner)
         except ValueError as exc:
@@ -218,16 +227,17 @@ def score_benchmark(exp, env_path, root, version, series, *, metrics="deferred",
             raise ValueError("evaluation crops require cross_attention")
     window, stride = options.pop("wsz"), options.pop("stride")
     train_data = JEPADataset(p, train=True)
-    clean = JEPADataset.validation_split(train_data, p)
     test = JEPADataset(p, train=False)
+    labels = test.targets
+    first_channel = series.data[test.series_start:, 0]
     wrapped = InputResolutionModel(model, exp.runner)
     scorer = Scorer(wrapped, device, int(p.get("score_batch_size", p["batch_size"])))
-    clean_result = scorer.score_series(clean.series, window, stride, **options)
+    clean_result = scorer.score_series(train_data.full_train_series, window, stride, **options)
     test_result = scorer.score_series(test.series, window, stride, **options)
     scores = aligned_scores(test_result)
     score_seconds = time.perf_counter() - started
-    if scores.shape != series.labels.shape:
-        raise ValueError("benchmark scores must match the full input timeline")
+    if scores.shape != labels.shape:
+        raise ValueError("benchmark scores must match the selected evaluation timeline")
     quantile = float(p.get("calibration_kwargs", {}).get("quantile", p.get("calibration_quantile", 0.995)))
     if not 0 < quantile < 1:
         raise ValueError("calibration quantile must lie strictly between 0 and 1")
@@ -238,25 +248,32 @@ def score_benchmark(exp, env_path, root, version, series, *, metrics="deferred",
     score_path = directory / "benchmark_scores.npy"
     np.save(score_path, scores)
     inputs_path = directory / "evaluation_inputs.npz"
-    np.savez_compressed(inputs_path, labels=series.labels, first_channel=series.data[:, 0],
-                        predictions=predictions)
-    np.savez_compressed(directory / "scores.npz", scores=scores, labels=series.labels,
+    np.savez_compressed(inputs_path, labels=labels, first_channel=first_channel,
+                        predictions=predictions, evaluation_start=test.series_start)
+    np.savez_compressed(directory / "scores.npz", scores=scores, labels=labels,
+                        evaluation_start=test.series_start,
                         predictions=predictions, cover_counts=test_result["cover_counts"],
                         starts=test_result["start_idxs"], ends=test_result["end_idxs"],
                         **{k.replace("/", "_"): v for k, v in test_result["channels"].items()})
     calibration = {"threshold": threshold, "quantile": quantile,
-                   "source": "declared_train_prefix_validation_tail", "operator": "gt",
+                   "source": "declared_train_prefix_full", "operator": "gt",
                    "normalization_mean": train_data.mean.tolist(), "normalization_std": train_data.std.tolist()}
     _json(directory / "calibration.json", calibration)
-    report = {"protocol": "TSB-AD semisupervised: fit declared prefix, score full series",
+    from utils.reconstruction_baselines import evaluate
+    evaluation = evaluate(wrapped, train_data.full_train_series, test.series, labels, p, device,
+                          options={"wsz": window, "stride": stride, **options})
+    report = {"protocol": "TSB-AD: fit declared prefix, evaluate " + test.evaluation_scope,
+              "evaluation_scope": test.evaluation_scope,
+              "evaluation_start": test.series_start,
+              "evaluation": evaluation,
               "train_end": series.train_end, "checkpoint": str(weights.resolve()),
               "score_length": len(scores), "coverage": {
                   "covered": int(np.count_nonzero(test_result["cover_counts"])),
                   "uncovered": int(np.count_nonzero(test_result["cover_counts"] == 0)),
                   "fill_policy": "linear interpolation of internal gaps; nearest boundary extension"},
-              "calibrated": {"f1": float(f1_score(series.labels, predictions, zero_division=0)),
-                             "precision": float(precision_score(series.labels, predictions, zero_division=0)),
-                             "recall": float(recall_score(series.labels, predictions, zero_division=0)),
+              "calibrated": {"f1": float(f1_score(labels, predictions, zero_division=0)),
+                             "precision": float(precision_score(labels, predictions, zero_division=0)),
+                             "recall": float(recall_score(labels, predictions, zero_division=0)),
                              **calibration},
               "prefix_anomalies": int(np.count_nonzero(series.labels[:series.train_end])),
               "metric_status": "deferred"}
@@ -265,7 +282,7 @@ def score_benchmark(exp, env_path, root, version, series, *, metrics="deferred",
         logger.log(f"TSB-AD {series.path.name}: {exp.key}; checkpoint={weights}")
         if metrics == "tsb-ad":
             from utils.tsb_ad_metrics import evaluate_scores
-            report["tsb_ad"] = evaluate_scores(scores, series.labels, series.data[:, 0],
+            report["tsb_ad"] = evaluate_scores(scores, labels, first_channel,
                                                tsb_ad_root=tsb_ad_root, sliding_window=sliding_window)
             report["metric_status"] = "completed"
             _json(directory / "tsb_metrics.json", report["tsb_ad"])
@@ -277,7 +294,7 @@ def score_benchmark(exp, env_path, root, version, series, *, metrics="deferred",
             report["decision_trace"] = write_final_decision_trace(
                 wrapped, device, test.series, {**p, "decision_trace": {"max_windows": 256}}, threshold,
                 options={"wsz": window, "stride": stride, **options},
-                threshold_operator="gt", labels=series.labels)
+                threshold_operator="gt", labels=labels)
         _json(directory / "metrics.json", report)
         logger.log(f"Calibrated metrics: {report['calibrated']}")
         logger.log(f"Official metrics: {report.get('tsb_ad', 'deferred; run evaluate_tsb_ad.py')}")

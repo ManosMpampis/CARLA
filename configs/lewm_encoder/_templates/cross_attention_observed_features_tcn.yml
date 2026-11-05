@@ -1,0 +1,11 @@
+# Second/current crop -> causal TCN -> Q; first/past crop -> original K/V.
+extends: cross_attention_observed_features.yml
+cross_attention_model: lewm_cross_attention_tcn
+tag_jepa: cross_attention_observed_features_tcn
+cross_attention_kwargs:
+  query_source: observed
+  feature_extraction: separate
+  query_tcn_hidden_channels: null # null uses the encoder output width
+  query_tcn_dilations: [1, 2, 4, 8]
+  query_tcn_kernel_size: 3 # receptive field: 31 feature tokens
+  query_tcn_dropout: 0.1

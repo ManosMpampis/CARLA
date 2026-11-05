@@ -172,15 +172,8 @@ def score_with_model(p, device, build_model, logger, *, input_resolution=False) 
     from utils.common_config import get_jepa_datasets
 
     train_dataset, _ = get_jepa_datasets(p)
-    # Honest option: calibrate on the held-out val TAIL of the train series
-    # (still clean-train data, never test labels). Val windows are unseen
-    # during optimization, so their score scale matches test-normal better
-    # when the model fits the train windows tightly.
-    cal_src = p.get("calibration_source", "train")
-    if cal_src == "val" and hasattr(train_dataset, "val_series"):
-        clean_series = np.asarray(train_dataset.val_series, dtype=np.float32)
-    else:
-        clean_series = series_from_dataset(train_dataset)
+    cal_src = "train"
+    clean_series = np.asarray(train_dataset.full_train_series, dtype=np.float32)
     clean_result = scorer.score_series(clean_series, batch_size=score_bs,
                                        **eval_options)
     clean_channels = {"fused": clean_result["scores"], **clean_result["channels"]}

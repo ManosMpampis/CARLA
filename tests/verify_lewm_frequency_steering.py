@@ -21,7 +21,7 @@ sys.path.insert(0, REPO)
 
 from losses.lewm import LeWMLoss  # noqa: E402
 from models import get_backbone  # noqa: E402
-from models.lewm import LeWMModel  # noqa: E402
+from models.steped_predictor import LeWMModel  # noqa: E402
 from utils.masking_steered import SubAnomalyMaskCollator  # noqa: E402
 
 

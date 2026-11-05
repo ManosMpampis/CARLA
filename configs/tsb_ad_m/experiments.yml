@@ -1,0 +1,80 @@
+# Editable TSB-AD-M experiment suite. All 36 variants are enabled initially.
+# Change common settings below; per-experiment overrides win over common.
+# Add enabled: false to an experiment to disable it. Keep the encoder
+# entry enabled when a selected head needs its pretrained_experiment.
+# Input channels are inferred from each CSV by benchmark_tsb_ad.py.
+# Preview one file before running; see configs/tsb_ad/README.md.
+# Config paths below are relative to this manifest.
+
+# Same experiment variants as the PSM suite, with SMD data settings.
+# Config paths inherited from the parent retain their original location.
+common:
+  train_db_name: tsb_ad
+  val_db_name: tsb_ad
+  tsb_evaluation_scope: test  # Training prefix and test suffix remain separate.
+  wsz: 512  # Requested window; default shrink policy fits short prefixes.
+  stride: 10
+  val_fraction: 0.1  # Held-out tail of the declared training prefix.
+  seed: 4
+  device: cuda
+  amp: false
+  batch_size: 64
+  num_workers: 0
+  score_batch_size: 256
+  # model_kwargs.in_channels is inferred per file; M channel counts vary.
+  calibration_quantile: 0.999
+  calibration_kwargs: {quantile: 0.999}
+  eval_every: 10  # Test monitoring cadence; 1 = every epoch, 0 = disabled.
+  stage_c: {mode: frozen}
+  epochs: 300
+  decision_trace: false  # Training traces are disabled; scoring uses --no-trace.
+
+  # Optional shared overrides; otherwise each model retains its own defaults.
+  # optimizer_kwargs: {lr: 0.002, weight_decay: 0.01}
+  # model_kwargs: {enc_channels: [32, 64, 128], enc_strides: [2, 2, 2]}
+  # evaluation: {input_window: 128, stride: 10}
+
+experiments:
+
+  - framework: lewm_encoder
+    experiment_name: frequency_aux
+    runner: lewm
+    config: ../lewm_encoder/frequency_aux/phase1.yml
+
+  - framework: reconstruction
+    experiment_name: default
+    runner: recon
+    config: ../lewm_encoder/frequency_aux/reconstruction/default.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+
+  - framework: reconstruction
+    experiment_name: auxilary_added
+    runner: recon
+    config: ../lewm_encoder/frequency_aux/reconstruction/default.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+    overrides:
+      recon_kwargs: {with_aux: true}
+      score_aux_crop: true
+  
+  - framework: cross_attention
+    experiment_name: observed_features
+    runner: cross_attention
+    config: ../lewm_encoder/frequency_aux/cross_attention/observed_features.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+
+  - framework: cross_attention
+    experiment_name: observed_query
+    runner: cross_attention
+    config: ../lewm_encoder/frequency_aux/cross_attention/observed_query.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+  - framework: cross_attention
+    experiment_name: observed_query_pos_enc
+    runner: cross_attention
+    config: ../lewm_encoder/frequency_aux/cross_attention/observed_query_pos_enc.yml
+    pretrained_experiment: lewm_encoder/frequency_aux
+  
+  - framework: cross_attention
+    experiment_name: observed_features_pos_enc
+    runner: cross_attention
+    config: ../lewm_encoder/frequency_aux/cross_attention/observed_features_pos_enc.yml
+    pretrained_experiment: lewm_encoder/frequency_aux

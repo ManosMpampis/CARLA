@@ -9,6 +9,20 @@ from torch.utils.data import Dataset
 from utils.mypath import MyPath
 
 
+def training_split_bounds(length, window, val_fraction):
+    """Use a train-side tail when both splits hold a window, else reuse all rows."""
+    if window <= 0:
+        raise ValueError("wsz must be positive")
+    if not np.isfinite(val_fraction) or not 0 < val_fraction < 1:
+        raise ValueError("val_fraction must be strictly between 0 and 1")
+    if length < window:
+        raise ValueError(f"training series has {length} rows; need at least wsz={window} rows")
+    cut = int(length * (1.0 - val_fraction))
+    if min(cut, length - cut) < window:
+        return length, 0
+    return cut, cut
+
+
 def make_synthetic_series(n_steps: int, n_channels: int, seed: int,
                           with_anomalies: bool = False):
     """Deterministic toy telemetry: smooth periodic components, slow trends
@@ -56,8 +70,10 @@ class JEPADataset(Dataset):
 
     Returns {'ts': (wsz, C) float32, 'meta': {start_idx, end_idx, index}}.
     Normalization is fit on the train split only; the optional validation
-    split is the tail of the *train* series so checkpoint selection never
-    touches test data. Legacy contrastive dataset classes are intentionally
+    split is the tail of the *train* series, falling back to the full training
+    series when either split cannot hold a window. Threshold calibration uses
+    ``full_train_series`` regardless of the validation split. Checkpoint selection
+    never touches test data. Legacy contrastive dataset classes are intentionally
     left untouched and unused (spec decision).
     """
 
@@ -98,10 +114,7 @@ class JEPADataset(Dataset):
             series = scaler.transform(series).astype(np.float32)
             self.mean, self.std = scaler.mean_, scaler.scale_
             if train:
-                cut = int(series.shape[0] * (1.0 - p.get("val_fraction", 0.1)))
-                self.series = series[:cut]
-                self.val_series = series[cut:]
-                self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
+                self._set_training_series(series, p.get("val_fraction", 0.1))
             else:
                 self.series = series
         elif source == "tsb_ad":
@@ -114,30 +127,24 @@ class JEPADataset(Dataset):
             )
             self.train_end = sample.train_end
             self.features = sample.features
+            self.evaluation_scope = p.get("tsb_evaluation_scope", "test")
+            if self.evaluation_scope not in {"test", "full"}:
+                raise ValueError("tsb_evaluation_scope must be test or full")
+            self.series_start = sample.train_end if self.evaluation_scope == "test" else 0
             prefix = sample.data[:sample.train_end]
             val_fraction = float(p.get("val_fraction", 0.1))
             if not np.isfinite(val_fraction) or not 0 < val_fraction < 1:
                 raise ValueError("TSB-AD val_fraction must be strictly between 0 and 1")
-            cut = int(len(prefix) * (1.0 - val_fraction))
             if self.wsz <= 0 or self.stride <= 0:
                 raise ValueError("TSB-AD wsz and stride must both be positive")
-            if min(cut, len(prefix) - cut) < self.wsz:
-                raise ValueError(
-                    f"{sample.path.name}: training prefix has {len(prefix)} rows, "
-                    f"split into {cut} training and {len(prefix) - cut} validation "
-                    f"rows; both splits need at least wsz={self.wsz} rows. "
-                    "Lower wsz or change val_fraction."
-                )
             scaler = StandardScaler().fit(prefix)
             self.mean, self.std = scaler.mean_, scaler.scale_
             if train:
                 series = scaler.transform(prefix).astype(np.float32)
-                self.series = series[:cut]
-                self.val_series = series[cut:]
-                self.targets = np.zeros(cut, dtype=np.int64)
+                self._set_training_series(series, val_fraction)
             else:
-                self.series = scaler.transform(sample.data).astype(np.float32)
-                self.targets = sample.labels
+                self.series = scaler.transform(sample.data[self.series_start:]).astype(np.float32)
+                self.targets = sample.labels[self.series_start:]
         elif source == "smd":
             fname = p["fname"]
             root = p.get("dataset_root", MyPath.db_root_dir("smd"))
@@ -157,10 +164,7 @@ class JEPADataset(Dataset):
             self.mean, self.std = scaler.mean_, scaler.scale_
             series = scaler.transform(raw).astype(np.float32)
             if train:
-                cut = int(series.shape[0] * (1.0 - p.get("val_fraction", 0.1)))
-                self.series = series[:cut]
-                self.val_series = series[cut:]
-                self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
+                self._set_training_series(series, p.get("val_fraction", 0.1))
             else:
                 self.series = series
         elif source == "psm":
@@ -173,10 +177,7 @@ class JEPADataset(Dataset):
             if train:
                 series = legacy_train.data
                 series = scaler.transform(series).astype(np.float32)
-                cut = int(series.shape[0] * (1.0 - p.get("val_fraction", 0.05)))
-                self.series = series[:cut]
-                self.val_series = series[cut:]
-                self.targets = np.zeros(self.series.shape[0], dtype=np.int64)
+                self._set_training_series(series, p.get("val_fraction", 0.05))
             else:
                 legacy_test = PSM(root=root, train=False, sanomaly=None, wsz=p["wsz"],
                                   stride=p["stride"],
@@ -186,9 +187,18 @@ class JEPADataset(Dataset):
         else:
             raise ValueError("Invalid train dataset {}".format(source))
 
+    def _set_training_series(self, series, val_fraction):
+        cut, val_start = training_split_bounds(len(series), self.wsz, float(val_fraction))
+        if self.stride <= 0:
+            raise ValueError("stride must be positive")
+        self.full_train_series = series
+        self.series = series[:cut]
+        self.val_series = series[val_start:]
+        self.targets = np.zeros(len(self.series), dtype=np.int64)
+
     @classmethod
     def validation_split(cls, train_dataset, p):
-        """Validation windows carved out of the train series tail."""
+        """Validation tail, or the full training series when a split is too short."""
         if getattr(train_dataset, "_corpus", None) is not None:
             return JEPACorpusDataset.validation_split(train_dataset._corpus, p)
         val = cls.__new__(cls)
@@ -304,11 +314,11 @@ class JEPACorpusDataset(Dataset):
         self._cuts = []
         counts = []
         for length in self.lengths:
-            cut = int(length * (1.0 - self.val_fraction))
+            cut, val_start = training_split_bounds(length, self.wsz, self.val_fraction)
             if split == "train":
                 start, available = 0, cut
             else:
-                start, available = cut, length - cut
+                start, available = val_start, length - val_start
             self._cuts.append(start)
             counts.append(max((available - self.wsz) // self.stride + 1, 0))
         self._cumulative = np.cumsum([0] + counts, dtype=np.int64)

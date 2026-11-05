@@ -1,0 +1,4 @@
+extends: [../phase1.yml, ../../_templates/rec_ca.yml]
+framework: cross_attention
+phase1_experiment: frequency_aux
+experiment_name: rec_ca

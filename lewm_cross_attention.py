@@ -67,8 +67,8 @@ def _collator(p):
 
 
 def run_phase2(p, device):
-    if p["criterion"] != "lewm_cross_attention":
-        raise ValueError("phase2 requires criterion=lewm_cross_attention")
+    if p["criterion"] not in ("lewm_cross_attention", "lewm_rec_ca"):
+        raise ValueError("phase2 requires criterion=lewm_cross_attention or lewm_rec_ca")
     model = get_cross_attention_model(p).to(device)
     model.crop_ranges(int(p["wsz"]))
     logger = _logger(p)

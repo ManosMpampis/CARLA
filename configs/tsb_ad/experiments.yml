@@ -3,6 +3,7 @@
 common:
   train_db_name: tsb_ad
   val_db_name: tsb_ad
+  tsb_evaluation_scope: test  # Evaluate only rows after the declared training prefix.
   wsz: 1024
   stride: 10
   val_fraction: 0.2
@@ -16,7 +17,7 @@ common:
     in_channels: 25
   calibration_quantile: 0.995
   calibration_kwargs: {quantile: 0.995}
-  eval_every: 0
+  eval_every: 10  # Test monitoring cadence; 1 = every epoch, 0 = disabled.
   stage_c: {mode: frozen}
   epochs: 300
   decision_trace: false

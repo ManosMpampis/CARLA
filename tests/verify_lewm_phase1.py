@@ -10,7 +10,7 @@ sys.path.insert(0, REPO)
 
 from models.builders import get_lewm_model  # noqa: E402
 from losses.lewm import LeWMLoss  # noqa: E402
-from models.lewm import FreqPredictor, TimePredictor  # noqa: E402
+from models.steped_predictor import FreqPredictor, TimePredictor  # noqa: E402
 from utils.common_config import get_criterion  # noqa: E402
 
 

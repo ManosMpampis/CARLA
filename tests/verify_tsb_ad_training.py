@@ -48,8 +48,8 @@ def main():
                 num_workers=0, seed=4, scheduler="constant",
                 scheduler_kwargs={"lr_warmup_epochs": 0, "warmupa_start_factor": 1.0},
                 benchmark_protocol="tsb_ad",
-                # The protocol must block these even if a native YAML enables them.
-                eval_every=1, decision_trace={"max_windows": 2},
+                # Explicitly disabled monitoring must avoid constructing test data.
+                eval_every=0, decision_trace={"max_windows": 2},
             )
             paths[arm] = root / f"{arm}.yml"
             paths[arm].write_text(yaml.safe_dump(config))

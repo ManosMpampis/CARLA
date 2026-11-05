@@ -5,9 +5,16 @@
 `benchmark_tsb_ad.py` runs the existing AE/VAE, LeWM, reconstruction, and
 cross-attention experiment suite on extracted TSB-AD-U/M CSVs while retaining
 the native logger, TensorBoard events, resumable checkpoints, and decision
-traces. It trains on the filename's declared prefix, reserves its last 20% for
-validation and calibration, and exports scores for the entire series. Labels
-do not affect training or checkpoint selection. Automatic window adjustment
+traces. It trains on the filename's declared prefix, reserves its configured
+`val_fraction` tail for validation (reusing the full training series if either split
+cannot hold a window), calibrates thresholds on the full training prefix, and evaluates the remaining
+test suffix. `eval_every` controls test monitoring during training, just as for
+PSM/SMD (1 = every epoch, 0 = disabled; enabled monitoring includes the final epoch).
+Reports appear in the console, TensorBoard, `test_evaluations.jsonl`, and the
+`Test_window.csv`, `Test_timeseries.csv`, and `Test_non_overlap.csv` files.
+Labels do not enter training or train-side calibration. The default handoff is
+selected by validation loss; diagnostic test-oracle checkpoints are separate.
+Automatic window adjustment
 handles short prefixes; the score archive records coverage and interpolation
 of uncovered positions.
 
@@ -28,6 +35,11 @@ complete-suite commands, output artifacts, metric evaluation, and fine-tuning
 with a lower learning rate or model-only initialization. The full downloaded
 benchmark has not been executed as part of this integration. Existing native
 evaluation commands below remain available.
+
+`common.tsb_evaluation_scope: test` is the default. Explicitly select `full` to
+reproduce the earlier full-series export extent. Use a new version when changing
+scope or adopting the new default for an existing run; saved run identities
+prevent mixing full-series results with test-suffix results.
 
 ## Configured checkpoint evaluation suite
 
@@ -141,7 +153,7 @@ geometry changes after strict weight loading; query source, extraction mode,
 and target domain retain their checkpoint semantics. Scores automatically map
 to the target crop, so `check_mask` is unnecessary and `latency_offset` must be 0.
 
-Every job runs clean held-out training-tail calibration, timeseries and window
+Every job runs full-training-series calibration, timeseries and window
 evaluation, non-overlapping window evaluation, calibrated and oracle reports,
 VUS, and the existing honest/point-adjust metrics. Oracle results are reported
 separately; they do not choose the clean-data threshold. Decision traces follow

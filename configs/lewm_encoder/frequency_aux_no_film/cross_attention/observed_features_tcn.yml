@@ -1,0 +1,5 @@
+# Causal TCN queries from the second crop; original first-crop keys/values.
+extends: [../phase1.yml, ../../_templates/cross_attention_observed_features_tcn.yml]
+framework: cross_attention
+phase1_experiment: frequency_aux_no_film
+experiment_name: observed_features_tcn

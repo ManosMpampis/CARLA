@@ -10,6 +10,39 @@ SMD/PSM training and evaluation commands remain available.
 The complete downloaded benchmark has **not** been run as part of this
 integration. Start with a dry run and one series before launching the full suite.
 
+## Editable collection configs
+
+Use `configs/tsb_ad_u/experiments.yml` for TSB-AD-U and
+`configs/tsb_ad_m/experiments.yml` for TSB-AD-M. Each independently lists its
+selected variants so you can edit its `common` training settings, add per-experiment
+`overrides`, and disable entries with `enabled: false`. Keep an encoder enabled
+when an enabled head references it through `pretrained_experiment`, unless you
+already have the required source checkpoint. Input channels are inferred from
+each selected CSV; both collections use the internal loader name `tsb_ad`.
+
+From the repository root, preview the collection configs on one file each:
+
+```bash
+./venv/bin/python benchmark_tsb_ad.py \
+  --manifest configs/tsb_ad_u/experiments.yml \
+  --dataset-root datasets/TSB-AD-U \
+  --files 001_NAB_id_1_Facility_tr_1007_1st_2014.csv \
+  --output-root results/benchmarks/tsb_ad_u --version myrun --dry-run
+
+./venv/bin/python benchmark_tsb_ad.py \
+  --manifest configs/tsb_ad_m/experiments.yml \
+  --dataset-root datasets/TSB-AD-M \
+  --files 001_Genesis_id_1_Sensor_tr_4055_1st_15538.csv \
+  --output-root results/benchmarks/tsb_ad_m --version myrun --dry-run
+```
+
+After configuring them, remove `--dry-run` to train. Replace `--files` with
+`--file-list <official-list.csv>` for a benchmark split, or omit file selection
+to use every CSV in that collection. The separate output roots keep U/M run
+summaries apart. Epochs, batch size, and other settings come from the chosen
+manifest unless overridden on the command line. `--window-policy`,
+`--metrics`, and `--no-trace` remain runner options.
+
 ## Data and selection
 
 Download and extract TSB-AD-U or TSB-AD-M using the
@@ -73,17 +106,44 @@ evaluation list:
 
 Each CSV needs numeric feature columns followed by one binary `Label` column.
 The `_tr_N_1st_M.csv` filename declares the first `N` rows as training data.
-Normalization fits that entire prefix. Its final 20% is held out for validation
-and threshold calibration, and the remaining prefix trains the model. Labels
-never change the split, normalization, losses, or checkpoint selection. Some
+Normalization fits that entire prefix. Its configured `val_fraction` tail is held
+out for validation when both splits can hold a window; the remaining prefix trains
+the model. Otherwise the whole prefix is reused for training and validation.
+Threshold calibration always uses the entire training prefix. Labels
+never change the split, normalization, losses, or validation-selected handoff. Some
 official files contain anomalies inside their declared prefix; the final
-report records `prefix_anomalies` as a diagnostic. Scoring and evaluation use
-the **entire** CSV, including the prefix, following the official semisupervised
-benchmark protocol. Invalid labels, missing values, and infinite features are
+report records `prefix_anomalies` as a diagnostic. By default scoring and
+evaluation use only rows **after** the declared training prefix, matching the
+separate train/test workflow used for SMD and PSM. No training windows cross
+into the test suffix. Invalid labels, missing values, and infinite features are
 rejected instead of dropping rows and shifting the timeline.
 
-The default `--window-policy shrink` shortens a requested window to fit both
-training and validation, rounding down to a multiple of the encoder's total
+`common.tsb_evaluation_scope: test` selects this workflow. An explicit `full`
+uses the entire CSV for evaluation, including the prefix, to reproduce the
+original upstream benchmark extent. Both training-time and final evaluation
+use the selected scope. `evaluation_start` in score archives and `metrics.json`
+records the original CSV row offset; scoring indices are relative to that
+selected timeline. Use a fresh run version when changing scope or moving an
+old full-series run to the new test-suffix default.
+
+## Test monitoring during training
+
+`common.eval_every` works like SMD/PSM: 1 evaluates every epoch, 10 evaluates
+every ten epochs, and 0 disables monitoring. Enabled monitoring also runs at
+the final epoch. The runner honors common and per-experiment settings.
+
+All five model families use the native window, timeseries, and non-overlap
+evaluation engine. Test F1, range/event/affiliation metrics, PA metrics, and
+available AUC/VUS statistics appear in the console, TensorBoard `Test_*` sections,
+`test_evaluations.jsonl`, and `Test_window.csv`, `Test_timeseries.csv`, and
+`Test_non_overlap.csv`. Thresholds always use the entire declared training prefix. Validation
+loss still selects the default weights; test-oracle checkpoints are separate
+diagnostic snapshots, as in the native SMD/PSM workflow.
+
+The optional `--metrics deferred` setting defers only the external official
+TSB-AD metric package. It does not disable native test monitoring.
+
+The default `--window-policy shrink` shortens a requested window to fit the full training prefix, rounding down to a multiple of the encoder's total
 stride. Default cross-attention half splits round to twice that stride to keep
 the token count even. It caps the training stride at the resolved window and
 reduces the batch size when fewer training windows are available. Model minimum
@@ -118,14 +178,15 @@ Each run retains native training logs and TensorBoard events, the resumable
 checkpoint, validation-selected weights, and resolved configuration. AE/VAE
 write `epochs.jsonl`, `checkpoint.pth.tar`, `best_validation_loss.pth.tar`, and
 `tensorboard/`; LeWM and its heads retain `checkpoint.pth.tar`,
-`model.pth.tar`, and their native logger events. Training-time test monitoring
-is disabled for this protocol. Benchmark scoring adds:
+`model.pth.tar`, and their native logger events. Scheduled native test reports
+are retained alongside these logs. Final scoring adds:
 
-- `benchmark_scores.npy`: the full-length, aligned score vector.
+- `benchmark_scores.npy`: the aligned score vector for the selected evaluation scope.
 - `evaluation_inputs.npz`: labels, first-channel values, and calibrated predictions
   for later evaluation in another Python environment.
-- `scores.npz`, `calibration.json`, and `metrics.json`: detailed scoring and
-  prefix-validation threshold diagnostics.
+- `scores.npz`, `calibration.json`, and `metrics.json`: detailed scoring,
+  native final evaluation for all three procedures, and full-prefix
+  threshold diagnostics.
 - `benchmark_run.json`, `resolved_config.yml`, and `benchmark_result.json`:
   resolved configuration, input hash, run identity, and outcome.
 - `benchmark.txt` and benchmark TensorBoard events; `decision_trace.html` and
@@ -142,7 +203,7 @@ dependent heads. The command exits nonzero if any run fails.
 
 Training defaults to `--metrics deferred`, so TSB-AD is optional in CARLA's
 Python 3.14 environment. The training output already includes calibrated F1,
-precision, and recall using a threshold from the prefix's validation tail.
+precision, and recall using a threshold from the entire training prefix.
 Official benchmark metrics use upstream's oracle threshold searches and are
 reported separately. They do not choose training checkpoints or calibration
 thresholds.
@@ -167,7 +228,7 @@ environment. The evaluator imports no CARLA models or Torch training stack.
 It writes `tsb_metrics.json` beside each successful score export and
 `benchmark_metrics/` CSVs under the selected run directory with the nine official
 metric columns. The default
-metric buffer uses upstream's period estimate from the full first channel;
+metric buffer uses upstream's period estimate from the selected evaluation channel;
 `--sliding-window N` explicitly overrides it and is independent of the model
 window.
 

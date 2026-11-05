@@ -109,8 +109,45 @@ remain unscored; coverage is recorded in JSON. Reconstruction evaluation forces
 `context_crop` and `target_crop` are expressed in input timesteps.
 
 `eval_window_size` is converted to window-score units for window evaluation.
-Oracle calibration diagnostics (equivalent clean-tail quantile and anomaly
+Oracle calibration diagnostics (equivalent full-training quantile and anomaly
 fraction) remain in JSON; they do not change the configured clean calibration.
+
+## Causal TCN query variant
+
+Each encoder preset also has `cross_attention/observed_features_tcn.yml`.
+This selects the separate `models/lewm_cross_attention_tcn.py` model through
+`cross_attention_model: lewm_cross_attention_tcn`. The original attention model
+remains the default when this selector is omitted. Both use the existing
+`lewm_cross_attention.py` runner, reconstruction/SIGReg loss, and score exports.
+
+The first/past crop still supplies convolutional K/V. The second/current crop
+supplies Q through four causal Conv1d/ReLU/dropout layers with dilations
+`[1, 2, 4, 8]`, followed by a 1x1 projection to `qk_channels`. With kernel size
+3, each query can use up to 31 current-crop feature tokens, including its own
+position. There is no forecast shift, query-prediction loss, or EMA target in
+this arm. Attention still consists of one multi-head cross-attention operation.
+
+`query_tcn_hidden_channels` defaults to the encoder output width;
+`query_tcn_dilations`, `query_tcn_kernel_size`, and `query_tcn_dropout` configure
+the stack under `cross_attention_kwargs`. Existing `target: features|input|query`
+and positional-encoding options remain available. `query_source` must be
+`observed`. Checkpoints record the TCN settings and reject incompatible tasks.
+
+The supplied configs use separate crop feature extraction. Causality applies
+to the TCN's input feature tokens: the preceding ResNet uses noncausal
+convolutions, so a feature token can already contain later raw samples within
+its crop. This variant does not enforce causality throughout the encoder,
+cross-attention, and reconstruction head.
+
+```bash
+./venv/bin/python lewm_cross_attention.py --config_env configs/env.yml \
+  --config_exp configs/lewm_encoder/time/cross_attention/observed_features_tcn.yml \
+  --fname machine-1-1.txt --version causal_query
+```
+
+As with the other phase-two arms, train the matching phase-one encoder first
+or supply `--pretrained_from`. Verify with
+`./venv/bin/python tests/verify_lewm_cross_attention_tcn.py`.
 
 ## Naming and configuration
 
@@ -207,3 +244,10 @@ use this hierarchy. Legacy configs without the grouping fields keep their
 original output paths.
 
 Details: [phase-one arms](PHASE1.md), [cross attention](CROSS_ATTENTION.md).
+
+Joint latent reconstruction + CA is available as
+`<phase1>/cross_attention/rec_ca.yml` for all six encoder variants. It uses
+256 history + 128 future timesteps, keeps the causal TCN only on Q, and trains
+both heads with their branch losses plus future-output L1 agreement. Run it
+through `lewm_cross_attention.py` using the same phase-one version. See
+[architecture, losses and commands](../../AGENTIC_DOCS/Design/LEWM_REC_CA.md).

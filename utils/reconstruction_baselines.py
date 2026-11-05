@@ -157,24 +157,24 @@ def evaluate_from_scores(clean, test, test_labels, config) -> dict:
     return result
 
 
-def evaluate(model, val_series, test_series, test_labels, config, device,
+def evaluate(model, train_series, test_series, test_labels, config, device,
              *, options=None) -> dict:
     """Distinct window and overlap-averaged time-series evaluation."""
     options = dict(evaluation_options(config) if options is None else options)
     window, stride = options.pop("wsz"), options.pop("stride")
     batch_size = int(config.get("score_batch_size", config["batch_size"]))
-    clean = score_both(model, val_series, window, stride, batch_size, device,
+    clean = score_both(model, train_series, window, stride, batch_size, device,
                        **options)
     test = score_both(model, test_series, window, stride, batch_size, device,
                       **options)
     result = evaluate_from_scores(clean, test, test_labels, config)
     result["non_overlap_window"], _, _, _ = evaluate_non_overlap_window(
-        model, val_series, test_series, test_labels, config, device,
+        model, train_series, test_series, test_labels, config, device,
         options={"wsz": window, "stride": stride, **options})
     return result
 
 
-def evaluate_non_overlap_window(model, val_series, test_series, test_labels,
+def evaluate_non_overlap_window(model, train_series, test_series, test_labels,
                                 config, device, *, options):
     """Window-level metrics on disjoint scored regions using the same scorer.
 
@@ -188,7 +188,7 @@ def evaluate_non_overlap_window(model, val_series, test_series, test_labels,
     stride = int(span[1] - span[0]) if span is not None else window
     options["include_last_window"] = False
     batch_size = int(config.get("score_batch_size", config["batch_size"]))
-    clean = score_both(model, val_series, window, stride, batch_size, device, **options)
+    clean = score_both(model, train_series, window, stride, batch_size, device, **options)
     test = score_both(model, test_series, window, stride, batch_size, device, **options)
     if np.any(clean["cover_counts"] > 1) or np.any(test["cover_counts"] > 1):
         raise ValueError("non_overlap_window scored a timestep more than once")
@@ -239,7 +239,7 @@ record_test_evaluation = record_evaluation
 def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
                      input_resolution=False):
     """Monitoring hook shared by all LEWM stages and phase-two heads."""
-    _, val_dataset = get_jepa_datasets(config)
+    train_dataset, _ = get_jepa_datasets(config)
     test_dataset = JEPADataset(config, train=False)
     eval_config = dict(config)
     eval_config["calibration_quantile"] = float(config.get(
@@ -255,7 +255,7 @@ def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
                 int(model.level_strides[0]), dim=-1)}
 
     scorer = InputResolutionScores() if input_resolution else model
-    metrics = evaluate(scorer, val_dataset.series, test_dataset.series,
+    metrics = evaluate(scorer, train_dataset.full_train_series, test_dataset.series,
                        test_dataset.targets, eval_config, device, options=options)
 
     class Writer:
@@ -320,8 +320,7 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
     train_dataset, val_dataset = get_jepa_datasets(config)
     if not isinstance(train_dataset, JEPADataset) or train_dataset._corpus is not None:
         raise ValueError("these comparison arms require a single machine")
-    benchmark = config.get("benchmark_protocol") == "tsb_ad"
-    eval_every = 0 if benchmark else evaluation_interval(config)
+    eval_every = evaluation_interval(config)
     test_dataset = (JEPADataset(config, train=False)
                     if eval_every > 0 else None)
     train_loader = get_train_dataloader(config, train_dataset)
@@ -359,8 +358,9 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
             from utils.trainer import Trainer
 
             Trainer.apply_resume_learning_rate(config, optimizer, scheduler, logger)
-        if benchmark:
-            logger.log("TSB-AD protocol: training and selection use train data only")
+        if config.get("benchmark_protocol") == "tsb_ad":
+            logger.log(f"TSB-AD protocol: test monitoring every {eval_every} epochs; "
+                       "default checkpoint selected by validation loss")
         for epoch in range(first_epoch, int(config["epochs"]) + 1):
             train_losses = _run_epoch(model, train_loader, optimizer, device,
                                       beta, writer, epoch, training=True)
@@ -376,7 +376,7 @@ def train_arm(arm: str, args, update_dictionary=None) -> dict:
             # Validation selects weights independently of test monitoring.
             # Unscheduled checkpoints deliberately carry evaluation=None.
             do_eval = should_evaluate(epoch, int(config["epochs"]), eval_every)
-            evaluation = (evaluate(model, val_dataset.series, test_dataset.series,
+            evaluation = (evaluate(model, train_dataset.full_train_series, test_dataset.series,
                                    test_dataset.targets, config, device)
                           if do_eval else None)
             if evaluation is not None:

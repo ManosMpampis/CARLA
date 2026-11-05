@@ -98,7 +98,11 @@ def main():
                     for exp in plan:
                         if exp.config.get("benchmark_planning_error"):
                             print(f"  INCOMPATIBLE {exp.key}: {exp.config['benchmark_planning_error']}")
-                        print(f"  {exp.key}: window={exp.config['wsz']}, batch={exp.config['batch_size']} "
+                        scope = exp.config.get("tsb_evaluation_scope", "test")
+                        start = series.train_end if scope == "test" else 0
+                        print(f"  {exp.key}: window={exp.config['wsz']}, batch={exp.config['batch_size']}, "
+                              f"eval_every={exp.config.get('eval_every', 10)}, "
+                              f"evaluation={scope}[{start}:{len(series.data)}] "
                               f"-> {experiment_dir(exp, root, version)}")
                         if exp.dependency:
                             print(f"    source: {exp.dependency} -> {exp.config['pretrained_from']}")

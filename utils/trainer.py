@@ -143,7 +143,6 @@ class Trainer:
             eval_every: int = 0, eval_fn=None):
         """Log complete losses and save validation/oracle/periodic snapshots."""
         if self.p.get("benchmark_protocol") == "tsb_ad":
-            eval_every, eval_fn = 0, None
             self.logger.log_hyperparams(self.p)
         if start_epoch:
             self.logger.resume_from(start_epoch)

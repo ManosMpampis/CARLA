@@ -6,6 +6,7 @@ from utils.collate import collate_custom
 
 
 CRITERION_BUILDERS = {
+    "lewm_rec_ca": "losses.lewm_rec_ca:RecCALoss",
     "recon_l1": "losses.reconstruction:ReconL1Loss",
     "lewm": "losses.lewm:LeWMLoss",
     "lewm_cross_attention": "losses.lewm_cross_attention:CrossAttentionLeWMLoss",
@@ -30,7 +31,7 @@ def get_jepa_datasets(p):
     ``stage_a.corpus: single`` (official protocol) trains on one machine;
     ``joint`` pools all SMD machines' train splits with per-machine
     normalization respected. PSM and synthetic are always their own corpus.
-    Validation windows come exclusively from the train-side tail.
+    Validation uses the train-side tail, or the full train series for short splits.
     """
     from data.jepa_dataset import JEPADataset, JEPACorpusDataset
 
@@ -53,7 +54,8 @@ def get_train_dataloader(p, dataset):
         batch_size=p["batch_size"],
         pin_memory=False,
         collate_fn=collate_custom,
-        drop_last=True,
+        # A short-series fallback may contain fewer windows than one batch.
+        drop_last=len(dataset) >= p["batch_size"],
         shuffle=True,
     )
 

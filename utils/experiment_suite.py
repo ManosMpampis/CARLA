@@ -350,7 +350,7 @@ def score_config(p, exp):
             raise ValueError("evaluation crops require the cross_attention runner")
         options = evaluation_options(p)
     window, stride = options.pop("wsz"), options.pop("stride")
-    _, val_dataset = get_jepa_datasets(p)
+    train_dataset, _ = get_jepa_datasets(p)
     test_dataset = JEPADataset(p, train=False)
 
     class InputResolutionScores:
@@ -386,7 +386,7 @@ def score_config(p, exp):
         inference_speed = benchmark_inference(
             scorer_model, test_dataset.series, window, batch_size, device,
             {} if benchmark is True else benchmark)
-    clean = score_both(scorer_model, val_dataset.series, window, stride,
+    clean = score_both(scorer_model, train_dataset.full_train_series, window, stride,
                        batch_size, device, **options)
     test = score_both(scorer_model, test_dataset.series, window, stride,
                       batch_size, device, **options)
@@ -395,7 +395,7 @@ def score_config(p, exp):
     evaluation = evaluate_from_scores(clean, test, test_dataset.targets,
                                       {**p, "calibration_quantile": quantile})
     non_overlap, _, non_overlap_test, non_overlap_stride = evaluate_non_overlap_window(
-        scorer_model, val_dataset.series, test_dataset.series, test_dataset.targets,
+        scorer_model, train_dataset.full_train_series, test_dataset.series, test_dataset.targets,
         {**p, "calibration_quantile": quantile}, device,
         options={"wsz": window, "stride": stride, **options})
     evaluation["non_overlap_window"] = non_overlap
@@ -410,7 +410,7 @@ def score_config(p, exp):
         "evaluation_settings": {"input_window": window, "stride": stride,
                                 "eval_window_size": int(p.get("eval_window_size", 100)),
                                 **options},
-        "calibration_source": "held-out clean train tail",
+        "calibration_source": "full training series",
         "evaluation": evaluation,
         "coverage": {"scored_timesteps": int((test["cover_counts"] > 0).sum()),
                      "total_timesteps": len(test_dataset.series),
@@ -447,7 +447,7 @@ def score_config(p, exp):
             scorer_model, device, test_dataset.series, p, thresholds["timeseries"],
             options={"wsz": window, "stride": stride, **options},
             threshold_operator="gt", labels=test_dataset.targets)
-    calibration = {"source": "held-out clean train tail", "quantile": quantile,
+    calibration = {"source": "full training series", "quantile": quantile,
                    "window_threshold": thresholds["window"],
                    "timeseries_threshold": thresholds["timeseries"],
                    "non_overlap_window_threshold": thresholds["non_overlap_window"]}

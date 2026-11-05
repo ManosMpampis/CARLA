@@ -1,0 +1,40 @@
+{
+  "version": "first_run",
+  "source_summary": "/home/manos/plaisio/EKETA/HyperAI/Code/Codes/CARLA/results/tsb_ad_m/benchmark_runs/first_run/summary.json",
+  "dataset": "/home/manos/plaisio/EKETA/HyperAI/Code/datasets/TSB-AD-M",
+  "min_train_steps_exclusive": 500,
+  "aggregation": "Equal-series arithmetic mean; sample std (ddof=1), singleton std=0. Missing/nonfinite metrics excluded independently; never filled with zero.",
+  "metric_source": "Final saved metrics.json evaluation; oracle and calibrated values retained as stored (no threshold or epoch selection).",
+  "splits": {
+    "all": {
+      "listed": 200,
+      "eligible": 175,
+      "excluded": 25
+    },
+    "tuning": {
+      "listed": 20,
+      "eligible": 18,
+      "excluded": 2
+    },
+    "eval": {
+      "listed": 180,
+      "eligible": 157,
+      "excluded": 23
+    }
+  },
+  "experiments": [
+    "lewm_encoder/frequency_aux",
+    "lewm_encoder/frequency_aux/cross_attention/observed_features",
+    "lewm_encoder/frequency_aux/cross_attention/observed_features_pos_enc",
+    "lewm_encoder/frequency_aux/cross_attention/observed_query",
+    "lewm_encoder/frequency_aux/cross_attention/observed_query_pos_enc",
+    "lewm_encoder/frequency_aux/reconstruction/auxilary_added",
+    "lewm_encoder/frequency_aux/reconstruction/default"
+  ],
+  "modes": {
+    "non_overlap": "non_overlap_window",
+    "window": "window",
+    "timeseries": "timeseries"
+  },
+  "ignored_benchmark_files": []
+}

@@ -19,6 +19,7 @@ cross_attention_kwargs:
   kernel_size: 3
   num_heads: 1
   attention_dropout: 0.0
+  diagonal_mask: false # true blocks diagonal + upper triangle; allows only key j < query i
   position_encoding: none # none | sinusoidal; attention only, content SIGReg unchanged
   position_on: both # query | key | both
   position_scale: 1.0 # nonnegative strength; 0 disables the addition
@@ -45,7 +46,7 @@ score_mode: l1
 train_db_name: smd
 val_db_name: smd
 fname: machine-1-1.txt
-wsz: 1024
+wsz: 512
 stride: 10
 val_fraction: 0.1
 score_batch_size: 256

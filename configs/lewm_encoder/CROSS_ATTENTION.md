@@ -93,6 +93,33 @@ and diagnostic test-oracle metrics are reported separately.
 
 ## Configuration
 
+### Optional strict causal attention mask
+
+```yaml
+cross_attention_kwargs:
+  diagonal_mask: false # true blocks diagonal + upper triangle; allows only key j < query i
+```
+
+This switch applies to ordinary cross attention, causal-query TCN cross
+attention, and joint Rec+CA. The default `false` preserves unrestricted
+attention. With `true`, the diagonal and upper-right triangle of the
+query-by-key matrix are blocked before softmax: query `i` may attend only to
+keys `j < i`. This uses local crop indices, including for rectangular matrices;
+query 0 has no allowed keys and receives a zero attention vector. Later
+projection/decoder layers may still produce nonzero output at that position.
+Positional encoding does not change which pairs are blocked.
+
+History and future occupy separate crops, so local-index masking is an
+architectural restriction rather than an absolute timestamp comparison.
+Masking attention alone does not make the preceding encoder/convolutions or
+following reconstruction head causal.
+
+Checkpoint metadata records both the switch and its strict-triangle semantics.
+Older unmasked checkpoints still load with the default `false`. Earlier
+**diagonal-only** masked checkpoints are rejected because their behavior
+changed; use a fresh phase-two run/version. Verify with
+`./venv/bin/python tests/verify_cross_attention_diagonal_mask.py`.
+
 ### Optional position information
 
 All six cross-attention templates expose these settings. Override them in a

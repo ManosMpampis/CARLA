@@ -53,12 +53,19 @@ def main():
         np.testing.assert_allclose(train.std, std)
         np.testing.assert_allclose(train.series, expected[:48])
         np.testing.assert_allclose(val.series, expected[48:64])
-        np.testing.assert_allclose(test.series, expected)
+        np.testing.assert_allclose(test.series, expected[64:])
         np.testing.assert_array_equal(train.targets, np.zeros(48, dtype=int))
-        np.testing.assert_array_equal(test.targets, labels)
-        assert len(train) == 11 and len(val) == 3 and len(test) == 29
-        assert test[18]["meta"] == dict(start_idx=72, end_idx=80, index=18)
-        np.testing.assert_allclose(test[18]["ts"], expected[72:80])
+        np.testing.assert_array_equal(test.targets, labels[64:])
+        assert test.series_start == 64
+        assert len(train) == 11 and len(val) == 3 and len(test) == 13
+        assert test[2]["meta"] == dict(start_idx=8, end_idx=16, index=2)
+        np.testing.assert_allclose(test[2]["ts"], expected[72:80])
+        full = JEPADataset(dict(config, tsb_evaluation_scope="full"), train=False)
+        np.testing.assert_allclose(full.series, expected)
+        np.testing.assert_array_equal(full.targets, labels)
+        assert full.series_start == 0
+        rejected(lambda: JEPADataset(dict(config, tsb_evaluation_scope="invalid"), train=False),
+                 "tsb_evaluation_scope")
 
         # Neither test values nor labels change normalization or the declared
         # prefix. Some upstream files contain anomalies inside that prefix.
@@ -89,11 +96,14 @@ def main():
         write_sample(ambiguous, data, labels)
         rejected(lambda: read_tsb_series(ambiguous), "cannot infer training prefix")
 
-        rejected(lambda: JEPADataset(dict(config, wsz=17), train=True), "both splits need")
+        reused = JEPADataset(dict(config, wsz=17), train=True)
+        np.testing.assert_allclose(reused.series, expected[:64])
+        np.testing.assert_array_equal(reused.val_series, reused.series)
+        rejected(lambda: JEPADataset(dict(config, wsz=65), train=True), "need at least")
         rejected(lambda: JEPADataset(dict(config, val_fraction=0), train=True), "val_fraction")
         rejected(lambda: JEPADataset(dict(config, stride=0), train=True), "wsz and stride")
         explicit = JEPADataset(dict(config, fname=custom.name, tsb_train_end=64), train=False)
-        assert explicit.series.shape == (120, 1)
+        assert explicit.series.shape == (56, 1)
 
         malformed = root / "002_Bad_tr_2_1st_3.csv"
         for contents, error in (

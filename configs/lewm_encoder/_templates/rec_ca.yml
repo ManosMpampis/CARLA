@@ -1,0 +1,32 @@
+# Joint latent Rec + observed-query CA. Phase one remains unchanged.
+extends: cross_attention_observed_features.yml
+cross_attention_model: lewm_rec_ca
+tag_jepa: rec_ca
+wsz: 384
+cross_attention_kwargs:
+  freeze_encoder: true
+  target: features
+  query_source: observed
+  feature_extraction: separate
+  context_crop: null
+  target_crop: null
+  history_length: 256
+  future_length: 128
+  # TCN only on Q, as in the existing observed-features TCN arm.
+  value_channels: 8
+  query_tcn_hidden_channels: null
+  query_tcn_dilations: [1, 2, 4, 8]
+  query_tcn_kernel_size: 3
+  query_tcn_dropout: 0.1
+criterion: lewm_rec_ca
+criterion_kwargs:
+  loss2_kind: l1
+  w_pred: 1.0
+  w_rec: 1.0
+  w_similarity: 1.0
+  lambda_sigreg: 0.1
+  lambda_sigreg_tgt: 0.1
+  sigreg_kwargs:
+    num_slices: 16
+# Rec uses clean full-window features, as in standalone reconstruction.
+# CA retains injected training views and dual SIGReg from its existing arm.
