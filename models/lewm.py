@@ -4,27 +4,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models import encoders, actions, decoders, engines, score_functions
+from models import encoders, actions, decoders, heads, engines, score_functions
 from utils.reconstruction_scores import normalize_score_mode, reconstruction_score_map
 
 
 class LeWM(nn.Module):
-    """Two crop LEWM with a fixed feature extractor and trainable Q/K/V encoder.
-
-    Crop intervals are half-open FEATURE TOKEN indices. With stride S,
-    [a,b] refers to raw input [a*S,b*S]. Omitted intervals split in half.
-    ``observed`` obtains Query from the second crop (conditional reconstruction).
-    ``context`` obtains Query from the first crop (past-only forecasting).
-    Separate extraction isolates receptive fields; full extraction is available
-    for the observed arm to literally crop one full-window feature map.
+    """
     """
 
-    def __init__(self, engine, backbone, encoder, action, decoder, score_mode: str = "reconstruction_input",
-                 freeze_backbone: bool = True, freeze_encoder: bool = True, freeze_action: bool = True, freeze_decoder: bool = True,
+    def __init__(self, engine, backbone, encoder, action, decoder, head,
+                 score_mode: str = "l1", score_fn: str = "reconstruction_input",
                  kwargs={}):
         super().__init__()
+        freeze_backbone = backbone.pop("freeze", True)
+        freeze_encoder = encoder.pop("freeze", False)
+        freeze_action = action.pop("freeze", False)
+        freeze_decoder = decoder.pop("freeze", False)
+        freeze_head = head.pop("freeze", False)
+
         self.amp_enabled = kwargs.get("amp_enabled", False)
         self.score_mode = normalize_score_mode(score_mode)
+        self.score_fn = score_functions(score_fn)
 
         self.action_strategy = action["strategy"]
 
@@ -32,11 +32,12 @@ class LeWM(nn.Module):
             raise ValueError("action_strategy must be CEM or trainable")
 
         self.input_engine: nn.Module = engines(engine)
+
         self.backbone: nn.Module = encoders(backbone)
         self.encoder: nn.Module = encoders(encoder)
         self.action: nn.Module = actions(action)
         self.decoder: nn.Module = decoders(decoder)
-        self.score_fn = score_functions(score_mode)
+        self.head: nn.Module = heads(head)
 
         if not isinstance(freeze_backbone, bool):
             raise ValueError("freeze_backbone must be true or false")
@@ -66,6 +67,13 @@ class LeWM(nn.Module):
         if freeze_decoder:
             self.decoder.eval()
 
+        if not isinstance(freeze_head, bool):
+            raise ValueError("freeze_head must be true or false")
+        self.freeze_head = freeze_decoder
+        self.head.requires_grad_(not freeze_head)
+        if freeze_head:
+            self.head.eval()
+
     def forward(self, x):
         input = self.input_engine(x) # returns {"current_state": x_inj, "future_state": x, "query_start": 0, "target_range": (0, x.size(-1)), "mask": m_bool}
         
@@ -80,9 +88,11 @@ class LeWM(nn.Module):
             a = self.action(input) # returns {a latent representation that correcponds to known used actions of the world, "mask_target": a float tensor like mask for auxilary heads to have a target to learn from}
                     
         zhat_dot = self.predictor(zhat, a)
+        out = self.head(zhat_dot)
         return {"prediction": zhat_dot,
                 "latents_current_state": z,
                 "latents_future_state": zhat,
+                "output": out,
                 "action": a}
 
     @torch.no_grad()
@@ -102,6 +112,20 @@ class LeWM(nn.Module):
         z = latents
         return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0, unbiased=False).mean().item()
 
+    def train(self, mode=True):
+        super().train(mode)
+        if self.backbone_frozen:
+            self.backbone.eval()
+        if self.encoder_frozen:
+            self.encoder.eval()
+        if self.action_frozen:
+            self.action.eval()
+        if self.decoder_frozen:
+            self.decoder.eval()
+        if self.freeze_head:
+            self.freeze_head.eval()
+        return self
+    
     def update_ema(self):
         """No teacher: no-op satisfying the Trainer contract."""
 

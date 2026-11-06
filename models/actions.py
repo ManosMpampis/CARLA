@@ -6,8 +6,8 @@ come from config; scalar args broadcast over the block's convolutions.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.blocks import Conv1dBlock, CausalConv1dBlock, _init_weights
-from models.steped_predictor import TimeAuxiliary
+from models.blocks import Conv1dBlock, TCNEncoder, Encoder, _init_weights
+
 
 class TimeAuxiliary(nn.Module):
     """Convolution time auxiliary: localizes mask, feeds FiLM features.
@@ -38,34 +38,37 @@ class TimeAuxiliary(nn.Module):
         return logits, h
 
 
-
-class TCNEncoder(nn.Module): 
-    def __init__(self, in_dim: int, out_dims: int, kernels=(7, 5, 3),
-                 norm: str = "batch", act: str = "relu", dropout: float = 0.1):
+class EncoderAction(nn.Module):
+    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3), stride=(1, 1, 1),
+                 norm: str = "batch", act: str = "relu", dropout: float = 0.1, encoder_type: str = "tcn"):
         super().__init__()
-        ks = list(kernels)
-        chs = [in_dim] + list(out_dims)
-        self.convsQ = nn.Sequential(
-            *[
-                CausalConv1dBlock(chs[i], chs[i + 1], kernel=ks[i], norm=norm, act=act, dropout=dropout)
-                for i in len(ks)
-            ]
-        )
-        self.convsV= nn.Sequential(
-            *[
-                CausalConv1dBlock(chs[i], chs[i + 1], kernel=ks[i], norm=norm, act=act, dropout=dropout)
-                for i in len(ks)
-            ]
-        )
+        self.encoder_type = encoder_type.lower()
+        assert self.encoder_type in ("tcn", "normal"), "encoder_type should be tcn or normal"
+        
+        self.input_dims = in_dim
+        self.hidden_dims = hidden_dims
+        self.output_dims = out_dims
+        self.kernels = kernels
+        self.norm = norm
+        self.act = act
+        self.dropout = dropout
+        
+        if self.encoder_type == "tcn":
+            self.net = TCNEncoder(in_dim, out_dims, kernels, norm, act, stride, dropout)
+        else:
+            self.net = Encoder(in_dim, out_dims, kernels, norm, act, stride, dropout)
 
-    def forward(self, whole_state):
-    # TODO: implement forward coming in the whole input
-        qv = ...
-        return qv
+    def forward(self, x):
+        x = self.net(x)
+        return {
+            "action": {"action_token": x}
+        }
+
+
 class MaskedRepresentationAction(nn.Module):
     def __init__(self, encoder_input_dim):
         super().__init__()
-        # Learned unknown-token (option 4): marks what-to-reconstruct
+        # Learned unknown-token: marks what-to-reconstruct
         # positions in the predictor input. When present, the auxiliary
         # still sees raw corrupted latents.
         self.mask_token = nn.Parameter(torch.zeros(1, encoder_input_dim, 1))
@@ -94,7 +97,7 @@ class MaskedRepresentationAction(nn.Module):
 class MaskedRepresentationAuxiliaryGuidedAction(nn.Module):
     def __init__(self, encoder_input_dim, aux_channels=32, aux_kernels=(3, 5, 7), norm="batch", dropout=0.0, aux_mask_during_training=True):
         super().__init__()
-        # Learned unknown-token (option 4): marks what-to-reconstruct
+        # Learned unknown-token guided by auxilary head: marks what-to-reconstruct
         # positions in the predictor input. When present, the auxiliary
         # still sees raw corrupted latents.
         self.aux_mask_during_training = aux_mask_during_training
@@ -127,14 +130,3 @@ class MaskedRepresentationAuxiliaryGuidedAction(nn.Module):
         return {
             "action": {"action_token": blend * tok + (1 - blend) * zhat, "film_feat": film_feat},
         }
-
-
-class TCNEncodedAction(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.layers = nn.Sequential(...)
-        return
-
-    def forward(self, zhat, z, m_float=None):
-        return self.layers(z)
-    

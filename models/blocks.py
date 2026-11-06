@@ -39,6 +39,7 @@ def _init_weights(module):
         if module.bias is not None:
             nn.init.zeros_(module.bias)
 
+
 def make_norm1d(kind: str, channels: int) -> nn.Module:
     """Build a 1D norm layer by config name."""
     kind = str(kind).lower()
@@ -51,6 +52,7 @@ def make_norm1d(kind: str, channels: int) -> nn.Module:
         return nn.InstanceNorm1d(channels, affine=True)
     return nn.BatchNorm1d(channels)
 
+
 def make_act(kind: str) -> nn.Module:
     """Build a activation layer by config name."""
     kind = str(kind).lower()
@@ -62,6 +64,7 @@ def make_act(kind: str) -> nn.Module:
         return nn.GELU()
     else:
         raise ValueError(f"Unsupported activation kind: {kind}")
+
 
 class Conv1dSamePadding(nn.Conv1d):
     """Represents the "Same" padding functionality from Tensorflow.
@@ -79,6 +82,7 @@ class Conv1dSamePadding(nn.Conv1d):
                         padding=padding, dilation=dilation, groups=self.groups)
         return output
 
+
 class Conv2dSamePadding(nn.Conv1d):
     """Represents the "Same" padding functionality from Tensorflow.
     See: https://github.com/pytorch/pytorch/issues/3867
@@ -94,6 +98,7 @@ class Conv2dSamePadding(nn.Conv1d):
         output = F.conv2d(input=input, weight=self.weight, bias=self.bias, stride=stride,
                         padding=padding, dilation=dilation, groups=self.groups)
         return output
+
     
 class Conv1dBlock(nn.Module):
     """One Conv1d + norm + act + dropout with true striding.
@@ -102,12 +107,12 @@ class Conv1dBlock(nn.Module):
     here preserves length only when stride == 1.
     """
 
-    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5,
-                 stride: int = 1, norm: str = "batch", act: str = "gelu", dropout: float = 0.0):
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5, stride: int = 1, dilation: int = 1,
+                 norm: str = "batch", act: str = "gelu", dropout: float = 0.0):
         super().__init__()
         # Padding preserves length at stride 1; stride > 1 downsamples by design.
         self.net = nn.Sequential(
-            Conv1dSamePadding(in_ch, out_ch, kernel, stride=stride,
+            Conv1dSamePadding(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
                                         padding=kernel // 2),
             make_norm1d(norm, out_ch),
             make_act(act),
@@ -127,11 +132,11 @@ class Conv1dBlock(nn.Module):
 class Conv2dBlock(nn.Module):
     """Conv2d + BatchNorm2d + act + dropout block for the TF-grid neck."""
 
-    def __init__(self, in_ch: int, out_ch: int, kernel: int = 3,
-                 stride: int = 1, act: str = "gelu", dropout: float = 0.0):
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 3, stride: int = 1,
+                 dilation: int = 1, act: str = "gelu", dropout: float = 0.0):
         super().__init__()
         self.net = nn.Sequential(
-            Conv2dSamePadding(in_ch, out_ch, kernel, stride=stride,
+            Conv2dSamePadding(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
                       padding=kernel // 2),
             nn.BatchNorm2d(out_ch),
             make_act(act),
@@ -159,18 +164,21 @@ class StackedConv1dBlock(nn.Module):
     """
 
     def __init__(self, in_ch: int, out_ch: int,
-                 kernels=(5, 5), stride: int = 2,
+                 kernels=(5, 5), stride: int = 2, dilation: int = 1,
                  norm: str = "batch", act: str = "gelu", dropout: float = 0.1):
         super().__init__()
         ks = list(kernels)
         st = list(stride)
+        dl = list(dilation)
         if len(st) == 1:
             st = st * len(ks)
+        if len(dl) == 1:
+            dl = dl * len(ks)
         layers = []
         ch = in_ch
         for i in range(len(ks)):
             layers.append(Conv1dBlock(ch, out_ch, kernel=ks[i],
-                                      stride=st[i],
+                                      stride=st[i], dilation=dl[i],
                                       norm=norm, act=act, dropout=dropout))
             ch = out_ch
         self.layers = nn.Sequential(*layers)
@@ -178,6 +186,7 @@ class StackedConv1dBlock(nn.Module):
     def forward(self, x):
         """Run the stacked convolutions in order."""
         return self.layers(x)
+
 
 class ResNetBlock(nn.Module):
     """One ResNet block: 3 main convs [7,5,3] + residual conv k=5.
@@ -211,26 +220,26 @@ class ResNetBlock(nn.Module):
         """Add residual branch to main branch, then activate."""
         return self.act(self.main(x) + self.residual(x))
 
+
 class CausalConv1d(nn.Conv1d):
     """Left-padded causal convolution: output[t] sees inputs <= t only."""
 
-    def __init__(self, in_ch: int, out_ch: int, kernel: int, dilation: int = 1):
-        # TODO: can it take stride?
-        super().__init__(in_ch, out_ch, kernel, padding=0, dilation=dilation)
+    def __init__(self, in_ch: int, out_ch: int, kernel: int, stride: int = 1, dilation: int = 1):
+        super().__init__(in_ch, out_ch, kernel, padding=0, dilation=dilation, stride=stride)
+        self.pad = self.dilation[0] * (self.kernel_size[0] - 1)
         _init_weights(self)
 
     def forward(self, x):
         """Pad on the left so future positions never leak in."""
-        pad = self.dilation[0] * (self.kernel_size[0] - 1)
-        return super().forward(F.pad(x, (pad, 0)))
+        return super().forward(F.pad(x, (self.pad, 0)))
+
 
 class CausalConv1dBlock(nn.Module):
-    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5, norm: str = "batch", act: str = "gelu", dropout: float = 0.0):
-        super().__init__()
-        # TODO: can it take stride? 
-        # TODO: Does it need dilation by design?
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5, dilation: int = 1, stride: int = 1, 
+                 norm: str = "batch", act: str = "gelu", dropout: float = 0.0):
+        super().__init__() 
         self.net = nn.Sequential(
-            CausalConv1d(in_ch, out_ch, kernel),
+            CausalConv1d(in_ch, out_ch, kernel, dilation=dilation, stride=stride),
             make_norm1d(norm, out_ch),
             make_act(act),
             nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity(),
@@ -244,6 +253,55 @@ class CausalConv1dBlock(nn.Module):
     def forward(self, x):
         """Apply convolution, normalization, activation, dropout."""
         return self.net(x)
+
+
+class Encoder(nn.Module): 
+    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3),
+                 stride=(1, 1, 1), dilation=(1, 1, 1), norm: str = "batch", act: str = "relu", dropout: float = 0.1):
+        super().__init__()
+        ks = list(kernels)
+        chs = [in_dim] + list(hidden_dims)
+        self.net = nn.Sequential(
+            *[
+                Conv1dBlock(chs[i], chs[i + 1], kernel=ks[i], stride=stride[i],
+                            dilation=dilation[i], norm=norm, act=act, dropout=dropout)
+                for i in len(ks)
+            ],
+            nn.Conv1d(chs[-1], out_dims, kernel_size=1)
+        )
+        self.receptive_field = 1 + sum([(k - 1) * d for k, d in zip(kernels, dilation)])
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                _init_weights(m)
+
+    def forward(self, x):
+        x = self.net(x)
+        return x
+
+
+class TCNEncoder(nn.Module): 
+    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3),
+                 stride=(1, 1, 1), dilation=(1, 1, 1), norm: str = "batch", act: str = "relu", dropout: float = 0.1):
+        super().__init__()
+        ks = list(kernels)
+        chs = [in_dim] + list(hidden_dims)
+        self.net = nn.Sequential(
+            *[
+                CausalConv1dBlock(chs[i], chs[i + 1], kernel=ks[i], stride=stride[i], 
+                                  dilation=dilation[i], norm=norm, act=act, dropout=dropout)
+                for i in len(ks)
+            ],
+            nn.Conv1d(chs[-1], out_dims, kernel_size=1)
+        )
+        self.receptive_field = 1 + sum([(k - 1) * d for k, d in zip(kernels, dilation)])
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                _init_weights(m)
+
+    def forward(self, x):
+        x = self.net(x)
+        return x
+
 
 class CrossAttention(nn.Module):
     """Scaled cross attention and reconstruction."""
@@ -274,10 +332,10 @@ class CrossAttention(nn.Module):
         self.position_on = position_on
         self.position_scale = float(position_scale)
 
-    def _with_position(self, z, start):
+    def _with_position(self, z: torch.tensor):
         """Add fixed sinusoids in feature-token units, supporting any length/width."""
         channels, length = z.shape[1:]
-        positions = torch.arange(start, start + length, device=z.device, dtype=torch.float32)
+        positions = torch.arange(0, length, device=z.device, dtype=z.dtype)
         frequencies = torch.exp(torch.arange(0, channels, 2, device=z.device,
                                             dtype=torch.float32) * (-math.log(10000.0) / channels))
         angles = frequencies[:, None] * positions[None, :]
@@ -286,17 +344,16 @@ class CrossAttention(nn.Module):
         encoding[1::2] = angles[:channels // 2].cos()
         return z + self.position_scale * encoding.to(z.dtype).unsqueeze(0)
 
-    def forward(self, qkv, query_start=0):
+    def forward(self, q, k, v):
         # Enrich attention addressing only. Keep content Q/K/V unchanged for
         # SIGReg and the clean Query reconstruction target.
-        query, key, value = qkv["query"], qkv["key"], qkv["value"]
         if self.position_encoding != "none" and self.position_scale:
-            if self.position_on in ("query", "both"):
-                query = self._with_position(query, query_start)
-            if self.position_on in ("key", "both"):
-                key = self._with_position(key, -key.size(-1))
-            if self.position_on in ("value", "both"):
-                value = self._with_position(value, -value.size(-1))
+            if self.position_on in ("query", "both", "all"):
+                q = self._with_position(q)
+            if self.position_on in ("key", "both", "all"):
+                k = self._with_position(k)
+            if self.position_on in ("value", "all"):
+                v = self._with_position(v)
 
         def heads(z):
             b, c, t = z.shape
@@ -307,12 +364,12 @@ class CrossAttention(nn.Module):
             # SDPA boolean masks use True for ALLOWED pairs. These are local
             # crop indices: allow only keys strictly earlier than each query.
             # The first query has no allowed keys; SDPA returns zero there.
-            query_indices = torch.arange(query.size(-1), device=query.device)
-            key_indices = torch.arange(key.size(-1), device=key.device)
+            query_indices = torch.arange(q.size(-1), device=q.device)
+            key_indices = torch.arange(q.size(-1), device=q.device)
             attention_mask = key_indices[None, :] < query_indices[:, None]
 
         attended = F.scaled_dot_product_attention(
-            heads(query), heads(key), heads(qkv["value"]),
+            heads(q), heads(k), heads(v),
             attn_mask=attention_mask,
             dropout_p=self.dropout if self.training else 0.0)
         b, _, t, _ = attended.shape

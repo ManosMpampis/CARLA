@@ -13,8 +13,7 @@ Grilled contract (Q8/Q8a/Q8b):
 
 import torch.nn as nn
 
-from models.blocks import make_norm
-from models.convolutions import _init_weights
+from models.blocks import make_norm, _init_weights
 
 
 class ReconUpsampleBlock(nn.Module):
