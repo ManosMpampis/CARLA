@@ -63,11 +63,11 @@ class CrossAttentionPredictor(nn.Module):
     def _with_position(self, z, start):
         """Add fixed sinusoids in feature-token units, supporting any length/width."""
         channels, length = z.shape[1:]
-        positions = torch.arange(start, start + length, device=z.device, dtype=torch.float32)
+        positions = torch.arange(start, start + length, device=z.device, dtype=z.dtype)
         frequencies = torch.exp(torch.arange(0, channels, 2, device=z.device,
-                                            dtype=torch.float32) * (-math.log(10000.0) / channels))
+                                            dtype=z.dtype) * (-math.log(10000.0) / channels))
         angles = frequencies[:, None] * positions[None, :]
-        encoding = torch.empty(channels, length, device=z.device, dtype=torch.float32)
+        encoding = torch.empty(channels, length, device=z.device, dtype=z.dtype)
         encoding[0::2] = angles.sin()
         encoding[1::2] = angles[:channels // 2].cos()
         return z + self.position_scale * encoding.to(z.dtype).unsqueeze(0)
@@ -110,7 +110,7 @@ class CrossAttentionLeWM(nn.Module):
                  qk_channels=8, value_channels=8, kernel_size=3, num_heads=1,
                  attention_dropout=0.0, head_channels=None, norm="batch",
                  dropout=0.0, score_mode="l1", position_encoding="none",
-                 position_on="both", position_scale=1.0):
+                 position_on="both", position_scale=1.0, amp=False):
         super().__init__()
         if target not in ("features", "input", "query"):
             raise ValueError("target must be features, input, or query")
@@ -157,8 +157,8 @@ class CrossAttentionLeWM(nn.Module):
         self.score_mode = normalize_score_mode(score_mode)
         self.level_dims = [value_channels]
         self.level_strides = [self.total_stride]
-        self.target_encoder = None
         self.anti_collapse = "sigreg"
+        self.amp = amp
         # Persist task semantics as well as weights: equal-shaped arms must
         # not silently resume/score with a different Query source or crop.
         self._task = dict(target=target, query_source=query_source,
@@ -173,7 +173,8 @@ class CrossAttentionLeWM(nn.Module):
                           freeze_encoder=freeze_encoder, norm=norm, dropout=dropout,
                           total_stride=self.total_stride,
                           enc_strides=list(encoder.enc_strides),
-                          channel_ladder=list(encoder.channel_ladder))
+                          channel_ladder=list(encoder.channel_ladder),
+                          amp=amp)
 
     @staticmethod
     def _interval(crop):
@@ -266,50 +267,19 @@ class CrossAttentionLeWM(nn.Module):
                 "targets": target, "predicted": prediction}
 
     @torch.no_grad()
-    def predict_next(self, context, target_tokens=None):
-        """Forecast from ONLY the raw context crop; output uses this arm's domain."""
-        if self.query_source != "context":
-            raise ValueError("predict_next requires query_source=context; observed Query needs the next crop")
-        was_training = self.training
-        self.eval()
-        try:
-            if context.size(-1) % self.total_stride:
-                raise ValueError("context length must be divisible by feature stride")
-            first = self.encoder(context.float())
-            if target_tokens is None:
-                if self.target_crop is None:
-                    target_tokens = first.size(-1)
-                else:
-                    target_tokens = self.target_crop[1] - self.target_crop[0]
-            if type(target_tokens) is not int or target_tokens < 1:
-                raise ValueError("target_tokens must be a positive integer")
-            query_input = F.interpolate(first, size=target_tokens, mode="linear",
-                                        align_corners=False)
-            return self.predictor(self.qkv_encoder(first, query_input),
-                                  query_start=self._query_start())
-        finally:
-            self.train(was_training)
-
-    @torch.no_grad()
     def score(self, x):
         """Return only the target crop's score map, always in input timesteps."""
         was_training = self.training
         self.eval()
         try:
-            with torch.autocast(device_type=x.device.type, enabled=False):
-                out = self(x.float())
+            with torch.autocast(device_type=x.device.type, enabled=self.amp):
+                out = self(x)
                 fused, _ = reconstruction_score_map(out["recon"], out["target"], self.score_mode)
                 if self.target != "input":
                     fused = fused.repeat_interleave(self.total_stride, dim=-1)
                 return {"fused": fused, "signals": {}}
         finally:
             self.train(was_training)
-
-    def update_ema(self):
-        """No teacher in LEWM."""
-
-    def update_running_stats(self, latents):
-        """No additional running statistics."""
 
     def latent_variance(self, latents):
         z = latents

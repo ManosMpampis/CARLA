@@ -6,7 +6,7 @@ import collections
 
 """ Custom collate function """
 def collate_custom(batch):
-    if isinstance(batch[0], np.int64):
+    if isinstance(batch[0], np.int32):
         return np.stack(batch, 0)
 
     if isinstance(batch[0], torch.Tensor):

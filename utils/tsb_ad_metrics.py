@@ -91,7 +91,7 @@ def _vector(value, name: str, *, length: int | None = None) -> np.ndarray:
     if np.iscomplexobj(array):
         raise ValueError(name + " must contain real numeric values")
     try:
-        array = array.astype(np.float64, copy=False)
+        array = array.astype(np.float32, copy=False)
     except (TypeError, ValueError) as exc:
         raise ValueError(name + " must contain numeric values") from exc
     if not np.isfinite(array).all():
@@ -143,13 +143,13 @@ def evaluate_scores(
     first_array = _vector(first_channel, "first_channel", length=len(score_array))
     if not np.isin(label_array, (0, 1)).all():
         raise ValueError("labels must contain only 0 or 1")
-    label_array = label_array.astype(np.int64)
+    label_array = label_array.astype(np.int32)
     pred_array = None
     if predictions is not None:
         pred_array = _vector(predictions, "predictions", length=len(score_array))
         if not np.isin(pred_array, (0, 1)).all():
             raise ValueError("predictions must contain only 0 or 1")
-        pred_array = pred_array.astype(np.int64)
+        pred_array = pred_array.astype(np.int32)
     if sliding_window is not None and (
         isinstance(sliding_window, (bool, np.bool_))
         or not isinstance(sliding_window, (int, np.integer))

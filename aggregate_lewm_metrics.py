@@ -51,9 +51,9 @@ def aggregate_values(rows: list[dict], columns: list[str]):
         if not vals:
             means[col] = stds[col] = sums[col] = ""
             continue
-        sums[col] = float(sum(vals))
-        means[col] = float(sum(vals) / len(vals))
-        stds[col] = float(statistics.stdev(vals)) if len(vals) >= 2 else 0.0
+        sums[col] = sum(vals)
+        means[col] = sum(vals) / len(vals)
+        stds[col] = statistics.stdev(vals) if len(vals) >= 2 else 0.0
     return means, stds, sums
 
 

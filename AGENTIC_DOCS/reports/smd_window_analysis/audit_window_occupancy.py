@@ -51,7 +51,7 @@ def audit(family, path):
     assert len(score) == len(label) == len(starts) == len(ends)
     assert np.isfinite(score).all()
     assert ((starts >= 0) & (ends > starts) & (ends <= len(timeline))).all()
-    prefix = np.r_[0, np.cumsum(timeline, dtype=np.int64)]
+    prefix = np.r_[0, np.cumsum(timeline, dtype=np.int32)]
     occupancy = (prefix[ends] - prefix[starts]) / (ends - starts)
     assert np.array_equal(occupancy > 0, label), f"window label/span mismatch: {path}"
     pred = score > float(window["calibrated"]["threshold"])

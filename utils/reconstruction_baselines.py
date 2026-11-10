@@ -45,7 +45,7 @@ def _starts(length: int, window: int, stride: int) -> np.ndarray:
     starts = list(range(0, length - window + 1, stride))
     if starts[-1] != length - window:
         starts.append(length - window)
-    return np.asarray(starts, dtype=np.int64)
+    return np.asarray(starts, dtype=np.int32)
 
 
 @torch.no_grad()
@@ -57,7 +57,7 @@ def score_both(model, series: np.ndarray, window: int, stride: int,
     model.eval()
     def score_batch(windows):
         x = torch.from_numpy(windows).permute(0, 2, 1).contiguous().to(device)
-        return {"fused": model.score(x)["fused"].float().cpu().numpy()}
+        return {"fused": model.score(x)["fused"].cpu().numpy()}
 
     result = aggregate_score_maps(
         series, window, stride, batch_size, score_batch,
@@ -72,7 +72,7 @@ def score_both(model, series: np.ndarray, window: int, stride: int,
 
 
 def _oracle_threshold(scores: np.ndarray, labels: np.ndarray) -> float:
-    scores = np.asarray(scores, dtype=np.float64)
+    scores = np.asarray(scores, dtype=np.float32)
     if not np.any(labels):
         return float(np.max(scores))
     precision, recall, thresholds = precision_recall_curve(labels, scores)
@@ -95,7 +95,7 @@ def calibration_at_threshold(clean_scores, threshold) -> dict:
     The empirical anomaly fraction uses the same strict > as predictions.
     It differs from 1-q because quantiles interpolate between order statistics.
     """
-    scores = np.sort(np.asarray(clean_scores, dtype=np.float64).reshape(-1))
+    scores = np.sort(np.asarray(clean_scores, dtype=np.float32).reshape(-1))
     if not scores.size or not np.isfinite(scores).all() or not np.isfinite(threshold):
         raise ValueError("calibration diagnostics require finite, nonempty scores and threshold")
     index = int(np.searchsorted(scores, threshold, side="right"))
@@ -138,7 +138,7 @@ def evaluate_from_scores(clean, test, test_labels, config) -> dict:
     stride = evaluation_options(config)["stride"]
     window_labels = np.asarray([
         np.any(test_labels[s:e]) for s, e in zip(test["starts"], test["ends"])
-    ], dtype=np.int64)
+    ], dtype=np.int32)
     quantile = float(config.get("calibration_quantile", 0.99))
     vus_steps = int(config.get("eval_window_size", 100))
     clean_series = clean["timeseries_scores"][clean["cover_counts"] > 0]
@@ -193,7 +193,7 @@ def evaluate_non_overlap_window(model, train_series, test_series, test_labels,
     if np.any(clean["cover_counts"] > 1) or np.any(test["cover_counts"] > 1):
         raise ValueError("non_overlap_window scored a timestep more than once")
     labels = np.asarray([np.any(test_labels[s:e])
-                         for s, e in zip(test["starts"], test["ends"])], dtype=np.int64)
+                         for s, e in zip(test["starts"], test["ends"])], dtype=np.int32)
     metrics = _evaluate_protocol(
         test["window_scores"], labels, clean["window_scores"],
         float(config.get("calibration_quantile", 0.99)),
@@ -209,7 +209,7 @@ def _run_epoch(model, loader, optimizer, device, beta: float, writer,
     context = torch.enable_grad() if training else torch.no_grad()
     with context:
         for batch in loader:
-            x = batch["ts"].float().transpose(1, 2).contiguous().to(device)
+            x = batch["ts"].transpose(1, 2).contiguous().to(device)
             if training:
                 optimizer.zero_grad(set_to_none=True)
             outputs = model(x, sample=training and model.variational)
@@ -217,7 +217,7 @@ def _run_epoch(model, loader, optimizer, device, beta: float, writer,
             if training:
                 losses["loss"].backward()
                 optimizer.step()
-            latent = outputs["latent"].detach().float()
+            latent = outputs["latent"].detach()
             losses = loss_metrics(losses, reconstruction_key="mse")
             losses["latent_var"] = latent_variance(latent)
             for name, value in losses.items():

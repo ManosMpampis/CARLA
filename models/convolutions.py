@@ -32,6 +32,29 @@ def _init_weights(module):
         if module.bias is not None:
             nn.init.zeros_(module.bias)
 
+def make_act(kind: str) -> nn.Module:
+    """Build an activation layer by config name."""
+    kind = str(kind).lower()
+    if kind in ("none", "no", "identity"):
+        return nn.Identity()
+    if kind == "relu":
+        return nn.ReLU()
+    if kind == "gelu":
+        return nn.GELU()
+    else:
+        raise ValueError("No activation layer with name {kind} has been configured")
+
+def make_norm(kind: str, channels: int) -> nn.Module:
+    """Build a 1D norm layer by config name."""
+    kind = str(kind).lower()
+    if kind in ("none", "no", "identity"):
+        return nn.Identity()
+    if kind == "layer":
+        # LayerNorm over (C, T) needs no time dim; applied per-token below.
+        return nn.GroupNorm(1, channels)
+    if kind == "instance":
+        return nn.InstanceNorm1d(channels, affine=True)
+    return nn.BatchNorm1d(channels)
 
 class Conv1dSamePadding(nn.Conv1d):
     """Represents the "Same" padding functionality from Tensorflow.
@@ -49,32 +72,86 @@ class Conv1dSamePadding(nn.Conv1d):
                         padding=padding, dilation=dilation, groups=self.groups)
         return output
 
-class ConvBlock(nn.Module):
+class CausalConv1dSamePadding(nn.Conv1d):
+    """Represents the "Same" padding functionality from Tensorflow.
+    See: https://github.com/pytorch/pytorch/issues/3867
+    Note that the padding argument in the initializer doesn't do anything now
+    """
+    def forward(self, input):
 
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 stride: int, norm_layer_name: str ="batch", window_size: int = 0, dropout: bool = True) -> None:
+        kernel, dilation, stride = self.weight.size()[2], self.dilation[0], self.stride[0]
+        l_out = l_in = input.size()[2]
+        padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
+        input = F.pad(input, (padding, 0))
+        output = F.conv1d(input=input, weight=self.weight, bias=self.bias, stride=stride,
+                        padding=0, dilation=dilation, groups=self.groups)
+        return output
+
+
+class ConvBlock1d(nn.Module):
+    """One Conv1d + norm + GELU + dropout with true striding.
+
+    Unlike the legacy same-padding helper (stride-1 assumption), padding
+    here preserves length only when stride == 1.
+    """
+
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5,
+                 stride: int = 1, dilation: int = 1,
+                 act: str = "gelu", norm: str = "batch", dropout: float = 0.0, causal: bool = False):
         super().__init__()
-        if norm_layer_name == "layer":
-            norm_layer = nn.LayerNorm([out_channels, window_size], elementwise_affine=True, bias=True)
-        elif norm_layer_name == "instance":
-            norm_layer = nn.InstanceNorm1d(num_features=out_channels, affine=True, bias=True)
-        elif norm_layer_name in ["none", "no"]:
-            norm_layer = nn.Identity()
+        # Padding preserves length at stride 1; stride > 1 downsamples by design.
+        if causal:
+            self.conv = CausalConv1dSamePadding(in_channels=in_ch,
+                                                  out_channels=out_ch,
+                                                  kernel_size=kernel,
+                                                  stride=stride,
+                                                  dilation=dilation)
         else:
-            norm_layer = nn.BatchNorm1d(num_features=out_channels, affine=True, bias=True)
+            self.conv = Conv1dSamePadding(in_channels=in_ch,
+                                      out_channels=out_ch,
+                                      kernel_size=kernel,
+                                      stride=stride,
+                                      dilation=dilation)
+        self.norm = make_norm(norm, out_ch)
+        self.act = make_act(act)
+        self.drop = nn.Dropout(dropout) if dropout>0.0 else nn.Identity()
+        _init_weights(self.conv)
+        _init_weights(self.norm)
 
+    def forward(self, x):
+        """Apply convolution, normalization, activation, dropout."""
+        return self.drop(self.act(self.norm(self.conv(x))))
+
+
+class StackedConvBlock(nn.Module):
+    """N convolutions at fixed resolution: downsample once, refine rest.
+
+    Args:
+        in_ch: input channels. out_ch: output channels.
+        depth: total convs in this block (>= 1).
+        kernels: kernel per conv (scalar broadcasts).
+        stride: applied to the FIRST conv only; rest are stride-1.
+    """
+
+    def __init__(self, in_ch: int, out_ch: list,
+                 kernels: list =[5, 5], stride: list = [2], dilation: list = [1],
+                 act: str = "gelu", norm: str = "batch", dropout: float = 0.1, causal: bool = False):
+        super().__init__()
+        ks = list(kernels)
+        st = list(stride)
+        dl = list(dilation)
+        ch = [in_ch] + out_ch
+        if len(st) == 1: st = st * len(ks)
+        if len(dl) == 1: dl = dl * len(ks)
+        assert len(ks) == len(st) == len(dl) == len(ch)
         self.layers = nn.Sequential(
-            Conv1dSamePadding(in_channels=in_channels,
-                              out_channels=out_channels,
-                              kernel_size=kernel_size,
-                              stride=stride),
-            norm_layer,
+            *[
+                ConvBlock1d(ch[i], ch[i+1], kernel=ks[i], stride=st[i], dilation=dl[i], 
+                            act=act, norm=norm, dropout=dropout, causal=causal) for i in len(ks)
+            ]
         )
-        self.dout = nn.Dropout(0.2) if dropout else nn.Identity()
-        # Initialize all weights and biases in this block
-        for module in self.layers:
-            _init_weights(module)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-
-        return self.dout(self.layers(x))
+    def forward(self, x):
+        """Run the stacked convolutions in order."""
+        return self.layers(x)
+    

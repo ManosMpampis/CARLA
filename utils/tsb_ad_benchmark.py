@@ -181,7 +181,7 @@ class InputResolutionModel:
 
 def aligned_scores(result):
     """Preserve TSB's full timeline; interpolate gaps and extend boundary scores."""
-    scores = np.asarray(result["scores"], dtype=np.float64)
+    scores = np.asarray(result["scores"], dtype=np.float32)
     covered = np.flatnonzero(result["cover_counts"] > 0)
     if not len(covered) or not np.isfinite(scores[covered]).all():
         raise ValueError("model produced empty or nonfinite covered scores")
@@ -241,7 +241,7 @@ def score_benchmark(exp, env_path, root, version, series, *, metrics="deferred",
     if not 0 < quantile < 1:
         raise ValueError("calibration quantile must lie strictly between 0 and 1")
     threshold = float(np.quantile(clean_result["scores"][clean_result["cover_counts"] > 0], quantile))
-    predictions = (scores > threshold).astype(np.int64)
+    predictions = (scores > threshold).astype(np.int32)
     # Raw scores are the upstream benchmark artifact. Labels and calibration
     # predictions are separate, available to a compatible evaluator process.
     score_path = directory / "benchmark_scores.npy"

@@ -67,8 +67,8 @@ def read_tsb_series(path, train_end=None) -> TSBSeries:
             frame = pd.read_csv(
                 path, encoding="utf-8-sig", skip_blank_lines=False, index_col=False
             )
-        data = frame.iloc[:, :-1].to_numpy(dtype=np.float64)
-        labels = frame.iloc[:, -1].to_numpy(dtype=np.float64)
+        data = frame.iloc[:, :-1].to_numpy(dtype=np.float32)
+        labels = frame.iloc[:, -1].to_numpy(dtype=np.float32)
     except (ValueError, TypeError, pd.errors.ParserWarning) as exc:
         raise ValueError(
             f"{path.name}: expected one numeric value per feature and Label in every row"
@@ -85,4 +85,4 @@ def read_tsb_series(path, train_end=None) -> TSBSeries:
             f"{path.name}: train_end={train_end} must be between 1 and "
             f"{len(data) - 1} for {len(data)} rows"
         )
-    return TSBSeries(path, data, labels.astype(np.int64), train_end, features)
+    return TSBSeries(path, data, labels.astype(np.int32), train_end, features)

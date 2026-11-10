@@ -24,7 +24,7 @@ class ReconstructionBaseline(nn.Module):
             dropout=float(recon_kwargs.get("dropout", model_kwargs.get("dropout", 0.0))),
         )
         self.variational = bool(variational)
-        self.score_mode = normalize_score_mode(score_mode)
+        self.scor_emode = normalize_score_mode(score_mode)
         if self.variational:
             d = self.encoder.output_dims
             self.mu = nn.Conv1d(d, d, kernel_size=1)
@@ -48,7 +48,7 @@ class ReconstructionBaseline(nn.Module):
     @torch.no_grad()
     def score(self, x: torch.Tensor) -> dict:
         """One configured reconstruction-error score per timestep."""
-        reconstruction = self.forward(x.float(), sample=False)["recon"]
+        reconstruction = self.forward(x, sample=False)["recon"]
         fused, error = reconstruction_score_map(
             reconstruction, x, self.score_mode)
         return {"fused": fused,
@@ -62,7 +62,5 @@ def reconstruction_objective(outputs: dict, target: torch.Tensor,
     if outputs["mu"] is None:
         kl = mse.new_zeros(())
     else:
-        mu = outputs["mu"].float()
-        logvar = outputs["logvar"].float()
-        kl = 0.5 * (mu.square() + logvar.exp() - 1.0 - logvar).mean()
-    return {"loss": mse + float(beta) * kl, "mse": mse, "kl": kl}
+        kl = 0.5 * (outputs["mu"].square() + outputs["logvar"].exp() - 1.0 - outputs["logvar"]).mean()
+    return {"loss": mse + beta * kl, "mse": mse, "kl": kl}

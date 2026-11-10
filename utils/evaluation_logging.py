@@ -90,7 +90,7 @@ def latent_variance(latents):
     """Mean per-channel population variance, averaged over latent levels."""
     import torch
     levels = latents.values() if isinstance(latents, dict) else (latents,)
-    return torch.stack([z.detach().float().var(dim=(0, 2), unbiased=False).mean()
+    return torch.stack([z.detach().var(dim=(0, 2), unbiased=False).mean()
                         for z in levels]).mean()
 
 

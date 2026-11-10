@@ -63,7 +63,7 @@ class RecCALeWM(CrossAttentionTCNLeWM):
         self.eval()
         try:
             with torch.autocast(device_type=x.device.type, enabled=False):
-                out = self(x.float())
+                out = self(x)
                 _, (a, b) = self.crop_ranges(x.size(-1))
                 rec, _ = reconstruction_score_map(out["rec_future"], out["rec_target"][..., a:b], self.score_mode)
                 ca, _ = reconstruction_score_map(out["recon"], out["target"], self.score_mode)

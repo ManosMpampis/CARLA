@@ -86,7 +86,7 @@ class TimeseriesAggregator:
         if self.labels is not None:
             if self.labels.ndim != 1 or not np.isin(self.labels, [0, 1]).all():
                 raise ValueError("labels must be a one-dimensional binary array")
-            self.labels = self.labels.astype(np.int64)
+            self.labels = self.labels.astype(np.int32)
             if series_length is None:
                 series_length = len(self.labels)
         self.series_length = (None if series_length is None else
@@ -133,11 +133,11 @@ class TimeseriesAggregator:
         Starts must follow the configured stride grid. Reordering batches is
         allowed, but duplicate input windows are rejected rather than reweighted.
         """
-        windows = torch.as_tensor(batch["ts"], dtype=torch.float32, device=self.device)
+        windows = torch.as_tensor(batch["ts"], dtype=batch["ts"].dtype, device=self.device)
         starts = np.asarray(batch["meta"]["start_idx"]).reshape(-1)
         if not np.issubdtype(starts.dtype, np.integer):
             raise ValueError("Input start indices must be integers")
-        starts = starts.astype(np.int64)
+        starts = starts.astype(np.int32)
         if windows.ndim != 3 or windows.shape[1] != self.input_window or len(starts) != len(windows):
             raise ValueError("Batch must contain (B,input_window,C) inputs and B start indices")
         if not len(starts):
@@ -161,8 +161,8 @@ class TimeseriesAggregator:
         if isinstance(output, dict):
             output = output["fused"]
         if isinstance(output, torch.Tensor):
-            output = output.detach().float().cpu().numpy()
-        raw = np.asarray(output, dtype=np.float64)
+            output = output.detach().cpu().numpy()
+        raw = np.asarray(output, dtype=np.float32)
         if raw.ndim != 2 or raw.shape[0] != len(starts) or raw.shape[1] < 1:
             raise ValueError("Model scores must have shape (B,L), with L >= 1")
         if not np.isfinite(raw).all():
@@ -222,9 +222,9 @@ class TimeseriesAggregator:
         even when missing outputs would otherwise appear as ordinary zeros.
         """
         size = self._axis_length()
-        indices = np.arange(size, dtype=np.int64)
-        counts = np.array([self._counts.get(int(i), 0) for i in indices], dtype=np.int64)
-        sums = np.array([self._sums.get(int(i), 0.0) for i in indices], dtype=np.float64)
+        indices = np.arange(size, dtype=np.int32)
+        counts = np.array([self._counts.get(int(i), 0) for i in indices], dtype=np.int32)
+        sums = np.array([self._sums.get(int(i), 0.0) for i in indices], dtype=np.float32)
         scores = np.divide(sums, counts, out=np.zeros(size), where=counts > 0)
         covered = counts > 0
         boundaries = np.zeros(size, dtype=bool)
@@ -254,7 +254,7 @@ class TimeseriesAggregator:
                 else:
                     a, b = self._checked_interval(self._raw_length)
                     bounds.append((int(i) * self.stride + a, int(i) * self.stride + b))
-            intervals = np.asarray(bounds, dtype=np.int64).reshape(-1, 2)
+            intervals = np.asarray(bounds, dtype=np.int32).reshape(-1, 2)
             if self.labels is not None:
                 labels = np.array([int(self.labels[max(a, 0):min(b, len(self.labels))].any())
                                    if b > 0 and a < len(self.labels) else 0 for a, b in intervals])

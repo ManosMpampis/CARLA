@@ -48,25 +48,15 @@ project glossary.
 
 ## Verification
 
-```bash
-./venv/bin/python tests/verify_pretrain_tracer.py   # T02 synthetic tracer + resume
-./venv/bin/python tests/check_scorer_handoff.py     # overlap aggregation + metric contract
-./venv/bin/python tests/verify_arms.py              # T04 SIGReg / T05 EMA / T06 codebook
-./venv/bin/python tests/verify_stages.py            # T07 masking/corpus / T08 adapt modes / T09 variants
-./venv/bin/python tests/verify_calibration.py       # T10 train-only thresholds (uses smoke_adapt weights)
-```
-
-The SMD smoke chain (needs CUDA, minutes): pretrain → adapt → score with
-`configs/jepa/smd_pretrain_smoke.yml`, `smd_adapt_smoke.yml`,
-`smd_score_smoke.yml` on `machine-1-1.txt`.
+Most have been deleted
 
 ## Current design facts
 
 - Model wiring goes through registries only: `models.BACKBONE_REGISTRY`,
   predictor registry (`tcn|gru`) and anti-collapse registry
-  (`none|sigreg|ema|codebook`) consumed via `utils/common_config.get_jepa_model`.
+  (`none|sigreg|`) consumed via `utils/common_config.get_jepa_model`.
 - Loss: dense L1 between predicted and stop-gradient target latents over all
-  tokens/levels/horizons (+ λ·SIGReg when enabled; + codebook term on that arm).
+  tokens/horizons (+ λ·SIGReg when enabled).
 - Scoring: per-position L1 error per pyramid level mapped to input timesteps,
   mean-fused; overlapping windows aggregated cover-count-aware in
   `utils/scoring.Scorer`; thresholds come ONLY from clean-train quantiles,

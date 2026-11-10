@@ -19,8 +19,8 @@ def harmonic(precision, recall):
 
 
 def decision_metrics(scores, labels, threshold):
-    labels = np.asarray(labels, dtype=np.int64)
-    pred = (np.asarray(scores, dtype=np.float64) > threshold).astype(np.int64)
+    labels = np.asarray(labels, dtype=np.int32)
+    pred = (np.asarray(scores, dtype=np.float32) > threshold).astype(np.int32)
     events = convert_vector_to_events(labels)
     grader = metricor()
     range_recall = grader.range_recall_new(labels, pred, 0.2)[0]

@@ -17,7 +17,7 @@ def write_score_html(path, scores, labels, threshold, title, *, timestep_indices
 
     scores, labels = np.asarray(scores), np.asarray(labels)
     timeline_labels = np.asarray(labels if series_labels is None else series_labels)
-    indices = np.arange(len(scores), dtype=np.float64) if timestep_indices is None else np.asarray(timestep_indices, dtype=np.float64)
+    indices = np.arange(len(scores), dtype=np.float32) if timestep_indices is None else np.asarray(timestep_indices, dtype=np.float32)
     if not len(scores) or len(scores) != len(indices) or not np.isfinite(scores).all():
         raise ValueError("HTML scores require one finite score per timestep index")
     if np.any(np.diff(indices) <= 0) or indices[0] < 0 or indices[-1] >= len(timeline_labels):

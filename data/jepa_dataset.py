@@ -29,7 +29,7 @@ def make_synthetic_series(n_steps: int, n_channels: int, seed: int,
     and light AR noise. With ``with_anomalies`` a few point/spike/level-shift
     segments are injected and a binary label vector is returned."""
     rng = np.random.default_rng(seed)
-    t = np.arange(n_steps, dtype=np.float64)
+    t = np.arange(n_steps, dtype=np.float32)
     series = np.zeros((n_steps, n_channels), dtype=np.float32)
     for c in range(n_channels):
         f1, f2 = 0.01 + 0.005 * c, 0.03 + 0.002 * c
@@ -44,7 +44,7 @@ def make_synthetic_series(n_steps: int, n_channels: int, seed: int,
     for i in range(1, n_steps):
         noise[i] = 0.05 * noise[i - 1] + eps[i]
     series += noise
-    labels = np.zeros(n_steps, dtype=np.int64)
+    labels = np.zeros(n_steps, dtype=np.int32)
     if with_anomalies:
         n_anoms = max(3, n_steps // 500)
         for _ in range(n_anoms):
@@ -194,7 +194,7 @@ class JEPADataset(Dataset):
         self.full_train_series = series
         self.series = series[:cut]
         self.val_series = series[val_start:]
-        self.targets = np.zeros(len(self.series), dtype=np.int64)
+        self.targets = np.zeros(len(self.series), dtype=np.int32)
 
     @classmethod
     def validation_split(cls, train_dataset, p):
@@ -207,7 +207,7 @@ class JEPADataset(Dataset):
         val.wsz = train_dataset.wsz
         val.stride = train_dataset.stride
         val.series = train_dataset.val_series
-        val.targets = np.zeros(val.series.shape[0], dtype=np.int64)
+        val.targets = np.zeros(val.series.shape[0], dtype=np.int32)
         val.mean, val.std = train_dataset.mean, train_dataset.std
         return val
 
@@ -321,7 +321,7 @@ class JEPACorpusDataset(Dataset):
                 start, available = val_start, length - val_start
             self._cuts.append(start)
             counts.append(max((available - self.wsz) // self.stride + 1, 0))
-        self._cumulative = np.cumsum([0] + counts, dtype=np.int64)
+        self._cumulative = np.cumsum([0] + counts, dtype=np.int32)
 
     def _locate(self, index):
         index = int(index)
@@ -350,5 +350,5 @@ class JEPACorpusDataset(Dataset):
         val.stds = train_dataset.stds
         val._mapped = {}
         val._set_split("val")
-        val.targets = np.zeros(len(val), dtype=np.int64)
+        val.targets = np.zeros(len(val), dtype=np.int32)
         return val

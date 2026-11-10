@@ -45,8 +45,6 @@ class ReconModel(nn.Module):
         lat_d = int(getattr(encoder, "output_dims", 0))
         self.level_dims = [lat_d]
         self.level_strides = [int(getattr(encoder, "total_stride", 1))]
-        self.target_encoder = None
-        self.codebook = None
         self.anti_collapse = "none"
         self.encoder_frozen = False
 
@@ -55,17 +53,13 @@ class ReconModel(nn.Module):
         """Total downsampling S (Phase-2 contract divisor)."""
         return int(self.level_strides[0])
 
-    def encode(self, x):
-        """Encode (B, C, W) -> (B, D, W/S)."""
-        return self.encoder(x)
-
     def reconstruct(self, x):
         """Full-window recon (B, C, W)."""
-        return self.head(self.encode(x))
+        return self.head(self.encoder(x))
 
     def forward(self, x, mask=None, action=None):
         """Trainer contract: dense recon of the (clean, normal-only) input."""
-        z = self.encode(x)
+        z = self.encoder(x)
         x_hat = self.head(z)
         return {
             "recon": x_hat,
@@ -77,12 +71,6 @@ class ReconModel(nn.Module):
             "mask": None,
             "action": None,
         }
-
-    def update_ema(self):
-        """No teacher: no-op satisfying the Trainer contract."""
-
-    def update_running_stats(self, latents):
-        """No running statistics on the recon model."""
 
     def latent_variance(self, latents):
         """Collapse diagnostic: mean per-dim variance."""
@@ -103,9 +91,8 @@ class ReconModel(nn.Module):
             aux_crop = bool(getattr(self, "score_aux_crop", False))
         was_training = self.training
         self.eval()
-        x = x.float()
         if not aux_crop:
-            x_hat = self.head(self.encode(x))
+            x_hat = self.head(self.encoder(x))
             fused, errors = reconstruction_score_map(x_hat, x, self.score_mode)
             out = {"fused": fused, "signals": {f"channel/{i}": errors[:, i]
                                 for i in range(errors.shape[1])}}
@@ -116,7 +103,7 @@ class ReconModel(nn.Module):
             raise ValueError("aux_crop=True needs aux (with_aux=true + "
                              "pretrained aux weights)")
         s = self.total_stride
-        z = self.encode(x)
+        z = self.encoder(x)
         logits, _ = self.aux(z)
         prob = torch.sigmoid(logits).detach()
         b, w = x.shape[0], x.shape[-1]
@@ -128,7 +115,7 @@ class ReconModel(nn.Module):
                 if r <= l:
                     continue
                 z_crop = z[i:i + 1, :, l:r]
-                x_hat_crop = self.head(z_crop.float())
+                x_hat_crop = self.head(z_crop)
                 # Target input segment mirrored by the stride mapping.
                 tgt = x[i:i + 1, :, l * s:r * s]
                 if x_hat_crop.shape[-1] != tgt.shape[-1]:
@@ -145,7 +132,7 @@ class ReconModel(nn.Module):
                 fused[i, l * s:r * s] = crop_fused.squeeze(0).to(fused.dtype)
         if was_training:
             self.train()
-        fused = fused.to(torch.float32)
+        fused = fused.to(x.dtype)
         return {"fused": fused, "signals": {f"channel/{i}": dimensions[:, i]
                              for i in range(dimensions.shape[1])}}
 

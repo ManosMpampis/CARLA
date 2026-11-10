@@ -59,7 +59,7 @@ def aggregate_score_maps(series: np.ndarray, wsz: int, stride: int,
         starts.append(n_steps - wsz)
 
     sums: dict[str, np.ndarray] = {}
-    counts = np.zeros(n_steps, dtype=np.int64)
+    counts = np.zeros(n_steps, dtype=np.int32)
     output_starts, output_ends, input_starts = [], [], []
     window_scores: dict[str, list[float]] = {}
     output_length = None
@@ -87,7 +87,7 @@ def aggregate_score_maps(series: np.ndarray, wsz: int, stride: int,
             if values.shape != (len(chunk), output_length):
                 raise ValueError(f"score map {name!r} must have shape "
                                  f"({len(chunk)}, {output_length})")
-            sums.setdefault(name, np.zeros(n_steps, dtype=np.float64))
+            sums.setdefault(name, np.zeros(n_steps, dtype=np.float32))
         for row_index, s in enumerate(chunk):
             positions = s + relative_start + np.arange(output_length)
             valid = (positions >= 0) & (positions < n_steps)
@@ -107,11 +107,11 @@ def aggregate_score_maps(series: np.ndarray, wsz: int, stride: int,
         raise ValueError("check_mask and latency_offset place all outputs outside the series")
     return {
         "channels": {name: _aggregate(total, counts) for name, total in sums.items()},
-        "start_idxs": np.asarray(output_starts, dtype=np.int64),
-        "end_idxs": np.asarray(output_ends, dtype=np.int64),
-        "input_start_idxs": np.asarray(input_starts, dtype=np.int64),
-        "input_end_idxs": np.asarray(input_starts, dtype=np.int64) + wsz,
-        "window_scores": {name: np.asarray(values, dtype=np.float64)
+        "start_idxs": np.asarray(output_starts, dtype=np.int32),
+        "end_idxs": np.asarray(output_ends, dtype=np.int32),
+        "input_start_idxs": np.asarray(input_starts, dtype=np.int32),
+        "input_end_idxs": np.asarray(input_starts, dtype=np.int32) + wsz,
+        "window_scores": {name: np.asarray(values, dtype=np.float32)
                           for name, values in window_scores.items()},
         "cover_counts": counts,
     }
@@ -138,10 +138,10 @@ class Scorer:
     def score_windows(self, windows: torch.Tensor) -> dict:
         """Windows (B, C, W) -> per-window score maps; always fp32."""
         self.model.eval()
-        out = self.model.score(windows.float().to(self.device))
+        out = self.model.score(windows.to(self.device))
         return {
-            "fused": out["fused"].float().cpu().numpy(),
-            "signals": {k: v.float().cpu().numpy() for k, v in out["signals"].items()},
+            "fused": out["fused"].cpu().numpy(),
+            "signals": {k: v.cpu().numpy() for k, v in out["signals"].items()},
         }
 
     def score_series(self, series: np.ndarray, wsz: int, stride: int,
@@ -266,9 +266,9 @@ class RunningScorer:
                 totals[index] = totals.get(index, 0.0) + float(value)
             current[name] = np.asarray(
                 [totals[int(position)] / self.counts[int(position)]
-                 for position in positions], dtype=np.float64)
+                 for position in positions], dtype=np.float32)
         scores = (current["fused"] if self.score_transform is None
-                  else np.asarray(self.score_transform(current), dtype=np.float64))
+                  else np.asarray(self.score_transform(current), dtype=np.float32))
         if scores.shape != current["fused"].shape or not np.isfinite(scores).all():
             raise ValueError("score_transform must return one finite score per scored timestep")
         for position, score in zip(positions, scores):
@@ -305,13 +305,13 @@ class RunningScorer:
                 "decisions": None if decisions is None else decisions.tolist(),
             })
         return {
-            "indices": positions.astype(np.int64),
+            "indices": positions.astype(np.int32),
             "channels": current,
             "scores": scores,
             "decisions": decisions,
             "cover_counts": np.asarray(
                 [self.counts[int(position)] for position in positions],
-                dtype=np.int64),
+                dtype=np.int32),
         }
 
     def score_at(self, timestep: int, channel: str = "fused") -> float | None:
@@ -388,15 +388,15 @@ class Calibrator:
         clean = dict(clean)
         probes = dict(probes or {})
         for name, values in clean.items():
-            values = np.asarray(values, dtype=np.float64)
+            values = np.asarray(values, dtype=np.float32)
             self.thresholds[name] = float(np.quantile(values, self.quantile))
 
         usable = [n for n in clean
                   if n in probes and len(probes[n]) >= self.min_probe_samples]
         separations = {}
         for name in usable:
-            c = np.asarray(clean[name], dtype=np.float64)
-            p = np.asarray(probes[name], dtype=np.float64)
+            c = np.asarray(clean[name], dtype=np.float32)
+            p = np.asarray(probes[name], dtype=np.float32)
             sep = (p.mean() - c.mean()) / (c.std() + 1e-9)
             separations[name] = max(sep, 0.0)
         total = sum(separations.values())
@@ -410,7 +410,7 @@ class Calibrator:
 
     def fuse(self, signals: dict) -> np.ndarray:
         names = list(signals)
-        stacked = [np.asarray(signals[n], dtype=np.float64) for n in names]
+        stacked = [np.asarray(signals[n], dtype=np.float32) for n in names]
         if self.fallback or not self.weights:
             return np.mean(stacked, axis=0)
         combined = np.zeros_like(stacked[0])
@@ -419,7 +419,7 @@ class Calibrator:
         return combined
 
     def threshold_for(self, fused_clean: np.ndarray) -> float:
-        return float(np.quantile(np.asarray(fused_clean, dtype=np.float64), self.quantile))
+        return float(np.quantile(np.asarray(fused_clean, dtype=np.float32), self.quantile))
 
     def save(self, path: str, extra: dict | None = None) -> None:
         payload = {

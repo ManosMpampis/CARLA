@@ -35,13 +35,12 @@ class Trainer:
         self.amp = bool(amp)
         self.val_collator = val_collator
         self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
-        self._codebook_samples: dict[str, list] | None = None
 
     # ------------------------------------------------------------------ #
     @staticmethod
     def _to_model_input(batch_ts: torch.Tensor, device) -> torch.Tensor:
         # Dataset windows are (W, C); the model consumes (B, C, W).
-        ts = batch_ts.float().to(device, non_blocking=True)
+        ts = batch_ts.to(device, non_blocking=True)
         if ts.ndim == 2:
             ts = ts.unsqueeze(1)
         elif ts.ndim == 3:
@@ -71,29 +70,15 @@ class Trainer:
     def train_one_epoch(self, loader, epoch: int) -> dict:
         self.model.train()
         if getattr(self.model, "encoder_frozen", False):
-            # frozen adaptation: BN stats of the encoder must not move
             self.model.encoder.eval()
-        if self.model.target_encoder is not None:
-            self.model.target_encoder.train_mode()
-        if self.model.codebook is not None and epoch == 0 \
-                and not self.model.codebook.initialized:
-            # collect first-epoch latents for the k-means warmup
-            samples: dict[str, list] = {name: [] for name in self.model.level_names}
-            self._codebook_samples = samples
         meters = {}
         for i, batch in enumerate(loader):
             self.optimizer.zero_grad()
 
             losses, extras = self._forward_loss(batch)
-            if self._codebook_samples is not None and i < 8:
-                for name, z in extras["latents"].items():
-                    self._codebook_samples[name].append(z.detach().cpu())
             self.scaler.scale(losses["loss"]).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            
-            self.model.update_ema()
-            self.model.update_running_stats(extras["latents"])
 
             values = loss_metrics(losses)
             values["latent_var"] = latent_variance(extras["latents"])
@@ -103,10 +88,6 @@ class Trainer:
                 scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
                 meters[key].update(scalar, extras["ts"].size(0))
 
-        if self._codebook_samples is not None:
-            self.model.codebook.init_from_latents(self._codebook_samples,
-                                                  logger=self.logger)
-            self._codebook_samples = None
         return {key: meter.avg for key, meter in meters.items()}
 
     @torch.no_grad()

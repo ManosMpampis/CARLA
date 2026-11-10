@@ -66,7 +66,7 @@ class LeWMLoss(nn.Module):
             aux_loss = logits.new_zeros(())
         else:
             aux_loss = F.mse_loss(torch.sigmoid(logits),
-                                  m.to(logits.dtype).float())
+                                  m.to(logits.dtype))
         sig = self.sigreg(cont)
         sig_tgt = self.sigreg(tgt)
         loss = self.w_pred * pred_loss + self.w_aux * aux_loss \

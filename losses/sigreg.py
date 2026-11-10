@@ -53,7 +53,7 @@ class SIGReg(nn.Module):
             raise ValueError("tokens must have shape (..., N, D) with N > 0")
         # Keep the characteristic-function calculation in fp32 under AMP.
         with torch.autocast(device_type=tokens.device.type, enabled=False):
-            x = tokens.float()
+            x = tokens
             directions = self._directions(x.size(-1), x.device)
             angles = (x @ directions).unsqueeze(-1) * self.freqs.to(x.device)
             cosine = angles.cos().mean(dim=-3)

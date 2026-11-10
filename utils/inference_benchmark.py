@@ -17,7 +17,7 @@ def benchmark_inference(model, series, window, batch_size, device, settings):
         raise ValueError("benchmark series is shorter than the input window")
     starts = np.linspace(0, len(series) - window, count, dtype=int)
     windows = np.stack([series[start:start + window] for start in starts])
-    batch = torch.from_numpy(windows).permute(0, 2, 1).contiguous().to(device).float()
+    batch = torch.from_numpy(windows).permute(0, 2, 1).contiguous().to(device)
     model.eval()
     for _ in range(warmup):
         model.score(batch)

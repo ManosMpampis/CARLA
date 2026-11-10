@@ -55,7 +55,7 @@ class metricor_t:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         if dtype is None:
             # float32 on GPU is much faster; use float64 on CPU for fidelity
-            dtype = torch.float32 if device == "cuda" else torch.float64
+            dtype = torch.float32 if device == "cuda" else torch.float32
 
         labels_original = np.asarray(labels_original)
         score = np.asarray(score)

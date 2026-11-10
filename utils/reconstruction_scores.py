@@ -21,7 +21,7 @@ def reconstruction_score_map(recon: torch.Tensor, target: torch.Tensor,
     A window's scalar score is always the mean over W of the first output.
     """
     mode = normalize_score_mode(mode)
-    residual = recon.float() - target.float()
+    residual = recon - target
     if mode == "mse":
         elements = residual.square()
         return elements.mean(dim=1), elements

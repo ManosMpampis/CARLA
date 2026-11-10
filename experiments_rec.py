@@ -65,12 +65,12 @@ def jepa_model_path(version, fname, exp_yml, env_yml=ENV_YML):
 def _cosine_restart_patch(epochs, lr=BASE_LR):
     """Warmup-10 + cosine-restart, minimum = lr / 10 (one full cycle)."""
     return {
-        "epochs": int(epochs),
+        "epochs": epochs,
         "scheduler": "cosine_restart",
         "scheduler_kwargs": {
-            "lr_warmup_epochs": int(WARMUP_EPOCHS),
-            "lr_eta_min": float(lr) / 10.0,
-            "T_period": int(epochs) - int(WARMUP_EPOCHS),
+            "lr_warmup_epochs": WARMUP_EPOCHS,
+            "lr_eta_min": lr / 10.0,
+            "T_period": epochs - WARMUP_EPOCHS,
             "T_mul": 1,
         },
     }
@@ -78,7 +78,7 @@ def _cosine_restart_patch(epochs, lr=BASE_LR):
 
 def _model_patch():
     return {
-        "wsz": int(WSZ),
+        "wsz": WSZ,
         # Keep the transferred auxiliary architecture identical at every stage.
         "aux_kwargs": dict(_load_yml(PRETEXT_YML).get("aux_kwargs", {})),
         "model_kwargs": {**_load_yml(PRETEXT_YML)["model_kwargs"],
