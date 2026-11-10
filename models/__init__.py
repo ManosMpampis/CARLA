@@ -4,7 +4,7 @@ __all__ = ["BACKBONE_REGISTRY", "get_backbone", "FRAMEWORK_REGISTRY", "get_frame
 
 
 def _build_lewm_resnet(**kwargs):
-    from models.lewm import LeWMResNetEncoder
+    from models.encoder_reconstructor import LeWMResNetEncoder
 
     encoder = LeWMResNetEncoder(**kwargs)
     return {"model": encoder, "dim": [encoder.output_dims]}
@@ -23,13 +23,13 @@ def get_backbone(name, **kwargs):
 
 
 def _build_cross_attention(encoder, **kwargs):
-    from models.lewm_cross_attention import CrossAttentionLeWM
+    from models.cross_attention import CrossAttentionLeWM
 
     return CrossAttentionLeWM(encoder, **kwargs)
 
 
 def _build_lewm(encoder, **kwargs):
-    from models.lewm import LeWMModel
+    from models.encoder_reconstructor import LeWMModel
 
     return LeWMModel(encoder, **kwargs)
 

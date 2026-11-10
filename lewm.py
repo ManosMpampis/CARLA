@@ -78,8 +78,8 @@ class _GraphWrapper(torch.nn.Module):
 
     def forward(self, x):
         out = self.model(x)
-        graph = {"latent": out["latents"]["L0"],
-                 "predicted": out["predicted"]["L0"]}
+        graph = {"latent": out["latents"],
+                 "predicted": out["predicted"]}
         if out["mask_logits"] is not None:
             graph["mask_logits"] = out["mask_logits"]
         return graph

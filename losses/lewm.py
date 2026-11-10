@@ -50,9 +50,9 @@ class LeWMLoss(nn.Module):
 
     def forward(self, outputs: dict) -> dict:
         """Compute total loss from LeWM model outputs."""
-        tgt = outputs["targets"]["L0"]
-        cont = outputs["context"]["L0"]
-        pred = outputs["predicted"]["L0"]
+        tgt = outputs["targets"]
+        cont = outputs["context"]
+        pred = outputs["predicted"]
         if pred.dim() == 4 and pred.size(1) == 1:
             pred = pred[:, 0]
         pred_loss = self._latent_loss(pred, tgt)
@@ -67,8 +67,8 @@ class LeWMLoss(nn.Module):
         else:
             aux_loss = F.mse_loss(torch.sigmoid(logits),
                                   m.to(logits.dtype).float())
-        sig = self.sigreg({"L0": cont})
-        sig_tgt = self.sigreg({"L0": tgt})
+        sig = self.sigreg(cont)
+        sig_tgt = self.sigreg(tgt)
         loss = self.w_pred * pred_loss + self.w_aux * aux_loss \
             + self.lambda_sigreg * sig + self.lambda_sigreg_tgt * sig_tgt
         return {"loss": loss, "pred_loss": pred_loss, "aux_loss": aux_loss,

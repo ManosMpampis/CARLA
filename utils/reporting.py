@@ -154,8 +154,6 @@ def score_with_model(p, device, build_model, logger, *, input_resolution=False) 
             result = self.base.score(x)
             stride = int(self.base.level_strides[0])
             return {"fused": result["fused"].repeat_interleave(stride, dim=-1),
-                    "levels": {key: value.repeat_interleave(stride, dim=-1)
-                               for key, value in result["levels"].items()},
                     "signals": {key: value.repeat_interleave(stride, dim=-1)
                                 for key, value in result["signals"].items()}}
 
@@ -208,7 +206,6 @@ def score_with_model(p, device, build_model, logger, *, input_resolution=False) 
         probe_scores = scorer.score_windows(batch)
         probe_maps = {
             "fused": probe_scores.pop("fused"),
-            **probe_scores.pop("levels"),
             **{f"signal/{k}": v for k, v in probe_scores.pop("signals").items()},
         }
         # Comparable statistics on both sides: per-window means.

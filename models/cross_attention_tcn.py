@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.blocks import _init_weights
-from models.lewm_cross_attention import CrossAttentionLeWM
+from models.cross_attention import CrossAttentionLeWM
 
 
 class CausalConv1d(nn.Module):

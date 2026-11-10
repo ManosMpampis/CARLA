@@ -51,7 +51,7 @@ class ReconstructionBaseline(nn.Module):
         reconstruction = self.forward(x.float(), sample=False)["recon"]
         fused, error = reconstruction_score_map(
             reconstruction, x, self.score_mode)
-        return {"fused": fused, "levels": {"L0": fused},
+        return {"fused": fused,
                 "signals": {f"channel/{c}": error[:, c]
                             for c in range(error.shape[1])}}
 

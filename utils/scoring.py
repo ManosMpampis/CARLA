@@ -141,7 +141,6 @@ class Scorer:
         out = self.model.score(windows.float().to(self.device))
         return {
             "fused": out["fused"].float().cpu().numpy(),
-            "levels": {k: v.float().cpu().numpy() for k, v in out["levels"].items()},
             "signals": {k: v.float().cpu().numpy() for k, v in out["signals"].items()},
         }
 
@@ -172,8 +171,7 @@ class Scorer:
 
 
 def _flatten_score_maps(result: dict) -> dict:
-    return {"fused": result["fused"], **result["levels"],
-            **{f"signal/{k}": v for k, v in result["signals"].items()}}
+    return {"fused": result["fused"], **{f"signal/{k}": v for k, v in result["signals"].items()}}
 
 
 class RunningScorer:

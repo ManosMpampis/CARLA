@@ -11,7 +11,7 @@ Terminology (spec `specs/lewm-time-steered-freq-predictor.md`):
   the mask tells the predictor what to reconstruct. When present, the
   auxiliary sees the raw corrupted latents to localize and steer.
 
-Single scale: level_names ["L0"], level_strides [1], latents (B, D, W).
+Single scale: level_strides [1], latents (B, D, W).
 No stop-grad anywhere; anti-collapse is dual SIGReg in the criterion.
 """
 import torch
@@ -101,7 +101,6 @@ class LeWMResNetEncoder(nn.Module):
         for s in self.enc_strides:
             total *= int(s)
         self.total_stride = int(total)
-        self.level_names = ["L0"]
         self.level_dims = [int(self.output_dims)]
         self.level_strides = [int(total)]
 
@@ -382,7 +381,6 @@ class LeWMModel(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, input_dim, 1))
         nn.init.normal_(self.mask_token, std=0.02)
 
-        self.level_names = ["L0"]
         self.level_dims = [int(input_dim)]
         self.level_strides = [int(getattr(encoder, "total_stride", 1))]
         self.target_encoder = None
@@ -465,10 +463,10 @@ class LeWMModel(nn.Module):
         z_pred = self.predictor(z_tok, film_feat)
         m_target = m_float.detach()
         return {
-            "context": {"L0": z_inj},
-            "latents": {"L0": z},
-            "targets": {"L0": z},
-            "predicted": {"L0": z_pred},
+            "context": z_inj,
+            "latents": z,
+            "targets": z,
+            "predicted": z_pred,
             "mask_logits": mask_logits,
             "mask_target": m_target,
             "mask": {"input": m_bool},
@@ -483,7 +481,7 @@ class LeWMModel(nn.Module):
 
     def latent_variance(self, latents):
         """Collapse diagnostic: mean per-dim variance."""
-        z = latents["L0"]
+        z = latents
         return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0).mean().item()
 
     @torch.no_grad()
@@ -502,4 +500,4 @@ class LeWMModel(nn.Module):
         fused = (zp - z).abs().mean(dim=1)
         if was_training:
             self.train()
-        return {"fused": fused, "levels": {"L0": fused}, "signals": {}}
+        return {"fused": fused, "signals": {}}

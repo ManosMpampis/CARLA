@@ -368,9 +368,6 @@ def score_config(p, exp):
             if exp.runner == "lewm":
                 step = int(model.level_strides[0])
                 output["fused"] = output["fused"].repeat_interleave(step, dim=-1)
-                output["levels"] = {
-                    name: value.repeat_interleave(step, dim=-1)
-                    for name, value in output["levels"].items()}
                 output["signals"] = {
                     name: value.repeat_interleave(step, dim=-1)
                     for name, value in output["signals"].items()}

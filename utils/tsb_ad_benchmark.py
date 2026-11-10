@@ -72,7 +72,7 @@ def adapt_geometry(config, train_end, policy="shrink", *, runner=None):
                          f"window {window} must fit the full prefix, be divisible by {lattice}, and be >= {minimum}. "
                          "Adjust --window, --val-fraction, or the model configuration.")
     if runner == "cross_attention":
-        from models.lewm_cross_attention import CrossAttentionLeWM
+        from models.cross_attention import CrossAttentionLeWM
 
         CrossAttentionLeWM.resolve_crop_ranges(
             window, step, crops.get("context_crop"), crops.get("target_crop"))
@@ -174,9 +174,8 @@ class InputResolutionModel:
         if self.runner == "lewm":
             step = int(self.model.level_strides[0])
             output = {**output, "fused": output["fused"].repeat_interleave(step, dim=-1)[..., :x.shape[-1]]}
-            for key in ("levels", "signals"):
-                output[key] = {name: values.repeat_interleave(step, dim=-1)[..., :x.shape[-1]]
-                               for name, values in output[key].items()}
+            output["signals"] = {name: values.repeat_interleave(step, dim=-1)[..., :x.shape[-1]]
+                                for name, values in output["signals"].items()}
         return output
 
 

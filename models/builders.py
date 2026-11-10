@@ -35,7 +35,7 @@ def get_recon_model(p):
     """LeWM encoder + mirrored recon head (+ optional frozen aux)."""
     from models import get_backbone, get_framework
     from models.recon_head import build_mirrored_head
-    from models.lewm import TimeAuxiliary
+    from models.encoder_reconstructor import TimeAuxiliary
 
     enc_kwargs = dict(p.get("model_kwargs", {}))
     built = get_backbone(p.get("backbone", "lewm_resnet"), **enc_kwargs)

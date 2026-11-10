@@ -42,7 +42,6 @@ class ReconModel(nn.Module):
         self.head = head
         self.aux = aux
         self.score_mode = normalize_score_mode(score_mode)
-        self.level_names = ["L0"]
         lat_d = int(getattr(encoder, "output_dims", 0))
         self.level_dims = [lat_d]
         self.level_strides = [int(getattr(encoder, "total_stride", 1))]
@@ -71,10 +70,10 @@ class ReconModel(nn.Module):
         return {
             "recon": x_hat,
             "target": x,
-            "context": {"L0": z},
-            "latents": {"L0": z},
-            "targets": {"L0": z},
-            "predicted": {"L0": z},
+            "context": z,
+            "latents": z,
+            "targets": z,
+            "predicted": z,
             "mask": None,
             "action": None,
         }
@@ -87,7 +86,7 @@ class ReconModel(nn.Module):
 
     def latent_variance(self, latents):
         """Collapse diagnostic: mean per-dim variance."""
-        z = latents["L0"]
+        z = latents
         return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0).mean().item()
 
     # -- scoring (fp32, eval mode) --------------------------------------
@@ -108,8 +107,7 @@ class ReconModel(nn.Module):
         if not aux_crop:
             x_hat = self.head(self.encode(x))
             fused, errors = reconstruction_score_map(x_hat, x, self.score_mode)
-            out = {"fused": fused, "levels": {"L0": fused},
-                   "signals": {f"channel/{i}": errors[:, i]
+            out = {"fused": fused, "signals": {f"channel/{i}": errors[:, i]
                                 for i in range(errors.shape[1])}}
             if was_training:
                 self.train()
@@ -148,8 +146,7 @@ class ReconModel(nn.Module):
         if was_training:
             self.train()
         fused = fused.to(torch.float32)
-        return {"fused": fused, "levels": {"L0": fused},
-                "signals": {f"channel/{i}": dimensions[:, i]
+        return {"fused": fused, "signals": {f"channel/{i}": dimensions[:, i]
                              for i in range(dimensions.shape[1])}}
 
     def score_with_flag(self, x):
