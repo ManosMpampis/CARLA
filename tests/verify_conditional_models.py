@@ -51,7 +51,7 @@ def objective_equations():
     values = {}
     for kind in expected:
         criterion = LeWMLoss(loss2_kind=kind, w_aux=0, lambda_sigreg=0, lambda_sigreg_tgt=0)
-        result = criterion({"predicted":{"L0":prediction}, "targets":{"L0":target}})
+        result = criterion({"predicted": prediction, "targets": target})
         close(result["loss"], expected[kind])
         values[kind] = float(result["loss"].detach())
         gradients = torch.autograd.grad(result["loss"], (prediction, target), retain_graph=True)
@@ -59,7 +59,7 @@ def objective_equations():
         assert all(g.abs().sum() > 0 for g in gradients), "shared target must receive gradients"
     exact = torch.zeros(2, 4, 3, requires_grad=True)
     zero_loss = LeWMLoss(loss2_kind="l2", w_aux=0, lambda_sigreg=0, lambda_sigreg_tgt=0)(
-        {"predicted":{"L0":exact}, "targets":{"L0":torch.zeros_like(exact)}})["loss"]
+        {"predicted": exact, "targets": torch.zeros_like(exact)})["loss"]
     close(zero_loss, 0.)
     zero_loss.backward()
     assert torch.isfinite(exact.grad).all(), "zero-error RMS gradient must be finite"
@@ -137,10 +137,10 @@ def predicted_mask_and_gradients():
     outputs = model(x,mask={"input":known,"X_inj":corrupted})
     changed_labels = model(x,mask={"input":~known,"X_inj":corrupted})
     close(outputs["action"].mask_proposal,outputs["mask_logits"].sigmoid())
-    close(outputs["predicted"]["L0"],changed_labels["predicted"]["L0"])
+    close(outputs["predicted"],changed_labels["predicted"])
     assert not torch.equal(outputs["mask_target"],changed_labels["mask_target"])
     assert "recon" not in outputs
-    target = outputs["targets"]["L0"]
+    target = outputs["targets"]
     target.retain_grad()
     criterion = get_criterion(tiny_config())
     losses = criterion(outputs)
@@ -190,7 +190,7 @@ def guided_roles_and_shapes():
             assert abs(start-2*length/3)<=1
             assert qkv["q"].shape[-1]==length-start
             assert qkv["k"].shape[-1]==qkv["v"].shape[-1]==start
-            assert out["predicted"]["L0"].shape==out["targets"]["L0"].shape==(2,6,length-start)
+            assert out["predicted"].shape==out["targets"].shape==(2,6,length-start)
             assert "recon" not in out
             before={k:v.clone() for k,v in qkv.items()}
             future_changed=x.clone();future_changed[:,:,start:]+=2
@@ -217,7 +217,7 @@ def score_interpolation():
         for mode in ("l1","kl","mse","l2"):
             model.score_mode=mode
             out=model(x,corrupt=False)
-            expected,_=reconstruction_score_map(out["predicted"]["L0"],out["targets"]["L0"],mode)
+            expected,_=reconstruction_score_map(out["predicted"],out["targets"],mode)
             start,end=out["target_range"]
             expected=F.interpolate(expected.unsqueeze(1),size=end-start,mode="linear",align_corners=False).squeeze(1)
             actual=model.score(x)["fused"]
@@ -243,10 +243,10 @@ def optional_raw_and_weighted_total():
     assert any(p.grad is not None and p.grad.abs().sum()>0 for p in model.head.parameters())
     zero=LeWMLoss(w_pred=0,w_aux=0,w_recon=0,lambda_sigreg=0,lambda_sigreg_tgt=0)
     # Disabled losses do not require target/context/auxiliary/raw operands.
-    close(zero({"predicted":{"L0":torch.zeros(2,4,8)}})["loss"],0.)
+    close(zero({"predicted": torch.zeros(2,4,8)})["loss"],0.)
     try:
         LeWMLoss(w_aux=0,lambda_sigreg=0,lambda_sigreg_tgt=0)(
-            {"predicted":{"L0":torch.zeros(2,4,1)},"targets":{"L0":torch.zeros(2,4,8)}})
+            {"predicted": torch.zeros(2,4,1),"targets": torch.zeros(2,4,8)})
     except ValueError:
         pass
     else:
@@ -279,9 +279,9 @@ def fixed_batch_optimization_and_conditioning():
         assert min(losses[-5:])<losses[0]*.8,"fixed-batch objective must demonstrably decrease"
         model.eval()
         out=model(x,mask=mask)
-        current=out["context"]["L0"]
+        current=out["context"]
         action=out["action"]
-        baseline=model.predictor.predict(current,action,target_tokens=out["targets"]["L0"].size(-1))
+        baseline=model.predictor.predict(current,action,target_tokens=out["targets"].size(-1))
         changed=copy.copy(action)
         if name=="lewm":
             changed.film_feat=action.film_feat.roll(1,0)
@@ -351,7 +351,7 @@ def baseline_objectives_and_widths():
             for length in (48,65):
                 value=model(torch.randn(2,channels,length))
                 if name in ("ae","vae"):assert value["recon"].shape==(2,channels,length)
-                else:assert value["predicted"]["L0"].shape[1]==6
+                else:assert value["predicted"].shape[1]==6
                 output_shapes.append({"model":name,"raw_channels":channels,"window":length})
     return {"vae_kl":expected_kl,"cases":output_shapes}
 

@@ -129,11 +129,9 @@ class CrossAttentionLeWM(nn.Module):
                                                  position_scale=position_scale,
                                                  diagonal_mask=diagonal_mask)
         self.score_mode = normalize_score_mode(score_mode)
-        self.level_names = ["L0"]
         self.level_dims = [value_channels]
         self.level_strides = [self.total_stride]
         self.target_encoder = None
-        self.codebook = None
         self.anti_collapse = "sigreg"
         # Persist task semantics as well as weights: equal-shaped arms must
         # not silently resume/score with a different Query source or crop.
@@ -239,9 +237,9 @@ class CrossAttentionLeWM(nn.Module):
                   "query": clean_qkv["query"]}[self.target]
         return {"recon": prediction, "target": target,
                 "qkv": qkv, "clean_qkv": clean_qkv,
-                "context": {"L0": qkv["value"]},
-                "latents": {"L0": clean_qkv["value"]},
-                "targets": {"L0": target}, "predicted": {"L0": prediction}}
+                "context": qkv["value"],
+                "latents": clean_qkv["value"],
+                "targets": target, "predicted": prediction}
 
     @torch.no_grad()
     def predict_next(self, context, target_tokens=None):
@@ -279,7 +277,7 @@ class CrossAttentionLeWM(nn.Module):
                 fused, _ = reconstruction_score_map(out["recon"], out["target"], self.score_mode)
                 if self.target != "input":
                     fused = fused.repeat_interleave(self.total_stride, dim=-1)
-                return {"fused": fused, "levels": {"L0": fused}, "signals": {}}
+                return {"fused": fused, "signals": {}}
         finally:
             self.train(was_training)
 
@@ -290,5 +288,5 @@ class CrossAttentionLeWM(nn.Module):
         """No additional running statistics."""
 
     def latent_variance(self, latents):
-        z = latents["L0"]
+        z = latents
         return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0, unbiased=False).mean().item()

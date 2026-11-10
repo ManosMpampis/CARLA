@@ -62,7 +62,7 @@ def _output_series(name):
     path = Path(name)
     return name if len(path.parts) == 1 else path.name + "-" + hashlib.sha256(name.encode()).hexdigest()[:10]
 
-
+# TODO: specify defaults somewhere else, maybe in the config
 def _source_paths(config, root_dir):
     roles = (config.get("lewm_modules", {}) if config["framework"] == "lewm"
              else config.get("feature_modules", {}))
@@ -141,7 +141,7 @@ def preflight_job(config):
         check_model_loss(model, get_criterion(config), {"ts": batch}, torch.device("cpu"))
     return config
 
-
+# TODO: specify defaults somewhere else, maybe in the config
 def plan_jobs(config_exp, config_env="configs/env.yml", *, dataset=None, fname=None,
               file_list=None, dataset_root=None, version=None, output_root=None, overrides=None):
     """Return fully preflighted configs; no training starts until every job passes."""

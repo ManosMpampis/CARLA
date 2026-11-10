@@ -34,7 +34,6 @@ class ResNetEncoder(nn.Module):
             for index, stride in enumerate(self.enc_strides)
         ])
         self.total_stride = math.prod(self.enc_strides)
-        self.level_names = ["L0"]
         self.level_dims = [self.output_dims]
         self.level_strides = [self.total_stride]
 

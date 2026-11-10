@@ -6,7 +6,7 @@ import torch
 from utils.utils import AverageMeter
 from utils.evaluation_schedule import should_evaluate
 from utils.checkpointing import Checkpoints, inference_metadata
-from utils.evaluation_logging import (loss_metrics, record_losses, latent_variance,
+from utils.evaluation_logging import (record_losses, latent_variance,
                                       truncate_epoch_history)
 from utils.randomness import isolated_rng, restore_rng_state, isolated_module_rng, restore_module_rng
 
@@ -36,7 +36,6 @@ class Trainer:
         self.amp = bool(amp)
         self.val_collator = val_collator
         self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
-        self._codebook_samples: dict[str, list] | None = None
 
     # ------------------------------------------------------------------ #
     @staticmethod
@@ -81,11 +80,6 @@ class Trainer:
         target_encoder = getattr(self.model, "target_encoder", None)
         if target_encoder is not None:
             target_encoder.train_mode()
-        codebook = getattr(self.model, "codebook", None)
-        if codebook is not None and epoch == 0 and not codebook.initialized:
-            # collect first-epoch latents for the k-means warmup
-            samples: dict[str, list] = {name: [] for name in self.model.level_names}
-            self._codebook_samples = samples
         meters = {}
         update_ema = getattr(self.model, "update_ema", None)
         update_stats = getattr(self.model, "update_running_stats", None)
@@ -95,9 +89,6 @@ class Trainer:
             losses, extras = self._forward_loss(batch)
             if not torch.isfinite(losses["loss"]):
                 raise FloatingPointError("training objective became nonfinite")
-            if self._codebook_samples is not None and i < 8:
-                for name, z in extras["latents"].items():
-                    self._codebook_samples[name].append(z.detach().cpu())
             self.scaler.scale(losses["loss"]).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -114,10 +105,6 @@ class Trainer:
                     meters[key] = AverageMeter(key, ":.4e")
                 scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
                 meters[key].update(scalar, extras["ts"].size(0))
-
-        if self._codebook_samples is not None:
-            codebook.init_from_latents(self._codebook_samples, logger=self.logger)
-            self._codebook_samples = None
         return {key: meter.avg for key, meter in meters.items()}
 
     @torch.no_grad()

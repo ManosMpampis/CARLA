@@ -12,7 +12,7 @@ from utils.common_config import (
     get_criterion, get_device, get_jepa_datasets, get_optimizer, get_scheduler,
     get_train_dataloader, get_val_dataloader, set_seed,
 )
-from utils.config import create_config, entry_overrides
+from utils.config import entry_overrides
 from utils.evaluation_schedule import evaluation_interval
 from utils.experiment_suite import score_config
 from utils.reconstruction_baselines import aggregation_modes, evaluate_on_test

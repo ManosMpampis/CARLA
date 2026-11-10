@@ -37,12 +37,10 @@ class LeWM(ModelContract, nn.Module):
             raise ValueError("score_domain must be latent or raw with a reconstruction head")
 
         self.total_stride = encoder.total_stride * getattr(backbone, "total_stride", 1)
-        self.level_names = ["L0"]
         self.level_dims = [encoder.output_dims]
         self.level_strides = [self.total_stride]
         self.score_input_resolution = True
         self.target_encoder = None
-        self.codebook = None
         self.anti_collapse = "sigreg"
         self.encoder_frozen = False
         self._frozen = set()
@@ -103,8 +101,8 @@ class LeWM(ModelContract, nn.Module):
                                             query_start=query_start)
         if prediction.shape != target.shape:
             raise ValueError(f"predicted latent {prediction.shape} must match target {target.shape}")
-        out = {"context": {"L0": current}, "targets": {"L0": target},
-               "latents": {"L0": target}, "predicted": {"L0": prediction},
+        out = {"context": current, "targets": target,
+               "latents": target, "predicted": prediction,
                "mask": None if views.mask_target is None else {"input": views.mask_target},
                "mask_target": condition.mask_target, "mask_logits": condition.mask_logits,
                "action": condition, "target_range": views.target_range}
@@ -126,7 +124,7 @@ class LeWM(ModelContract, nn.Module):
                     fused, _ = self.score_fn(out["recon"], out["target"], self.score_mode,
                                              tau=self.score_tau)
                 else:
-                    fused, _ = self.score_fn(out["predicted"]["L0"], out["targets"]["L0"],
+                    fused, _ = self.score_fn(out["predicted"], out["targets"],
                                              self.score_mode, tau=self.score_tau)
                     raw_length = out["target_range"][1] - out["target_range"][0]
                     if fused.size(-1) != raw_length:
@@ -134,7 +132,7 @@ class LeWM(ModelContract, nn.Module):
                                               mode="linear", align_corners=False).squeeze(1)
                 if fused.size(-1) != out["target_range"][1] - out["target_range"][0]:
                     raise ValueError("score length must match target span")
-                return {"fused": fused, "levels": {"L0": fused}, "signals": {}}
+                return {"fused": fused, "levels": fused, "signals": {}}
         finally:
             self.train(was_training)
 

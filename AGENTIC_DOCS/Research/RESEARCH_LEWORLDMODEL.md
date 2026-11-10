@@ -113,7 +113,7 @@ Not verified further: "MTS-JEPA" has **zero primary records** (likely aggregator
 7. LeWM VoE curves: per-frame surprise localizes teleportation timestep precisely (App. F.3, https://arxiv.org/html/2603.19312v3).
 8. CHARM pointwise alignment level implies per-point embedding discrepancies available at scoring time ([2605.31580](https://arxiv.org/abs/2605.31580)).
 
-Design implication supported by these sources: combine (a) V-JEPA 2.1-style all-token supervision so each sub-window has a calibrated latent target, (b) SD-JEPA-style dedicated subspace(s) so representation change is measurable against stable geometry, (c) SIGReg or codebook anti-collapse (SC-JEPA documented continuous-self-distillation instability on TS). No paper combines these yet for MTS AD.
+Design implication supported by these sources: combine (a) V-JEPA 2.1-style all-token supervision so each sub-window has a calibrated latent target, (b) SD-JEPA-style dedicated subspace(s) so representation change is measurable against stable geometry, (c) SIGReg anti-collapse (SC-JEPA documented continuous-self-distillation instability on TS). No paper combines these yet for MTS AD.
 
 ---
 

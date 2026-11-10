@@ -83,7 +83,7 @@ class ReconstructionBaseline(ModelContract, nn.Module):
             with torch.autocast(device_type=x.device.type, enabled=False):
                 reconstruction = self.forward(x.float(), sample=False)["recon"]
                 fused, error = reconstruction_score_map(reconstruction, x, self.score_mode)
-            return {"fused": fused, "levels": {"L0": fused},
+            return {"fused": fused,
                     "signals": {f"channel/{c}": error[:, c] for c in range(error.shape[1])}}
         finally:
             self.train(was_training)

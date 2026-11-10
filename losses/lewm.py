@@ -45,11 +45,11 @@ class LeWMLoss(nn.Module):
         return scores.mean()
 
     def forward(self, outputs: dict) -> dict:
-        pred = outputs["predicted"]["L0"]
+        pred = outputs["predicted"]
         if pred.ndim == 4 and pred.size(1) == 1:
             pred = pred[:, 0]
         zero = pred.new_zeros((), dtype=torch.float32)
-        pred_loss = self._latent_loss(pred, outputs["targets"]["L0"]) if self.w_pred else zero
+        pred_loss = self._latent_loss(pred, outputs["targets"]) if self.w_pred else zero
         sig = self.sigreg(outputs["context"]) if self.lambda_sigreg else zero
         sig_tgt = self.sigreg(outputs["targets"]) if self.lambda_sigreg_tgt else zero
 

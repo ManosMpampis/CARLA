@@ -1,9 +1,26 @@
-extends: ae.yml
+data:
+  name: smd
+  file: machine-1-1.txt
+  window: 512
+  stride: 10
+  val_fraction: 0.1
+
+train_hyperparameters:
+  device: cuda
+  epochs: 50
+  batch_size: 32
+  eval_every: 10
+  optimizer: {name: adamw, lr: 0.002, weight_decay: 0.01}
+  scheduler: {name: constant}
+
+
 framework: lewm
 experiment_name: masked_frequency
 
 engine: {name: mask, mask_type: injection}
 encoder:
+  name: resnet
+  enc_channels: [32, 64, 128]
   enc_strides: [1, 1, 1]
   output_act: identity
   latent_output: unrestricted
@@ -17,5 +34,6 @@ predictor:
   stem_channels: 32
   neck_widths: [64, 96, 128]
 head: null
-scorer: {domain: latent}
+aggregate_output_strategy: all
+scorer: {domain: latent, mode: l1, calibration_quantile: 0.99}
 loss: {name: lewm, loss2_kind: kl, mask_loss_kind: bce, w_pred: 1.0, w_aux: 1.0, w_recon: 0.0, lambda_sigreg: 0.1, lambda_sigreg_tgt: 0.1}

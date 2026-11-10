@@ -68,7 +68,7 @@ class RecCALeWM(CrossAttentionTCNLeWM):
                 rec, _ = reconstruction_score_map(out["rec_future"], out["rec_target"][..., a:b], self.score_mode)
                 ca, _ = reconstruction_score_map(out["recon"], out["target"], self.score_mode)
                 rec, ca = [s.repeat_interleave(self.total_stride, -1) for s in (rec, ca)]
-                return {"fused": (rec + ca) / 2, "levels": {"L0": (rec + ca) / 2},
+                return {"fused": (rec + ca) / 2,
                         "signals": {"rec": rec, "ca": ca}}
         finally:
             self.train(was_training)
