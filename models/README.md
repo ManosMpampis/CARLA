@@ -1,147 +1,122 @@
-# Model assembly and reconstruction heads
+# Conditional LeWM and reconstruction baselines
 
-## One training command
-
-Select `framework: ae`, `framework: vae`, or `framework: lewm` in a
-[training config](../configs/training). LeWM's `engine`, `backbone`,
-`encoder`, `action`, `predictor`, `head`, and `scorer` are sibling
-settings alongside `framework`. The `data`, `loss`, and
-`train_hyperparameters` sections configure the rest of the run.
+Use `train.py` with `configs/training/ae.yml`, `vae.yml`, `lewm.yml`, or
+`guided_forecast.yml`; add `--score` for saved-weight evaluation. Model, data,
+training, objective and scoring belong to one YAML. Historical classes remain
+importable; deleted historical training entries are not current run commands.
 
 ```bash
-./venv/bin/python train.py --config_exp configs/training/lewm.yml
-./venv/bin/python train.py --config_exp configs/training/guided_forecast.yml
-./venv/bin/python train.py --config_exp configs/training/guided_forecast.yml --score
+./venv/bin/python train.py --config_exp configs/training/lewm.yml --dataset psm
+./venv/bin/python train.py --config_exp configs/training/guided_forecast.yml --dataset smd --fname machine-1-1.txt
 ```
 
-The first command trains masked reconstruction. The second initializes
-the forecast backbone from the first run's encoder and trains a fresh
-encoder and predictor. The backbone is frozen by default. Set
-`backbone.pretrained_from` to the source checkpoint when using a different
-results directory or named version. A complete run checkpoint takes
-precedence when resuming.
+## Masked conditional reconstruction
 
-Set `aggregate_output_strategy: all` to evaluate window, non-overlap
-window, and timeseries scores. Choose `window`, `non_overlap`, or
-`timeseries` individually, or list the ones you need. The selection
-applies to both periodic test evaluation and `--score`.
+Corrupted observations supply the current latent, and the uncorrupted same
+window supplies the reference latent through the shared encoder. A raw
+auxiliary predicts soft mask logits and FiLM features. Its soft mask drives
+latent token replacement in training, validation and scoring. Known injected
+masks supervise auxiliary BCE only. One STFT, a learned multiscale convolutional
+pyramid, and iSTFT predict reference latents. Real/imaginary channels use an
+exact grouped packing inverse. Scoring injects no fresh corruption.
 
-## Model assembly and earlier experiments
+## Guided future comparison
 
-Module registries and experiment assembly live in `models/__init__.py`.
-The composable `LeWM` in `models/lewm.py` applies the engine, optional
-backbone, encoder, action, predictor, and optional raw-output head. The
-same model class runs both new presets with `lewm.py`.
+Future latents pass through a TCN action encoder to become Q. Historical latents
+supply paired K/V at their original resolution. Attention followed by
+ConvTranspose1d(kernel=3,stride=1,padding=1) maps value width to target latent
+width while preserving future token count. Historical K/V may differ in length
+from future Q. Future observations must have arrived before scoring; this is
+delayed conditional comparison.
 
-- `configs/lewm_encoder/composable/masked_frequency.yml` injects synthetic
-  anomalies during training and validation, supervises the mask logits,
-  conditions the STFT predictor with FiLM, and trains a raw reconstruction
-  head. Scoring uses the auxiliary's proposed mask on the observed input.
-- `configs/lewm_encoder/composable/guided_forecast.yml` encodes history and
-  future crops separately. History supplies queries and values, and the
-  observed future crop supplies keys through a TCN. The score map covers
-  only the future crop and is available once those observations arrive.
+The default engine consumes the entire input with approximately 2:1
+history/future spans: `clamp(floor(2*N/3),1,N-1)` history feature tokens.
+Absolute `context_crop` and `target_crop` optionally specify raw-timestep
+intervals. Positions share an origin at history's end: historical keys are
+negative and future queries start at the forecast gap.
 
-A `lewm_modules.backbone` can be placed before the encoder. It is frozen
-by default. Use `pretrained_from` with `checkpoint_prefix` (default
-`encoder.`) to load its weights when starting a new run. To add a raw head
-after latent pretraining, use `stage: adapt`, `stage_b.mode: head_only`, a
-positive `w_recon` and the source checkpoint in `pretrained_from`. Crop coordinates
-in the composable forecast engine are in raw timesteps.
+## Objectives, shapes and scores
 
-A discrete action module embeds integer action IDs supplied to
-`model(..., action=ids)`. With equally sized current and target crops, it
-can learn action-conditioned transitions with either FiLM predictor.
-`models.action_planning.plan_discrete_actions` searches candidate action
-sequences in eval mode against an explicit goal window.
+Both LeWM presets default to latent-only KL prediction, independent L1 scoring,
+no raw decoder, shared trainable encoder/reference/action branches, and dual
+SIGReg weights 0.1. Auxiliary BCE weight is 1 where applicable. There is no
+stop-gradient or EMA teacher. Latent width is independent of raw sensor count.
 
-The historical arms retain their own configuration and scoring semantics.
+Choose `loss.loss2_kind` independently from `scorer.mode`: `kl`, `l1`, `mse`,
+or `l2`. L2 means RMS across channels per token, averaged across batch/time for
+training, with finite exact-zero subgradients. KL is symmetric channel-softmax
+divergence; `loss.tau` and `scorer.tau` independently default to 1. Its shared
+channel-offset invariance differs intentionally from L1 scoring. AE keeps MSE;
+VAE adds beta-weighted posterior KL and scores deterministic posterior means.
 
-| Framework | Builder | Training/scoring entry |
-| --- | --- | --- |
-| LEWM phase one | `get_lewm_model` | `lewm.py` |
-| LEWM reconstruction | `get_recon_model` | `lewm_reconstruction.py` |
-| Cross-attention LEWM | `get_cross_attention_model` | `lewm_cross_attention.py` |
-| Deterministic AE | `get_ae_model` | `carla_ae.py` |
-| VAE | `get_vae_model` | `carla_vae.py` |
+Main presets use stride 1 and `latent_output: unrestricted`, removing activation
+on both final residual branches and their sum. `latent_output: legacy` retains
+old branch semantics. One checkpoint accepts varying temporal lengths with a
+fixed sensor count/order. Strided inputs/crops must align to effective feature
+stride. Training requires exact latent shape agreement. Scoring reduces scalar
+errors on the latent grid before linear interpolation to the raw target span.
+History outside the forecast target is excluded from score coverage.
 
-Both `lewm_cross_attention.py` and `lewm_reconstruction.py` dispatch phase-one
-configs to the existing LEWM training loop. Each framework uses its own single
-entry for pretraining, phase two, and scoring. Their models share
-`models/recon_head.py`, as do the AE/VAE models. Original builder import names
-at the root training entries remain aliases for compatibility with notebooks.
+Opt in to raw reconstruction with `head: {name: mirrored}`, positive
+`loss.w_recon`, and optionally `scorer.domain: raw`. The decoder mirrors the
+complete backbone-plus-encoder channel ladder and stride.
 
-For LEWM reconstruction, `stage: pretrain` (aliases `pretext`, `phase1`) trains
-the original latent predictor; `stage: recon` (aliases `phase2`, `adapt`) trains
-the mirrored reconstruction head; `stage: score` evaluates the saved model.
-The former `carla_recon.py` entry has been removed. The stage normally comes
-from the YAML and can also be overridden with `--stage`.
+## Exact encoder reuse
 
-All five model entries accept `--score` with the same experiment config,
-machine, and version used for training. No separate scoring YAML is needed.
-The two-phase entries select the phase-one or phase-two scoring model from
-the experiment's criterion. `--stage score` remains supported for older callers.
+For AE or LeWM features as a frozen forecast backbone, extend the forecast
+preset with a source and a fresh downstream encoder:
+
+```yaml
+backbone:
+  name: pretrained
+  pretrained_from: /path/to/best_validation_loss.pth.tar
+  freeze: true
+encoder:
+  name: resnet
+  enc_channels: [64]
+  enc_strides: [1]
+  latent_output: unrestricted
+```
+
+Metadata reconstructs the exact source activation, normalization, widths and
+strides. Explicit architecture options must agree. Use best-training weights
+when validation was unavailable. Frozen modules stay eval and retain parameters
+and normalization buffers while downstream modules receive gradients.
+
+A simple AE can train its decoder on a LeWM backbone with identity encoder:
+
+```yaml
+framework: ae
+backbone: {name: pretrained, pretrained_from: /path/to/source.pth.tar}
+encoder: {name: identity}
+```
+
+Alternatively place the pretrained specification in `encoder` and omit
+`backbone`. AE encoders train by default; set `freeze_encoder: true` or
+`encoder.freeze: true` to freeze them. Identity retains dimensional metadata so
+decoder geometry includes the backbone width and stride.
+
+Runtime calls `utils.model_contract.prepare_feature_source_config(config,
+feature_schema,resume_checkpoint=None)` before the registry builder, and
+`initialize_feature_source(model,config,feature_schema)` only on fresh runs
+before optimizer creation. Prepared configs embed source architecture,
+provenance and fingerprints. Destination resume needs no original source file.
+Versioned extra-state validates task roles, crop policy, schema, architecture,
+freezing, objectives and score choices rather than tensor shape alone.
+
+Legacy source checkpoints with saved constructor config are supported through
+direct feature-weight extraction; legacy predictors need not be rebuilt. Legacy
+feature activations/normalization/strides are preserved. Without saved sensor
+names, source validation requires matching saved collection/series and input
+width, with order from the destination reader; this basis is recorded in
+provenance. Source and destination normalization are both recorded, with an
+explicit `normalization_changed` flag. The destination retains its own
+optimization-training-only scaler; feature-function equality is checked on a
+common normalized tensor. Old destination checkpoints without task metadata
+need explicit semantic migration.
+
+Builders and registries live in `models/__init__.py`.
 
 ```bash
-./venv/bin/python lewm_reconstruction.py --config_env configs/env.yml \
-  --config_exp configs/lewm_encoder/frequency_aux/phase1.yml \
-  --fname machine-1-1.txt --version smd_v1
-./venv/bin/python lewm_reconstruction.py --config_env configs/env.yml \
-  --config_exp configs/lewm_encoder/frequency_aux/reconstruction/default.yml \
-  --fname machine-1-1.txt --version smd_v1
-./venv/bin/python lewm_reconstruction.py --config_env configs/env.yml \
-  --config_exp configs/lewm_encoder/frequency_aux/reconstruction/default.yml \
-  --fname machine-1-1.txt --version smd_v1 --score
-```
-
-Phase two resolves the shared phase-one checkpoint automatically from
-`phase1_experiment` and `phase1_version` (defaults to the current version).
-An explicit `pretrained_from` still overrides it. Phase-two resume uses its own complete checkpoint,
-so it no longer needs the original pretraining file.
-
-## Automatic mirroring
-
-`build_mirrored_head(encoder)` derives hidden channels, block count, and reverse
-strides directly from the encoder, using the established reconstruction
-contract: one ConvTranspose1d per encoder block plus a final 1x1 output
-projection. For example:
-
-```text
-Encoder:       input C -> D1 -> D2
-Reconstructor: D2 -> D1 -> D1 -> input C
-```
-
-This mirrors the encoder's channel ladder and block strides, rather than
-mathematically inverting each individual convolution within its residual blocks.
-
-Cross-attention keeps its Query/Key and Value widths configurable. The
-attention output first passes through a 1x1 projection from Value width to
-the encoder's final width, then enters the automatically derived reconstructor:
-
-```text
-Q/K/V -> narrow cross attention -> Value width -> encoder width -> mirrored head
-```
-
-That projection preserves the encoder's full hidden channel ladder; attention
-width never replaces an encoder width. There is no configurable hidden-head
-channel list to keep synchronized with the encoder.
-
-The raw-input arm reverses encoder strides and projects to raw input channels.
-Feature and Query targets live at feature-token resolution, so those arms keep
-transpose strides at 1 and change only the final output channel count. All
-three arms derive hidden channels and depth from the same encoder definition.
-
-Cross-attention phase two freezes its feature extractor by default.
-`cross_attention_kwargs.freeze_encoder: false` allows gradients and training
-BatchNorm/dropout behavior in that extractor. The freeze setting is persisted
-in the task metadata with the reconstruction architecture.
-
-The corrected cross-attention reconstructor has different weights/shapes from
-the initial implementation. Use a fresh run/version for phase-two training;
-old cross-attention phase-two checkpoints are incompatible. Existing phase-one,
-LEWM reconstruction, AE, and VAE checkpoint layouts are unchanged.
-
-```bash
-./venv/bin/python tests/verify_model_builders.py
-./venv/bin/python tests/verify_lewm_reconstruction.py
+./venv/bin/python tests/verify_conditional_models.py
 ```

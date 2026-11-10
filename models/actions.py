@@ -14,6 +14,7 @@ class ActionOutput:
     token_input: torch.Tensor | None = None
     film_feat: torch.Tensor | None = None
     key: torch.Tensor | None = None
+    query: torch.Tensor | None = None
     mask_logits: torch.Tensor | None = None
     mask_target: torch.Tensor | None = None
     mask_proposal: torch.Tensor | None = None
@@ -43,7 +44,7 @@ class TimeAuxiliary(nn.Module):
 class MaskedRepresentationAction(nn.Module):
     """Replace masked latents with a learned token and supply FiLM features."""
 
-    def __init__(self, latent_dim, aux=None, *, aux_input="latent", train_mask="known",
+    def __init__(self, latent_dim, aux=None, *, aux_input="latent", train_mask="predicted",
                  mask_reduction="max"):
         super().__init__()
         if aux_input not in ("latent", "raw"):
@@ -104,18 +105,18 @@ class MaskedRepresentationAction(nn.Module):
 
 
 class EncoderAction(nn.Module):
-    """Encode the observed target latent into length-preserving attention keys."""
+    """Encode observed future patterns into length-preserving attention queries."""
 
     def __init__(self, encoder):
         super().__init__()
         if encoder.total_stride != 1:
-            raise ValueError("guided action keys must preserve the target token count")
+            raise ValueError("guided action queries must preserve the target token count")
         self.net = encoder
 
     def forward(self, current, target, views, *, action=None, propose=False):
         if action is not None:
-            raise ValueError("guided action keys are derived from the observed target")
-        return ActionOutput(key=self.net(target))
+            raise ValueError("guided action queries are derived from the observed target")
+        return ActionOutput(query=self.net(target))
 
 
 class DiscreteAction(nn.Module):

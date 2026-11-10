@@ -77,7 +77,7 @@ def entry_overrides(args, updates=None):
 
 def dataset_output_dir(root_dir, config):
     """Optional experiment group directly below the dataset output directory."""
-    base = os.path.join(root_dir, config["train_db_name"])
+    base = os.path.join(root_dir, config.get("dataset_collection", config["train_db_name"]))
     group = config.get("experiment_version")
     if group is not None:
         base = os.path.join(base, validate_experiment_name(group, "experiment_version"))
@@ -86,6 +86,7 @@ def dataset_output_dir(root_dir, config):
 
 def experiment_base_dir(root_dir, config, fname, version):
     """Tags identify stable paths; explicit named versions add a run directory."""
+    fname = config.get("output_series", fname)
     version = DEFAULT_VERSION if version is None else version
     validate_experiment_name(version, "version")
     dataset_dir = dataset_output_dir(root_dir, config)
@@ -158,6 +159,7 @@ def _training_sections(config):
 
     scorer = dict(p.pop("scorer", {}))
     p["score_mode"] = scorer.pop("mode", "l1")
+    p["score_tau"] = scorer.pop("tau", 1.0)
     calibration = dict(p.get("calibration_kwargs", {}))
     quantile = calibration.get("quantile", p.get("calibration_quantile", 0.99))
     p["calibration_quantile"] = scorer.pop("calibration_quantile", quantile)
@@ -173,9 +175,13 @@ def _training_sections(config):
         p["lewm_modules"] = modules
     else:
         encoder = dict(p.pop("encoder", {}))
+        feature_backbone = p.pop("backbone", None)
+        p["feature_modules"] = {
+            "encoder": dict(encoder), "backbone": feature_backbone,
+            "freeze_encoder": bool(p.get("freeze_encoder", encoder.get("freeze", False)))}
         p["backbone"] = encoder.pop("name", "resnet")
-        p["model_kwargs"] = encoder
-        head = dict(p.pop("head", {}))
+        p["model_kwargs"] = {k: v for k, v in encoder.items() if k not in ("freeze", "pretrained_from", "source")}
+        head = dict(p.pop("head", {}) or {})
         if head.pop("name", "mirrored") != "mirrored":
             raise ValueError("AE and VAE use the mirrored reconstruction head")
         p["recon_kwargs"] = head
@@ -224,6 +230,7 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     pretext_dir = os.path.join(base_dir, f'pretext{cfg['pretext_tag']}')
     mkdir(base_dir)
     cfg['version'] = version
+    cfg['root_dir'] = root_dir
     cfg['experiment_dir'] = base_dir
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname

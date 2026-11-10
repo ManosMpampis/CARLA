@@ -180,7 +180,8 @@ class ResNetBlock(nn.Module):
 
     def __init__(self, in_ch: int, out_ch: int, kernels=(7, 5, 3),
                  residual_kernel: int = 5, norm: str = "batch", act: str = "gelu",
-                 dropout: float = 0.0, stride: int = 1, output_act=None):
+                 dropout: float = 0.0, stride: int = 1, output_act=None,
+                 unrestricted_output: bool = False):
         super().__init__()
         self.stride = int(stride)
         ks = list(kernels)
@@ -188,13 +189,15 @@ class ResNetBlock(nn.Module):
         self.main = nn.Sequential(
             *[Conv1dBlock(chs[i], chs[i + 1], kernel=k,
                           stride=self.stride if i == 0 else 1,
-                          norm=norm, dropout=dropout, act=act)
+                          norm=norm, dropout=dropout,
+                          act="identity" if unrestricted_output and i == len(ks) - 1 else act)
               for i, k in enumerate(ks)]
         )
         self.residual = Conv1dBlock(in_ch, out_ch, kernel=int(residual_kernel),
-                                    stride=self.stride, norm=norm, act=act,
+                                    stride=self.stride, norm=norm,
+                                    act="identity" if unrestricted_output else act,
                                     dropout=dropout)
-        self.act = make_act(act if output_act is None else output_act)
+        self.act = make_act("identity" if unrestricted_output else act if output_act is None else output_act)
 
     def forward(self, x):
         """Add residual branch to main branch, then activate."""

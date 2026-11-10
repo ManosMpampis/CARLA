@@ -4,14 +4,18 @@ experiment_name: masked_frequency
 
 engine: {name: mask, mask_type: injection}
 encoder:
+  enc_strides: [1, 1, 1]
   output_act: identity
+  latent_output: unrestricted
 action:
   name: masked
   aux_input: raw
+  train_mask: predicted
   aux: {aux_channels: [32, 32, 32]}
 predictor:
   name: frequency
   stem_channels: 32
   neck_widths: [64, 96, 128]
-scorer: {domain: raw}
-loss: {name: lewm, w_aux: 1.0, w_recon: 1.0}
+head: null
+scorer: {domain: latent}
+loss: {name: lewm, loss2_kind: kl, mask_loss_kind: bce, w_pred: 1.0, w_aux: 1.0, w_recon: 0.0, lambda_sigreg: 0.1, lambda_sigreg_tgt: 0.1}

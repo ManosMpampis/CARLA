@@ -1,5 +1,8 @@
 import os
 import json
+import hashlib
+from copy import copy
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,16 +13,16 @@ from utils.mypath import MyPath
 
 
 def training_split_bounds(length, window, val_fraction):
-    """Use a train-side tail when both splits hold a window, else reuse all rows."""
+    """Return a disjoint tail, or an empty validation split for short series."""
     if window <= 0:
         raise ValueError("wsz must be positive")
     if not np.isfinite(val_fraction) or not 0 < val_fraction < 1:
         raise ValueError("val_fraction must be strictly between 0 and 1")
     if length < window:
         raise ValueError(f"training series has {length} rows; need at least wsz={window} rows")
-    cut = int(length * (1.0 - val_fraction))
-    if min(cut, length - cut) < window:
-        return length, 0
+    if length < 2 * window:
+        return length, length
+    cut = min(max(int(length * (1.0 - val_fraction)), window), length - window)
     return cut, cut
 
 
@@ -65,290 +68,203 @@ def make_synthetic_series(n_steps: int, n_channels: int, seed: int,
     return series.astype(np.float32), labels
 
 
-class JEPADataset(Dataset):
-    """Plain sliding windows over a normalized series.
+def _numeric_frame(path, *, timestamp=False):
+    frame = pd.read_csv(path, header=0 if timestamp else None)
+    if timestamp:
+        if "timestamp_(min)" not in frame:
+            raise ValueError(f"{path}: missing timestamp_(min) column")
+        frame = frame.drop(columns=["timestamp_(min)"])
+    values = np.nan_to_num(frame.to_numpy(dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    if values.ndim != 2 or not values.shape[1]:
+        raise ValueError(f"{path}: no feature columns")
+    features = tuple(str(v) for v in frame.columns) if timestamp else tuple(
+        f"channel_{i}" for i in range(values.shape[1]))
+    return values, features
 
-    Returns {'ts': (wsz, C) float32, 'meta': {start_idx, end_idx, index}}.
-    Normalization is fit on the train split only; the optional validation
-    split is the tail of the *train* series, falling back to the full training
-    series when either split cannot hold a window. Threshold calibration uses
-    ``full_train_series`` regardless of the validation split. Checkpoint selection
-    never touches test data. Legacy contrastive dataset classes are intentionally
-    left untouched and unused (spec decision).
+
+def _source_identity(paths):
+    return [{"path": str(Path(path).resolve()), "size": Path(path).stat().st_size,
+             "mtime_ns": Path(path).stat().st_mtime_ns} for path in paths]
+
+
+def _raw_source(p):
+    source = p["train_db_name"]
+    seed = int(p.get("seed", 4))
+    if source == "synthetic":
+        options = p.get("synthetic_kwargs", {})
+        channels = int(options.get("n_channels", 2))
+        train, _ = make_synthetic_series(int(options.get("n_steps", 4000)), channels, seed)
+        test, labels = make_synthetic_series(int(options.get("test_n_steps", 2000)), channels,
+                                             seed + 1, with_anomalies=True)
+        return train, test, labels, tuple(f"channel_{i}" for i in range(channels)), {
+            "source": "synthetic", "seed": seed, "options": dict(options)}, 0
+    if source == "tsb_ad":
+        from data.tsb_ad import read_tsb_series
+        if not p.get("dataset_root"):
+            raise ValueError("TSB-AD requires dataset_root")
+        path = Path(p["dataset_root"]) / p["fname"]
+        sample = read_tsb_series(path, p.get("tsb_train_end"))
+        if p.get("tsb_evaluation_scope", "test") != "test":
+            raise ValueError("conditional experiments evaluate the TSB test suffix only")
+        return (sample.data[:sample.train_end], sample.data[sample.train_end:],
+                sample.labels[sample.train_end:], sample.features,
+                {"files": _source_identity([path]), "train_end": sample.train_end,
+                 "collection": p.get("dataset_collection", "tsb_ad")}, sample.train_end)
+    root = Path(p.get("dataset_root") or MyPath.db_root_dir(source))
+    if source == "smd":
+        if p.get("fname") in ("all", "all-one", "*"):
+            raise ValueError("SMD all is a job selector; all-one requires JEPACorpusDataset")
+        paths = [root / kind / p["fname"] for kind in ("train", "test", "test_label")]
+        train, features = _numeric_frame(paths[0])
+        test, test_features = _numeric_frame(paths[1])
+        labels = np.loadtxt(paths[2]).reshape(-1)
+    elif source == "psm":
+        paths = [root / name for name in ("train.csv", "test.csv", "test_label.csv")]
+        train, features = _numeric_frame(paths[0], timestamp=True)
+        test, test_features = _numeric_frame(paths[1], timestamp=True)
+        label_frame = pd.read_csv(paths[2])
+        if label_frame.shape[1] != 2:
+            raise ValueError("PSM test_label.csv must contain timestamp and label")
+        labels = label_frame.iloc[:, 1].to_numpy(dtype=np.float64)
+    else:
+        raise ValueError(f"Invalid train dataset {source}")
+    if features != test_features or train.shape[1] != test.shape[1]:
+        raise ValueError("training and test feature schemas must match in order")
+    if len(labels) != len(test) or not np.isin(labels, (0, 1)).all():
+        raise ValueError("test labels must be binary and aligned with test rows")
+    return train, test, labels.astype(np.int64), features, {"files": _source_identity(paths)}, 0
+
+
+class JEPADataset(Dataset):
+    """Windows with optimization-row-fitted normalization and disjoint validation.
+
+    full_train_series retains all clean training rows for calibration; a short
+    source has no validation windows and uses every training row for optimization.
+    Test observations never participate in fitting normalization.
     """
 
     def __init__(self, p, train: bool, transform=None):
-        self.train = train
-        self.transform = transform
-        self.wsz = p["wsz"]
-        self.stride = p["stride"]
-        self.seed = p.get("seed", 4)
-        source = p["train_db_name"]
-        self._corpus = None
-
-        if source == "smd" and str(p.get("fname", "")).lower() in {"all", "*"}:
-            if not train:
-                raise ValueError(
-                    "JEPADataset(fname='all') is a train-corpus dataset; "
-                    "score SMD test files separately"
-                )
-            machine_dir = os.path.join(p.get("dataset_root", MyPath.db_root_dir("smd")), "train")
-            machines = sorted(
-                f for f in os.listdir(machine_dir) if f.startswith("machine-")
-            )
-            self._corpus = JEPACorpusDataset(p, machines, train=True)
-            return
-
-        if source == "synthetic":
-            kwargs = dict(p.get("synthetic_kwargs", {}))
-            steps = kwargs.get("n_steps", 4000)
-            channels = kwargs.get("n_channels", 2)
-            if train:
-                series, _ = make_synthetic_series(steps, channels, seed=self.seed)
-            else:
-                test_steps = kwargs.get("test_n_steps", 2000)
-                series, self.targets = make_synthetic_series(
-                    test_steps, channels, seed=self.seed + 1, with_anomalies=True
-                )
-            scaler = StandardScaler().fit(series)
-            series = scaler.transform(series).astype(np.float32)
-            self.mean, self.std = scaler.mean_, scaler.scale_
-            if train:
-                self._set_training_series(series, p.get("val_fraction", 0.1))
-            else:
-                self.series = series
-        elif source == "tsb_ad":
-            from data.tsb_ad import read_tsb_series
-
-            if not p.get("dataset_root"):
-                raise ValueError("TSB-AD requires dataset_root pointing at the CSV directory")
-            sample = read_tsb_series(
-                os.path.join(p["dataset_root"], p["fname"]), p.get("tsb_train_end")
-            )
-            self.train_end = sample.train_end
-            self.features = sample.features
-            self.evaluation_scope = p.get("tsb_evaluation_scope", "test")
-            if self.evaluation_scope not in {"test", "full"}:
-                raise ValueError("tsb_evaluation_scope must be test or full")
-            self.series_start = sample.train_end if self.evaluation_scope == "test" else 0
-            prefix = sample.data[:sample.train_end]
-            val_fraction = float(p.get("val_fraction", 0.1))
-            if not np.isfinite(val_fraction) or not 0 < val_fraction < 1:
-                raise ValueError("TSB-AD val_fraction must be strictly between 0 and 1")
-            if self.wsz <= 0 or self.stride <= 0:
-                raise ValueError("TSB-AD wsz and stride must both be positive")
-            scaler = StandardScaler().fit(prefix)
-            self.mean, self.std = scaler.mean_, scaler.scale_
-            if train:
-                series = scaler.transform(prefix).astype(np.float32)
-                self._set_training_series(series, val_fraction)
-            else:
-                self.series = scaler.transform(sample.data[self.series_start:]).astype(np.float32)
-                self.targets = sample.labels[self.series_start:]
-        elif source == "smd":
-            fname = p["fname"]
-            root = p.get("dataset_root", MyPath.db_root_dir("smd"))
-            if train:
-                path = os.path.join(root, "train", fname)
-            else:
-                path = os.path.join(root, "test", fname)
-                self.targets = np.loadtxt(
-                    os.path.join(root, "test_label", fname)
-                ).astype(int)
-            raw = pd.read_csv(path, header=None)
-            raw = np.asarray(raw).astype(np.float32)
-            raw = np.nan_to_num(raw)
-            scaler = StandardScaler()
-            train_path = os.path.join(root, "train", fname)
-            scaler.fit(np.asarray(pd.read_csv(train_path, header=None)).astype(np.float32))
-            self.mean, self.std = scaler.mean_, scaler.scale_
-            series = scaler.transform(raw).astype(np.float32)
-            if train:
-                self._set_training_series(series, p.get("val_fraction", 0.1))
-            else:
-                self.series = series
-        elif source == "psm":
-            from data.PSM import PSM
-
-            root = p.get("dataset_root", MyPath.db_root_dir("psm"))
-            legacy_train = PSM(root=root, train=True, sanomaly=None, wsz=p["wsz"], stride=p["stride"])
-            scaler = StandardScaler().fit(legacy_train.data)
-            self.mean, self.std = scaler.mean_, scaler.scale_
-            if train:
-                series = legacy_train.data
-                series = scaler.transform(series).astype(np.float32)
-                self._set_training_series(series, p.get("val_fraction", 0.05))
-            else:
-                legacy_test = PSM(root=root, train=False, sanomaly=None, wsz=p["wsz"],
-                                  stride=p["stride"],
-                                  mean_data=scaler.mean_, std_data=scaler.scale_)
-                self.targets = legacy_test.targets
-                self.series = legacy_test.data
-        else:
-            raise ValueError("Invalid train dataset {}".format(source))
-
-    def _set_training_series(self, series, val_fraction):
-        cut, val_start = training_split_bounds(len(series), self.wsz, float(val_fraction))
-        if self.stride <= 0:
+        self.train, self.transform = train, transform
+        self.wsz, self.stride = int(p["wsz"]), int(p["stride"])
+        if self.stride < 1:
             raise ValueError("stride must be positive")
-        self.full_train_series = series
-        self.series = series[:cut]
-        self.val_series = series[val_start:]
-        self.targets = np.zeros(len(self.series), dtype=np.int64)
+        self.seed = int(p.get("seed", 4))
+        self._corpus = None
+        raw, test, labels, schema, identity, self.series_start = _raw_source(p)
+        self.features = self.feature_schema = schema
+        self.train_end = len(raw)
+        cut, val_start = training_split_bounds(len(raw), self.wsz,
+                                               float(p.get("val_fraction", 0.1)))
+        self.validation_available = val_start < len(raw)
+        scaler = StandardScaler().fit(raw[:cut])
+        self.mean, self.std = scaler.mean_, scaler.scale_
+        self.preprocessing = {"contract": "optimization_rows_standard_scaler_v1",
+                              "feature_schema": list(schema), "fit_rows": cut,
+                              "mean": self.mean.tolist(), "std": self.std.tolist(),
+                              "source": identity}
+        normalized = scaler.transform(raw).astype(np.float32)
+        self.full_train_series = normalized
+        self.val_series = normalized[val_start:]
+        if train:
+            self.series = normalized[:cut]
+            self.targets = np.zeros(len(self.series), dtype=np.int64)
+        else:
+            self.series = scaler.transform(test).astype(np.float32)
+            self.targets = np.asarray(labels, dtype=np.int64)
+            if len(self.series) < self.wsz:
+                raise ValueError(f"test series has {len(self.series)} rows; need {self.wsz}")
 
     @classmethod
-    def validation_split(cls, train_dataset, p):
-        """Validation tail, or the full training series when a split is too short."""
-        if getattr(train_dataset, "_corpus", None) is not None:
-            return JEPACorpusDataset.validation_split(train_dataset._corpus, p)
-        val = cls.__new__(cls)
-        val.train = False
-        val.transform = None
-        val.wsz = train_dataset.wsz
-        val.stride = train_dataset.stride
+    def validation_split(cls, train_dataset, p=None):
+        val = copy(train_dataset)
+        val.train, val.transform = False, None
         val.series = train_dataset.val_series
-        val.targets = np.zeros(val.series.shape[0], dtype=np.int64)
-        val.mean, val.std = train_dataset.mean, train_dataset.std
+        val.targets = np.zeros(len(val.series), dtype=np.int64)
         return val
 
     def __getitem__(self, index):
-        if getattr(self, "_corpus", None) is not None:
-            return self._corpus[index]
-        start = index * self.stride
-        ts = self.series[start:start + self.wsz]
-        meta = {
-            "start_idx": start,
-            "end_idx": start + self.wsz,
-            "index": index,
-        }
-        out = {"ts": ts.astype(np.float32), "meta": meta}
-        if self.transform is not None:
-            out["ts"] = self.transform(out["ts"])
-        return out
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+        start = int(index) * self.stride
+        ts = self.series[start:start + self.wsz].astype(np.float32)
+        return {"ts": ts if self.transform is None else self.transform(ts),
+                "meta": {"start_idx": start, "end_idx": start + self.wsz,
+                         "index": int(index)}}
 
     def __len__(self):
-        if getattr(self, "_corpus", None) is not None:
-            return len(self._corpus)
-        return (self.series.shape[0] - self.wsz) // self.stride + 1
+        return max(0, (len(self.series) - self.wsz) // self.stride + 1)
 
 
 class JEPACorpusDataset(Dataset):
-    """Memory-bounded joint SMD dataset.
+    """Boundary-safe pooled SMD with fingerprinted, memory-mapped member caches."""
 
-    Each machine is normalized independently and cached as a disk-backed
-    ``.npy`` array.  The dataset stores only per-machine metadata in RAM and
-    opens cached arrays with ``mmap_mode='r'``.  Windows never cross machine
-    boundaries.
-    """
-
-    machine_files: list
-    targets: np.ndarray
-
-    def __init__(self, p, machine_files: list | None = None, train: bool = True):
+    def __init__(self, p, machine_files=None, train=True):
         if not train:
-            raise ValueError("JEPACorpusDataset currently supports train splits only")
-        self.wsz = p["wsz"]
-        self.stride = p["stride"]
+            raise ValueError("pooled testing evaluates each member independently")
+        self.wsz, self.stride = int(p["wsz"]), int(p["stride"])
         self.val_fraction = float(p.get("val_fraction", 0.1))
-        root = p.get("dataset_root", MyPath.db_root_dir("smd"))
-        cache_dir = p.get("joint_cache_dir",
-                          os.path.join(p.get("experiment_dir", "results/smd"),
-                                       "joint_cache"))
-        os.makedirs(cache_dir, exist_ok=True)
-        self.means, self.stds = [], []
-        if machine_files is None:
-            machine_dir = os.path.join(root, "train")
-            machine_files = [f for f in os.listdir(machine_dir)
-                             if f.startswith("machine-")]
-        self.machine_files = sorted(machine_files)
-        self.cache_paths = []
-        self.lengths = []
+        self.root = str(Path(p.get("dataset_root") or MyPath.db_root_dir("smd")).resolve())
+        self.machine_files = list(machine_files or p.get("machine_files") or sorted(
+            path.name for path in (Path(self.root) / "train").glob("machine-*.txt")))
+        if not self.machine_files:
+            raise ValueError("pooled SMD selection contains no machines")
+        cache = Path(p.get("joint_cache_dir") or Path(p["experiment_dir"]) / "joint_cache")
+        cache.mkdir(parents=True, exist_ok=True)
+        self.cache_paths, self.lengths, self.means, self.stds, self.member_preprocessing = [], [], [], [], []
         self.channels = None
-        for fname in self.machine_files:
-            cache_path = os.path.join(cache_dir, f"{fname}.normalized.npy")
-            meta_path = os.path.join(cache_dir, f"{fname}.normalized.json")
-            if not os.path.exists(cache_path) or not os.path.exists(meta_path):
-                raw = np.asarray(pd.read_csv(
-                    os.path.join(root, "train", fname), header=None
-                )).astype(np.float32)
-                raw = np.nan_to_num(raw)
-                scaler = StandardScaler().fit(raw)
-                normalized = scaler.transform(raw).astype(np.float32)
-                np.save(cache_path, normalized)
-                metadata = {"mean": scaler.mean_.tolist(),
-                            "std": scaler.scale_.tolist(),
-                            "length": int(normalized.shape[0]),
-                            "channels": int(normalized.shape[1])}
-                with open(meta_path, "w") as stream:
-                    json.dump(metadata, stream)
-                del raw, normalized
-            with open(meta_path) as stream:
-                metadata = json.load(stream)
-            self.cache_paths.append(cache_path)
-            self.lengths.append(int(metadata["length"]))
-            self.means.append(np.asarray(metadata["mean"], dtype=np.float64))
-            self.stds.append(np.asarray(metadata["std"], dtype=np.float64))
+        for name in self.machine_files:
+            member = JEPADataset({**p, "fname": name}, train=True)
             if self.channels is None:
-                self.channels = int(metadata["channels"])
-            elif self.channels != int(metadata["channels"]):
-                raise ValueError("Joint SMD training requires equal channel counts")
+                self.channels = len(member.feature_schema)
+                self.feature_schema = member.feature_schema
+            elif member.feature_schema != self.feature_schema:
+                raise ValueError("pooled SMD requires matching feature schemas")
+            digest = hashlib.sha256(json.dumps(member.preprocessing, sort_keys=True).encode()).hexdigest()[:20]
+            path = cache / f"{name}.{digest}.npy"
+            if not path.is_file():
+                np.save(path, member.full_train_series)
+            self.cache_paths.append(str(path))
+            self.lengths.append(len(member.full_train_series))
+            self.means.append(member.mean)
+            self.stds.append(member.std)
+            self.member_preprocessing.append(member.preprocessing)
+        self.features = self.feature_schema
+        self.preprocessing = {"contract": "pooled_per_machine_v1", "members": dict(
+            zip(self.machine_files, self.member_preprocessing)), "feature_schema": list(self.feature_schema)}
         self._mapped = {}
         self._set_split("train")
 
-    def __getitem__(self, index):
-        machine, local_index = self._locate(index)
-        cut = self._cuts[machine]
-        start = cut + local_index * self.stride
-        array = self._mapped_array(machine)
-        ts = array[start:start + self.wsz]
-        meta = {"start_idx": start, "end_idx": start + self.wsz,
-                "index": index, "machine": machine,
-                "machine_file": self.machine_files[machine]}
-        return {"ts": ts.astype(np.float32), "meta": meta}
+    def _set_split(self, split):
+        self.split = split
+        self._cuts, counts = [], []
+        self.validation_available = False
+        for length in self.lengths:
+            cut, val_start = training_split_bounds(length, self.wsz, self.val_fraction)
+            self.validation_available |= val_start < length
+            start, end = (0, cut) if split == "train" else (val_start, length)
+            self._cuts.append(start)
+            counts.append(max(0, (end - start - self.wsz) // self.stride + 1))
+        self._cumulative = np.cumsum([0] + counts, dtype=np.int64)
 
     def __len__(self):
         return int(self._cumulative[-1])
 
-    def _set_split(self, split):
-        self.split = split
-        self._cuts = []
-        counts = []
-        for length in self.lengths:
-            cut, val_start = training_split_bounds(length, self.wsz, self.val_fraction)
-            if split == "train":
-                start, available = 0, cut
-            else:
-                start, available = val_start, length - val_start
-            self._cuts.append(start)
-            counts.append(max((available - self.wsz) // self.stride + 1, 0))
-        self._cumulative = np.cumsum([0] + counts, dtype=np.int64)
-
-    def _locate(self, index):
-        index = int(index)
+    def __getitem__(self, index):
         if index < 0 or index >= len(self):
             raise IndexError(index)
         machine = int(np.searchsorted(self._cumulative, index, side="right") - 1)
-        return machine, index - int(self._cumulative[machine])
-
-    def _mapped_array(self, machine):
+        local = int(index) - int(self._cumulative[machine])
+        start = self._cuts[machine] + local * self.stride
         if machine not in self._mapped:
             self._mapped[machine] = np.load(self.cache_paths[machine], mmap_mode="r")
-        return self._mapped[machine]
+        return {"ts": np.asarray(self._mapped[machine][start:start + self.wsz]).astype(np.float32),
+                "meta": {"start_idx": start, "end_idx": start + self.wsz,
+                         "index": int(index), "machine": machine,
+                         "machine_file": self.machine_files[machine]}}
 
     @classmethod
     def validation_split(cls, train_dataset, p=None):
-        """Validation windows from each machine's train-side tail."""
-        val = cls.__new__(cls)
-        val.wsz = train_dataset.wsz
-        val.stride = train_dataset.stride
-        val.val_fraction = train_dataset.val_fraction
-        val.machine_files = train_dataset.machine_files
-        val.cache_paths = train_dataset.cache_paths
-        val.lengths = train_dataset.lengths
-        val.channels = train_dataset.channels
-        val.means = train_dataset.means
-        val.stds = train_dataset.stds
+        val = copy(train_dataset)
         val._mapped = {}
-        val._set_split("val")
-        val.targets = np.zeros(len(val), dtype=np.int64)
+        val._set_split("validation")
         return val

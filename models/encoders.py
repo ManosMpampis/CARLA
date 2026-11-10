@@ -11,11 +11,14 @@ class ResNetEncoder(nn.Module):
     def __init__(self, in_channels: int = 38, enc_channels=(32, 64),
                  kernels=(7, 5, 3), residual_kernel: int = 5, act: str = "gelu",
                  norm: str = "batch", dropout: float = 0.1, enc_strides=None,
-                 output_act=None):
+                 output_act=None, latent_output="legacy"):
         super().__init__()
         channels = [in_channels, *enc_channels]
         self.channel_ladder = channels
         self.input_dims = in_channels
+        if latent_output not in ("legacy", "unrestricted"):
+            raise ValueError("latent_output must be legacy or unrestricted")
+        self.latent_output = latent_output
         self.output_dims = channels[-1]
         count = len(enc_channels)
         if not count:
@@ -26,7 +29,8 @@ class ResNetEncoder(nn.Module):
             ResNetBlock(channels[index], channels[index + 1], kernels=kernels,
                         residual_kernel=residual_kernel,
                         stride=stride, norm=norm, act=act, dropout=dropout,
-                        output_act=output_act if index == count - 1 else None)
+                        output_act=output_act if index == count - 1 else None,
+                        unrestricted_output=latent_output == "unrestricted" and index == count - 1)
             for index, stride in enumerate(self.enc_strides)
         ])
         self.total_stride = math.prod(self.enc_strides)
@@ -79,3 +83,14 @@ class TCNEncoder(Encoder):
 
     def __init__(self, *args, norm="none", **kwargs):
         super().__init__(*args, norm=norm, **kwargs)
+
+
+class IdentityEncoder(nn.Identity):
+    """Identity feature path retaining the dimensional interface of encoders."""
+
+    def __init__(self, in_dim):
+        super().__init__()
+        self.input_dims = self.output_dims = int(in_dim)
+        self.total_stride = 1
+        self.channel_ladder = [int(in_dim)]
+        self.enc_strides = []

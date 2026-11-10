@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from losses.sigreg import SIGReg
+from utils.reconstruction_scores import reconstruction_score_map
 
 
 class LeWMLoss(nn.Module):
@@ -17,7 +18,7 @@ class LeWMLoss(nn.Module):
                  w_recon: float = 0.0, require_mask: bool = False):
         super().__init__()
         kind = str(loss2_kind).lower()
-        if kind not in ("kl", "mse", "l1"):
+        if kind not in ("kl", "mse", "l1", "l2"):
             raise ValueError(f"Invalid loss2_kind {loss2_kind}")
         if mask_loss_kind not in ("mse", "bce"):
             raise ValueError("mask_loss_kind must be mse or bce")
@@ -33,24 +34,15 @@ class LeWMLoss(nn.Module):
         self.lambda_sigreg = float(lambda_sigreg)
         self.lambda_sigreg_tgt = float(lambda_sigreg_tgt)
         self.tau = float(tau)
+        if not math.isfinite(self.tau) or self.tau <= 0:
+            raise ValueError("tau must be finite and positive")
         self.sigreg = SIGReg(**(sigreg_kwargs or {}))
 
     def _latent_loss(self, pred: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
         if pred.shape != tgt.shape or pred.ndim != 3:
             raise ValueError(f"prediction and target must have the same (B, C, T) shape: {pred.shape}, {tgt.shape}")
-        pred, tgt = pred.float(), tgt.float()
-        if self.loss2_kind == "mse":
-            return ((pred - tgt) ** 2).mean()
-        if self.loss2_kind == "l1":
-            return (pred - tgt).abs().mean()
-        tau = max(self.tau, 1e-3)
-        log_p = F.log_softmax(pred / tau, dim=1)
-        log_q = F.log_softmax(tgt / tau, dim=1)
-        p = log_p.exp()
-        q = log_q.exp()
-        kl_pq = (p * (log_p - log_q)).sum(dim=1).mean()
-        kl_qp = (q * (log_q - log_p)).sum(dim=1).mean()
-        return 0.5 * (kl_pq + kl_qp)
+        scores, _ = reconstruction_score_map(pred, tgt, self.loss2_kind, tau=self.tau)
+        return scores.mean()
 
     def forward(self, outputs: dict) -> dict:
         pred = outputs["predicted"]["L0"]

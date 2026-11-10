@@ -1,20 +1,24 @@
 """Compose view preparation, latent prediction and optional output reconstruction."""
 
 from collections.abc import Callable
+import math
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from models.actions import DiscreteAction
 from utils.reconstruction_scores import normalize_score_mode, reconstruction_score_map
+from utils.model_contract import ModelContract
 
 
-class LeWM(nn.Module):
+class LeWM(ModelContract, nn.Module):
     """One latent prediction pipeline with independent, swappable modules."""
 
     def __init__(self, *, engine, encoder, action, predictor, backbone=None, head=None,
                  freeze=(), score_domain="latent", score_mode="l1",
-                 score_fn: Callable = reconstruction_score_map, legacy_optimizer_order=False):
+                 score_fn: Callable = reconstruction_score_map, legacy_optimizer_order=False,
+                 score_tau=1.0):
         super().__init__()
         self.engine = engine
         self.backbone = backbone
@@ -25,6 +29,9 @@ class LeWM(nn.Module):
         self.score_domain = score_domain
         self.score_mode = normalize_score_mode(score_mode)
         self.score_fn = score_fn
+        self.score_tau = float(score_tau)
+        if not math.isfinite(self.score_tau) or self.score_tau <= 0:
+            raise ValueError("score_tau must be finite and positive")
         self._legacy_optimizer_order = legacy_optimizer_order
         if score_domain not in ("latent", "raw") or (score_domain == "raw" and head is None):
             raise ValueError("score_domain must be latent or raw with a reconstruction head")
@@ -116,11 +123,15 @@ class LeWM(nn.Module):
             with torch.autocast(device_type=x.device.type, enabled=False):
                 out = self(x.float(), action=action, corrupt=False)
                 if self.score_domain == "raw":
-                    fused, _ = self.score_fn(out["recon"], out["target"], self.score_mode)
+                    fused, _ = self.score_fn(out["recon"], out["target"], self.score_mode,
+                                             tau=self.score_tau)
                 else:
                     fused, _ = self.score_fn(out["predicted"]["L0"], out["targets"]["L0"],
-                                             self.score_mode)
-                    fused = fused.repeat_interleave(self.total_stride, dim=-1)
+                                             self.score_mode, tau=self.score_tau)
+                    raw_length = out["target_range"][1] - out["target_range"][0]
+                    if fused.size(-1) != raw_length:
+                        fused = F.interpolate(fused.unsqueeze(1), size=raw_length,
+                                              mode="linear", align_corners=False).squeeze(1)
                 if fused.size(-1) != out["target_range"][1] - out["target_range"][0]:
                     raise ValueError("score length must match target span")
                 return {"fused": fused, "levels": {"L0": fused}, "signals": {}}

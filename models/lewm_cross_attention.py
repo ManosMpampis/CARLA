@@ -43,14 +43,14 @@ class CrossAttentionPredictor(CrossAttention):
 
 
 class GuidedCrossAttentionPredictor(nn.Module):
-    """Use the action's future keys to attend over history-derived values."""
+    """Future-pattern queries retrieve paired historical keys and values."""
 
     def __init__(self, in_dim, qk_channels=8, value_channels=8, num_heads=1,
                  dropout=0.0, position_encoding="sinusoidal", diagonal_mask=False):
         super().__init__()
-        self.query = nn.Conv1d(in_dim, qk_channels, 1)
+        self.key = nn.Conv1d(in_dim, qk_channels, 1)
         self.value = nn.Conv1d(in_dim, value_channels, 1)
-        self.to_latent = nn.Conv1d(value_channels, in_dim, 1)
+        self.to_latent = nn.ConvTranspose1d(value_channels, in_dim, 3, stride=1, padding=1)
         self.attention = CrossAttention(qk_channels=qk_channels, value_channels=value_channels,
                                         num_heads=num_heads, dropout=dropout,
                                         position_encoding=position_encoding,
@@ -61,9 +61,10 @@ class GuidedCrossAttentionPredictor(nn.Module):
         return self(current, action, target_tokens=target_tokens, query_start=query_start)
 
     def forward(self, current, action, *, target_tokens, query_start=0):
-        history = F.interpolate(current, size=target_tokens, mode="linear", align_corners=False)
-        attended = self.attention(q=self.query(history), k=action.key, v=self.value(history),
-                                  query_start=query_start, key_start=query_start)
+        if action.query.size(-1) != target_tokens:
+            raise ValueError("future action must provide one query per target latent token")
+        attended = self.attention(q=action.query, k=self.key(current), v=self.value(current),
+                                  query_start=query_start, key_start=-current.size(-1))
         return self.to_latent(attended)
 
 
@@ -187,7 +188,7 @@ class CrossAttentionLeWM(nn.Module):
             return None if crop is None else tuple(edge * stride for edge in crop)
 
         context, target = ForecastEngine(stride, context_crop=raw(context_crop),
-                                         target_crop=raw(target_crop)).resolve_crop_ranges(window)
+                                         target_crop=raw(target_crop), context_ratio=1).resolve_crop_ranges(window)
         return tuple(i // stride for i in context), tuple(i // stride for i in target)
 
     def crop_ranges(self, window):

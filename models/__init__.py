@@ -2,7 +2,8 @@
 
 from models.actions import DiscreteAction, EncoderAction, MaskedRepresentationAction, NoAction, TimeAuxiliary
 from models.ae_baseline import ReconstructionBaseline
-from models.encoders import Encoder, ResNetEncoder, TCNEncoder
+from models.encoders import Encoder, IdentityEncoder, ResNetEncoder, TCNEncoder
+from models.feature_paths import FeaturePath
 from models.input_engines import ForecastEngine, MaskedEngine
 from models.lewm import LeWM
 from models.lewm_cross_attention import CrossAttentionLeWM, GuidedCrossAttentionPredictor
@@ -12,6 +13,7 @@ from models.recon_head import MirroredReconHead, build_mirrored_head
 from models.recon_model import ReconModel
 from models.steped_predictor import FreqPredictor, TimePredictor
 from utils.reconstruction_scores import reconstruction_score_map
+from utils.model_contract import architecture, attach_model_contract
 
 
 ENCODER_REGISTRY = {
@@ -19,6 +21,7 @@ ENCODER_REGISTRY = {
     "lewm_resnet": ResNetEncoder,
     "convolutional": Encoder,
     "tcn": TCNEncoder,
+    "identity": IdentityEncoder,
 }
 BACKBONE_REGISTRY = ENCODER_REGISTRY.copy()
 INPUT_ENGINE_REGISTRY = {"mask": MaskedEngine, "forecast": ForecastEngine}
@@ -60,8 +63,23 @@ def get_framework(name, *args, **kwargs):
 
 
 def get_backbone(name, **kwargs):
-    encoder = _resolve(BACKBONE_REGISTRY, name, "backbone")(**kwargs)
+    encoder = build_feature_module({"name": name, "options": kwargs})
     return {"model": encoder, "dim": [encoder.output_dims]}
+
+
+def build_feature_module(descriptor):
+    """Build a versioned feature function through the existing registries."""
+    name, options = descriptor["name"], dict(descriptor.get("options", {}))
+    if name == "composed":
+        module = FeaturePath([build_feature_module(part) for part in options["parts"]])
+        module._feature_architecture = descriptor
+        return module
+    if name == "pretrained":
+        return build_feature_module(options["architecture"])
+    cls = _resolve(ENCODER_REGISTRY, name, "feature encoder")
+    module = cls(**options)
+    module._feature_architecture = architecture(name, cls, options)
+    return module
 
 
 def _legacy_encoder(p):
@@ -97,7 +115,7 @@ def _legacy_lewm_config(p):
             "sample": mode != "none" and p.get("stage", "pretrain") != "adapt",
             **masking,
         },
-        "action": {"name": "masked", "aux_input": "latent", "mask_reduction": "nearest",
+        "action": {"name": "masked", "aux_input": "latent", "mask_reduction": "nearest", "train_mask": "known",
                    "aux": aux if with_aux else None},
         "predictor": {"name": domain, **predictor},
     }
@@ -120,6 +138,7 @@ def _build_action(name, action_cls, options, latent_dim, raw_dim, key_dim):
         source = options.setdefault("aux_input", "raw")
         aux_dim = raw_dim if source == "raw" else latent_dim
         aux = TimeAuxiliary(aux_dim, **aux_options) if aux_options is not None else None
+        options.setdefault("train_mask", "predicted" if aux is not None else "known")
         return action_cls(latent_dim, aux=aux, **options)
     if action_cls is EncoderAction:
         options.setdefault("hidden_dims", [latent_dim] * 3)
@@ -138,16 +157,20 @@ def get_lewm_model(p):
     backbone_options.pop("pretrained_from", None)
     backbone_options.pop("checkpoint_prefix", None)
     backbone = (None if backbone_name == "none"
-                else _resolve(BACKBONE_REGISTRY, backbone_name, "backbone")(**backbone_options))
+                else build_feature_module({"name": backbone_name, "options": backbone_options}))
 
     encoder_name, encoder_options = _module_options(config, "encoder", "resnet", freeze)
-    encoder_cls = _resolve(ENCODER_REGISTRY, encoder_name, "encoder")
+    encoder_cls = ENCODER_REGISTRY.get(encoder_name)
     input_key = "in_channels" if encoder_cls is ResNetEncoder else "in_dim"
-    if backbone is not None:
+    if encoder_name == "pretrained":
+        pass
+    elif backbone is not None:
         encoder_options.setdefault(input_key, backbone.output_dims)
     elif input_key not in encoder_options:
         encoder_options[input_key] = p.get("model_kwargs", {}).get("in_channels", 38)
-    encoder = encoder_cls(**encoder_options)
+    encoder_options.pop("pretrained_from", None)
+    encoder_options.pop("checkpoint_prefix", None)
+    encoder = build_feature_module({"name": encoder_name, "options": encoder_options})
     if backbone is not None and encoder.input_dims != backbone.output_dims:
         raise ValueError("encoder input width must match backbone output width")
     latent_dim = encoder.output_dims
@@ -193,6 +216,7 @@ def get_lewm_model(p):
                 predictor=predictor, head=head, freeze=freeze,
                 score_domain=config.get("score_domain", "latent"),
                 score_mode=p.get("score_mode", "l1"), legacy_optimizer_order=legacy,
+                score_tau=p.get("score_tau", 1.0),
                 score_fn=_resolve(SCORE_FUNCTIONS, config.get("score_fn", "residual"), "score function"))
 
 
@@ -231,7 +255,29 @@ def get_cross_attention_model(p):
 
 
 def _get_baseline_model(p, arm):
-    return get_framework(arm, encoder=_legacy_encoder(p),
+    modules = p.get("feature_modules")
+    freeze = []
+    if modules:
+        backbone_name, backbone_options = _module_options(modules, "backbone", "none", freeze)
+        for key in ("pretrained_from", "checkpoint_prefix"):
+            backbone_options.pop(key, None)
+        backbone = None if backbone_name == "none" else build_feature_module(
+            {"name": backbone_name, "options": backbone_options})
+        encoder_name, encoder_options = _module_options(modules, "encoder", "resnet", freeze)
+        for key in ("pretrained_from", "checkpoint_prefix"):
+            encoder_options.pop(key, None)
+        input_dim = backbone.output_dims if backbone is not None else p.get("_input_channels", 38)
+        input_key = "in_channels" if encoder_name in ("resnet", "lewm_resnet") else "in_dim"
+        if encoder_name != "pretrained":
+            encoder_options.setdefault(input_key, input_dim)
+        encoder = build_feature_module({"name": encoder_name, "options": encoder_options})
+        freeze_encoder = "encoder" in freeze or bool(modules.get("freeze_encoder", False))
+    else:
+        encoder, backbone = _legacy_encoder(p), None
+        freeze_encoder = bool(p.get("freeze_encoder", False))
+    return get_framework(arm, encoder=encoder, backbone=backbone,
+                         freeze_encoder=freeze_encoder,
+                         freeze_backbone=bool(backbone is not None and "backbone" in freeze),
                          model_kwargs=dict(p.get("model_kwargs", {})),
                          recon_kwargs=dict(p.get("recon_kwargs", {})),
                          score_mode=p.get("score_mode", "l1"))
@@ -252,18 +298,24 @@ def get_model(config, *, input_channels):
     factory = _resolve({"ae": get_ae_model, "vae": get_vae_model, "lewm": get_lewm_model},
                        framework, "training framework")
     p = dict(config)
-    if framework == "lewm" and "lewm_modules" in p:
-        modules = dict(p["lewm_modules"])
+    p["_input_channels"] = input_channels
+    if (framework == "lewm" and "lewm_modules" in p) or p.get("feature_modules"):
+        modules_key = "lewm_modules" if framework == "lewm" else "feature_modules"
+        modules = dict(p[modules_key])
         backbone = modules.get("backbone") or {}
         role = "backbone" if backbone.get("name", "none") != "none" else "encoder"
         options = dict(modules.get(role) or {})
         name = options.get("name", "resnet")
-        encoder = _resolve(ENCODER_REGISTRY, name, role)
+        encoder = ENCODER_REGISTRY.get(name)
         width_key = "in_channels" if encoder is ResNetEncoder else "in_dim"
-        if options.setdefault(width_key, input_channels) != input_channels:
+        if name == "pretrained":
+            check = build_feature_module({"name": name, "options": {"architecture": options["architecture"]}})
+            if check.input_dims != input_channels:
+                raise ValueError("pretrained feature input width differs from dataset")
+        elif options.setdefault(width_key, input_channels) != input_channels:
             raise ValueError(f"{role}.{width_key} must match dataset channels ({input_channels})")
         modules[role] = options
-        p["lewm_modules"] = modules
+        p[modules_key] = modules
     else:
         options = dict(p.get("model_kwargs", {}))
         encoder = _resolve(BACKBONE_REGISTRY, p.get("backbone", "lewm_resnet"), "encoder")
@@ -274,4 +326,4 @@ def get_model(config, *, input_channels):
     model = factory(p)
     if p["wsz"] % model.total_stride:
         raise ValueError("data.window must be divisible by the model's total stride")
-    return model
+    return attach_model_contract(model, p)

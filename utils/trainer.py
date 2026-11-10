@@ -8,6 +8,7 @@ from utils.evaluation_schedule import should_evaluate
 from utils.checkpointing import Checkpoints, inference_metadata
 from utils.evaluation_logging import (loss_metrics, record_losses, latent_variance,
                                       truncate_epoch_history)
+from utils.randomness import isolated_rng, restore_rng_state, isolated_module_rng, restore_module_rng
 
 
 class Trainer:
@@ -92,6 +93,8 @@ class Trainer:
             self.optimizer.zero_grad()
 
             losses, extras = self._forward_loss(batch)
+            if not torch.isfinite(losses["loss"]):
+                raise FloatingPointError("training objective became nonfinite")
             if self._codebook_samples is not None and i < 8:
                 for name, z in extras["latents"].items():
                     self._codebook_samples[name].append(z.detach().cpu())
@@ -104,7 +107,7 @@ class Trainer:
             if update_stats is not None:
                 update_stats(extras["latents"])
 
-            values = loss_metrics(losses)
+            values = dict(losses)
             values["latent_var"] = latent_variance(extras["latents"])
             for key, value in values.items():
                 if key not in meters:
@@ -126,6 +129,10 @@ class Trainer:
         to ~0 while probe errors on unseen windows blow up, destroying the
         train-calibrated threshold scale. Default None = legacy dense path.
         """
+        with isolated_rng(self.p.get("validation_seed", int(self.p.get("seed", 4)) + 100003)), isolated_module_rng(self.criterion):
+            return self._validate(loader)
+
+    def _validate(self, loader):
         self.model.eval()
         totals, count = {}, 0
         for batch in loader:
@@ -137,7 +144,7 @@ class Trainer:
             else:
                 outputs = self.model(ts, mask=mask, action=action.to(self.device))
             losses = self.criterion(outputs)
-            values = loss_metrics(losses)
+            values = dict(losses)
             values["latent_var"] = latent_variance(outputs["latents"])
             for key, value in values.items():
                 scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
@@ -164,9 +171,11 @@ class Trainer:
             previous = torch.load(path, map_location="cpu", weights_only=False)
             if "scaler" in previous:
                 self.scaler.load_state_dict(previous["scaler"])
-        best = {**previous.get("best", {}), "validation_loss": best_val_loss}
+            restore_module_rng(self.criterion, previous.get("criterion_rng_state"))
+        primary_split = "validation" if self.p.get("validation_available", True) else "train"
+        best = {**previous.get("best", {}), f"{primary_split}_loss": best_val_loss}
         checkpoints = Checkpoints(self.p, self.model, self.optimizer, self.scheduler,
-                                  best=best, extra={
+                                  best=best, criterion=self.criterion, extra={
                                       "anti_collapse": getattr(self.model, "anti_collapse", "none"),
                                       "inference": inference_metadata(
                                           self.p, getattr(train_loader, "dataset", None))})
@@ -175,9 +184,14 @@ class Trainer:
             step = epoch + 1
             train_losses = self.train_one_epoch(train_loader, epoch)
             self.scheduler.step()
-            self.validate(val_loader)
-            val_losses = self.validation_metrics
+            if self.p.get("validation_available", True):
+                self.validate(val_loader)
+                val_losses = self.validation_metrics
+            else:
+                val_losses = None
             for split, values in (("train", train_losses), ("validation", val_losses)):
+                if values is None:
+                    continue
                 self.logger.metrics_summary(split, values, step)
                 record_losses(self.p, split, values, step, self.logger.log)
             self.logger.scalar_summary("train", "learning_rate",
@@ -186,7 +200,7 @@ class Trainer:
             evaluation = eval_fn(step) if do_eval else None
             checkpoints.update(step, {"train": train_losses, "validation": val_losses},
                                evaluation, evaluated=do_eval, scaler=self.scaler)
-        return checkpoints.best["validation_loss"]
+        return checkpoints.best[f"{primary_split}_loss"]
 
     @staticmethod
     def resume(p, model, optimizer, scheduler, logger, map_location="cpu"):
@@ -203,6 +217,7 @@ class Trainer:
             return 0, np.inf
         logger.log(f"Restart from checkpoint {path}")
         checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        Trainer.validate_run_contract(p, checkpoint)
         if checkpoint.get("initialize_from"):
             p["initialize_from"] = checkpoint["initialize_from"]
         model.load_state_dict(checkpoint["model"])
@@ -211,8 +226,16 @@ class Trainer:
             scheduler.load_state_dict(checkpoint["scheduler"])
         Trainer.apply_resume_learning_rate(p, optimizer, scheduler, logger)
         start_epoch = checkpoint.get("next_epoch", checkpoint["epoch"] + 1)
-        best = checkpoint.get("best_val_loss", np.inf)
+        best = checkpoint.get("best_primary_loss", checkpoint.get("best_val_loss", np.inf))
+        restore_rng_state(checkpoint.get("rng_state"))
         return start_epoch, best
+
+    @staticmethod
+    def validate_run_contract(config, checkpoint):
+        for key, field in (("run_contract", "_run_contract"), ("preprocessing", "_preprocessing")):
+            saved, current = checkpoint.get(key), config.get(field)
+            if saved is not None and current is not None and saved != current:
+                raise ValueError(f"checkpoint {key} differs from configured run")
 
     @staticmethod
     def apply_resume_learning_rate(p, optimizer, scheduler, logger=None):

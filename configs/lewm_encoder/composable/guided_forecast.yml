@@ -1,21 +1,21 @@
 extends: ../frequency_aux/phase1.yml
-framework: lewm_composable
+framework: lewm
 phase1_experiment: null
 experiment_name: guided_forecast
-experiment_description: "Latent forecast conditioned on a TCN key from the observed target crop"
+experiment_description: "Observed-future queries retrieve historical patterns for latent comparison"
 tag_jepa: null
 
 lewm_modules:
   engine:
     name: forecast
-    context_crop: [0, 320]
-    target_crop: [320, 512]
+    context_ratio: 2
   encoder:
     name: resnet
     in_channels: 38
     enc_channels: [32, 64, 128]
-    enc_strides: [2, 2, 2]
+    enc_strides: [1, 1, 1]
     output_act: identity
+    latent_output: unrestricted
   action:
     name: tcn
     hidden_dims: [32, 32, 32]
@@ -29,5 +29,5 @@ lewm_modules:
   score_domain: latent
 
 criterion_kwargs:
-  loss2_kind: l1
+  loss2_kind: kl
   w_aux: 0.0

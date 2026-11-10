@@ -43,7 +43,7 @@ def get_criterion(p):
     cls = getattr(importlib.import_module(module_name), class_name)
     options = dict(p.get("criterion_kwargs", {}))
     if name == "lewm" and "lewm_modules" in p:
-        options = {"loss2_kind": "l1", "mask_loss_kind": "bce", "w_aux": 0.0,
+        options = {"loss2_kind": "kl", "mask_loss_kind": "bce", "w_aux": 0.0,
                    "require_mask": True, **options}
     return cls(**options)
 
@@ -58,7 +58,7 @@ def get_jepa_datasets(p):
     """
     from data.jepa_dataset import JEPADataset, JEPACorpusDataset
 
-    joint = p.get("fname", None) == "all"
+    joint = p.get("fname", None) == "all-one"
     train_dataset: object
     val_dataset: object
     if p["train_db_name"] == "smd" and joint:
@@ -78,7 +78,7 @@ def get_train_dataloader(p, dataset):
         pin_memory=False,
         collate_fn=collate_custom,
         # A short-series fallback may contain fewer windows than one batch.
-        drop_last=len(dataset) >= p["batch_size"],
+        drop_last=False,
         shuffle=True,
     )
 

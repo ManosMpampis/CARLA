@@ -1,19 +1,15 @@
-"""Dataset-configured experiment planning, native training, and reporting."""
+"""Compatibility adapters and primary-checkpoint scoring for native training.
 
-import copy
+Dataset fan-out, selection preflight and concurrency live in utils.jobs. Every
+training adapter below delegates to train.run; deleted legacy runners are not
+imported or reintroduced.
+"""
+
 from dataclasses import dataclass
-import importlib
 import json
 from pathlib import Path
-import time
-import traceback
-from types import SimpleNamespace
 
-import yaml
-
-from utils.config import (DEFAULT_VERSION, create_config, dataset_output_dir, experiment_base_dir,
-                          load_experiment_config, merge_config,
-                          validate_experiment_name)
+from utils.config import create_config, experiment_base_dir
 
 
 @dataclass
@@ -28,534 +24,61 @@ class Experiment:
 
     @property
     def key(self):
-        if self.config.get("phase1_experiment") and self.runner in ("recon", "cross_attention"):
-            branch = "reconstruction" if self.runner == "recon" else "cross_attention"
-            return f"lewm_encoder/{self.config['phase1_experiment']}/{branch}/{self.name}"
         return f"{self.framework}/{self.name}"
 
 
-# Existing training entries remain the authority for their training behavior.
-RUNNERS = {
-    "ae": ("utils.reconstruction_baselines:train_arm", "models:get_ae_model", "best_validation_loss.pth.tar"),
-    "vae": ("utils.reconstruction_baselines:train_arm", "models:get_vae_model", "best_validation_loss.pth.tar"),
-    "lewm": ("lewm:main", "models:get_lewm_model", "model.pth.tar"),
-    "recon": ("lewm_reconstruction:main", "models:get_recon_model", "model.pth.tar"),
-    "cross_attention": ("lewm_cross_attention:main", "models:get_cross_attention_model", "model.pth.tar"),
-}
-
-
-def _load_yaml(path):
-    with open(path) as stream:
-        value = yaml.safe_load(stream)
-    if not isinstance(value, dict):
-        raise ValueError(f"expected a YAML mapping in {path}")
-    return value
-
-
-def load_suite_manifest(path, _parents=()):
-    """Resolve inherited suite manifests and config paths at their declaration."""
-    path = Path(path).resolve()
-    if path in _parents:
-        raise ValueError(f"cyclic suite inheritance: {path}")
-    manifest = _load_yaml(path)
-    parents = manifest.pop("extends", [])
-    if isinstance(parents, str):
-        parents = [parents]
-    resolved = {}
-    for parent in parents:
-        resolved = merge_config(resolved, load_suite_manifest(path.parent / parent, (*_parents, path)))
-    for entry in manifest.get("experiments", []):
-        entry["config"] = str((path.parent / entry["config"]).resolve())
-    return merge_config(resolved, manifest)
-
-
-def series_parts(config):
-    fname = config["fname"]
-    return [] if fname == config["train_db_name"] else [fname]
-
-
 def experiment_dir(exp, root_dir, version):
-    version = exp.run_version or version
-    base = Path(experiment_base_dir(root_dir, exp.config, exp.config["fname"], version))
+    base = Path(experiment_base_dir(root_dir, exp.config, exp.config["fname"], exp.run_version or version))
     tag = exp.config.get("tag_jepa")
     return base / (f"jepa_{tag}" if tag else "jepa")
 
 
 def checkpoint_path(exp, root_dir, version):
-    return experiment_dir(exp, root_dir, version) / RUNNERS[exp.runner][2]
-
-
-def resume_latest(exp, root_dir, version):
-    """Select the most recently saved training state for this exact experiment."""
-    directory = experiment_dir(exp, root_dir, version)
-    run_parent = Path(experiment_base_dir(root_dir, exp.config,
-                                         exp.config["train_db_name"], DEFAULT_VERSION))
-    filenames = ("checkpoint.pth.tar", "last.pth.tar") if exp.runner in ("ae", "vae") else ("checkpoint.pth.tar",)
-    candidates = []
-    for filename in filenames:
-        suffix = Path(*series_parts(exp.config), directory.name, filename)
-        candidates.extend(run_parent.glob(f"*/{suffix}"))
-        stable = run_parent / suffix
-        if stable.is_file():
-            candidates.append(stable)
-    if candidates:
-        latest = max(candidates, key=lambda path: (path.stat().st_mtime_ns, str(path)))
-        exp.run_version = (DEFAULT_VERSION if latest == run_parent / Path(
-            *series_parts(exp.config), directory.name, latest.name)
-            else latest.relative_to(run_parent).parts[0])
-    return exp
-
-
-def build_plan(manifest_path, env_path, version, *, frameworks=None,
-               experiments=None, epochs=None, device=None, auto_resume=False,
-               reuse_saved_sources=False, dataset=None, fname=None, dataset_root=None,
-               config_overrides=None, root_dir_override=None):
-    """Resolve a manifest without writing directories; order source LEWM first."""
-    manifest_path = Path(manifest_path).resolve()
-    manifest = load_suite_manifest(manifest_path)
-    root_dir = root_dir_override or _load_yaml(env_path)["root_dir"]
-    validate_experiment_name(version, "version")
-    entries = manifest.get("experiments", [])
-    if not isinstance(entries, list) or not entries:
-        raise ValueError("manifest needs a nonempty experiments list")
-    common = manifest.get("common", {})
-    all_experiments = {}
-    for entry in entries:
-        if entry.get("enabled", True) is False:
-            continue
-        framework = validate_experiment_name(entry["framework"], "framework")
-        name = validate_experiment_name(entry.get("experiment_name", "default"), "experiment_name")
-        runner = entry["runner"]
-        if runner not in RUNNERS:
-            raise ValueError(f"unknown runner {runner}; expected {sorted(RUNNERS)}")
-        config_path = (manifest_path.parent / entry["config"]).resolve()
-        config = merge_config(load_experiment_config(config_path), common)
-        config = merge_config(config, entry.get("overrides", {}))
-        config = merge_config(config, config_overrides or {})
-        description = config.get("experiment_name")
-        config.update(framework=framework, experiment_name=name)
-        if dataset is not None:
-            config.update(train_db_name=dataset, val_db_name=dataset)
-        if fname is not None:
-            config["fname"] = fname
-        if dataset_root is not None:
-            config["dataset_root"] = str(dataset_root)
-        config.setdefault("fname", config["train_db_name"])
-        validate_experiment_name(config["train_db_name"], "train_db_name")
-        validate_experiment_name(config["fname"], "fname")
-        # A named phase-one variant creates a new encoder parent. Descendants
-        # follow their source's identity even when reusing a base config file.
-        if runner == "lewm" and framework == "lewm_encoder":
-            config["phase1_experiment"] = name
-        dependency = entry.get("pretrained_experiment")
-        if dependency and dependency.startswith("lewm_encoder/"):
-            source_name = dependency.removeprefix("lewm_encoder/")
-            config["phase1_experiment"] = validate_experiment_name(source_name, "pretrained_experiment")
-        if description:
-            config["experiment_description"] = description
-        if epochs is not None:
-            if epochs < 1:
-                raise ValueError("epochs must be positive")
-            config["epochs"] = epochs
-        if device is not None:
-            config["device"] = device
-        if runner in ("ae", "vae"):
-            config["arm"] = runner
-        else:
-            config["stage"] = {"lewm": "pretrain", "recon": "recon",
-                               "cross_attention": "phase2"}[runner]
-        if config["setup"] != "jepa":
-            raise ValueError("suite entries must use setup=jepa")
-        expected_channels = {"psm": 25, "smd": 38}.get(config["train_db_name"])
-        if expected_channels and int(config["model_kwargs"]["in_channels"]) != expected_channels:
-            raise ValueError(f"{framework}/{name}: {config['train_db_name']} requires {expected_channels} input channels")
-        exp = Experiment(framework, name, runner, config_path, config,
-                         dependency)
-        if exp.key in all_experiments:
-            raise ValueError(f"duplicate experiment {exp.key}")
-        all_experiments[exp.key] = exp
-
-    if frameworks:
-        missing = set(frameworks) - {exp.framework for exp in all_experiments.values()}
-        if missing:
-            raise ValueError(f"unknown frameworks {sorted(missing)}")
-    if experiments:
-        missing = set(experiments) - set(all_experiments)
-        if missing:
-            raise ValueError(f"unknown experiments {sorted(missing)}")
-    selected = [key for key, exp in all_experiments.items()
-                if (not frameworks or exp.framework in frameworks)
-                and (not experiments or key in experiments)]
-    if not selected:
-        raise ValueError("selection contains no experiments")
-    plan, visited, visiting = [], set(), set()
-
-    def visit(key):
-        if key in visiting:
-            raise ValueError(f"cyclic pretrained_experiment dependency at {key}")
-        if key in visited:
-            return
-        if key not in all_experiments:
-            raise ValueError(f"missing pretrained_experiment {key}")
-        exp = all_experiments[key]
-        if auto_resume:
-            resume_latest(exp, root_dir, version)
-        visiting.add(key)
-        if exp.dependency:
-            if exp.runner not in ("recon", "cross_attention"):
-                raise ValueError(f"{key}: only phase-two runners accept pretrained_experiment")
-            if exp.dependency not in all_experiments:
-                # An omitted phase-one entry can supply saved weights without
-                # being retrained. Resolve its actual tag from the saved path.
-                source_config = {**exp.config, "framework": "lewm_encoder",
-                                 "experiment_name": exp.config["phase1_experiment"]}
-                source_dir = Path(experiment_base_dir(root_dir, source_config,
-                                                      source_config["train_db_name"], DEFAULT_VERSION))
-                suffix = Path(*series_parts(exp.config), "jepa*", "model.pth.tar")
-                run = "*" if auto_resume or reuse_saved_sources else version
-                weights = (list(source_dir.glob(f"{run}/{suffix}"))
-                           if run != DEFAULT_VERSION else [])
-                if run in ("*", DEFAULT_VERSION):
-                    weights.extend(source_dir.glob(str(suffix)))
-                if not weights:
-                    raise ValueError(f"missing pretrained_experiment checkpoint {exp.dependency}")
-                exp.config["pretrained_from"] = str(max(
-                    weights, key=lambda path: (path.stat().st_mtime_ns, str(path))))
-                visiting.remove(key)
-                visited.add(key)
-                plan.append(exp)
-                return
-            visit(exp.dependency)
-            source = all_experiments[exp.dependency]
-            if any(exp.config[field] != source.config[field]
-                   for field in ("train_db_name", "fname")):
-                raise ValueError(f"{key}: dataset and fname must match {exp.dependency}")
-            if exp.config.get("experiment_version") != source.config.get("experiment_version"):
-                raise ValueError(f"{key}: experiment_version must match {exp.dependency}")
-            if source.runner != "lewm":
-                raise ValueError(f"{key}: pretrained_experiment must use the lewm runner")
-            if exp.config["model_kwargs"] != source.config["model_kwargs"]:
-                raise ValueError(f"{key}: model_kwargs must match {exp.dependency} exactly")
-            if exp.config.get("phase1_experiment") != source.config.get("phase1_experiment"):
-                raise ValueError(f"{key}: phase1_experiment must match {exp.dependency}")
-            if exp.runner == "recon" and exp.config.get("recon_kwargs", {}).get("with_aux"):
-                if not source.config.get("aux_kwargs", {}).get("with_aux", True):
-                    raise ValueError(f"{key}: auxiliary reconstruction needs a phase-one auxiliary head")
-                exp.config["aux_kwargs"] = copy.deepcopy(source.config["aux_kwargs"])
-            exp.config["pretrained_from"] = str(checkpoint_path(source, root_dir, version))
-        visiting.remove(key)
-        visited.add(key)
-        plan.append(exp)
-
-    for key in selected:
-        visit(key)
-    if auto_resume:
-        for exp in plan:
-            if exp.run_version and exp.dependency:
-                saved = experiment_dir(exp, root_dir, version) / "resolved_config.yml"
-                if saved.is_file():
-                    # Continue the same encoder lineage, even if its source
-                    # has since produced a newer run.
-                    source = _load_yaml(saved).get("pretrained_from")
-                    if source:
-                        exp.config["pretrained_from"] = source
-    return plan, root_dir
-
-
-def _function(reference):
-    module, name = reference.split(":")
-    return getattr(importlib.import_module(module), name)
+    return experiment_dir(exp, root_dir, version) / "model.pth.tar"
 
 
 def train_experiment(exp, env_path, version):
-    version = exp.run_version or version
-    args = SimpleNamespace(config_env=str(env_path), config_exp=str(exp.config_path),
-                           fname=exp.config["fname"], version=version)
-    trainer = _function(RUNNERS[exp.runner][0])
-    if exp.runner in ("ae", "vae"):
-        return trainer(exp.runner, args, update_dictionary=exp.config)
-    return trainer(args, update_dictionary=exp.config)
-
-
-def _build_model(exp, config):
-    return _function(RUNNERS[exp.runner][1])(config)
+    from train import run
+    config = create_config(env_path, exp.config_path, exp.config.get("fname"),
+                           exp.run_version or version, update_dictionary=exp.config)
+    return run(config)
 
 
 def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
-    """All frameworks use validation-selected weights and the same evaluation."""
-    version = exp.run_version or version
-    fname = fname or exp.config["fname"]
-    p = create_config(env_path, exp.config_path, fname, version,
-                      update_dictionary=exp.config, output_dir=output_dir)
-    # Match training-time reconstruction monitoring for every suite variant.
-    if exp.runner == "recon":
-        p["score_aux_crop"] = False
-    return score_config(p, exp)
+    config = create_config(env_path, exp.config_path, fname or exp.config.get("fname"),
+                           exp.run_version or version,
+                           update_dictionary={**exp.config, "stage": "score"}, output_dir=output_dir)
+    return score_config(config, exp)
 
 
-def score_config(p, exp, *, model=None, datasets=None):
-    """All score entry points share artifacts and never open TensorBoard."""
+def score_config(p, exp=None, *, model=None, datasets=None):
+    """Score the primary best checkpoint with the same native training model."""
     import torch
-    from data.jepa_dataset import JEPADataset
-    from utils.common_config import get_jepa_datasets
-    from utils.reconstruction_baselines import evaluate_aggregations
-    from utils.scoring import model_evaluation_options
+    from models import get_model
+    from utils.common_config import get_device, get_jepa_datasets
+    from utils.model_contract import prepare_feature_source_config
+    from utils.run_evaluation import evaluate_run
     from utils.trainer import Trainer
-    if isinstance(exp, str):
-        exp = Experiment(p.get("framework", exp), p.get("experiment_name", "default"),
-                         exp, Path("."), dict(p))
-    requested_device = str(p.get("device", "cpu"))
-    device = torch.device(requested_device if not requested_device.startswith("cuda")
-                          or torch.cuda.is_available() else "cpu")
     p = dict(p)
-    if exp.runner == "recon":
-        p["score_aux_crop"] = False
-    model = (_build_model(exp, p) if model is None else model).to(device)
-    weights = Path(p.get("score_checkpoint") or Path(p["jepa_dir"]) / RUNNERS[exp.runner][2])
-    if not weights.is_file():
-        raise FileNotFoundError(f"validation-selected checkpoint missing: {weights}")
-    Trainer.load_weights(str(weights), model, strict=True)
-    model.eval()
-    if exp.runner == "cross_attention":
-        from lewm_cross_attention import scoring_options
-
-        # Load the checkpoint's original task strictly before changing only
-        # evaluation geometry. Training/resume task checks remain unchanged.
-        geometry = p.get("evaluation", {}) or {}
-        if {"context_length", "target_length"} & geometry.keys():
-            if not {"context_length", "target_length"} <= geometry.keys():
-                raise ValueError("evaluation needs both context_length and target_length")
-            if {"context_crop", "target_crop"} & geometry.keys():
-                raise ValueError("use raw lengths or token crops, not both")
-            context_length, target_length = int(geometry["context_length"]), int(geometry["target_length"])
-            if min(context_length, target_length) < 1 or any(
-                    length % model.total_stride for length in (context_length, target_length)):
-                raise ValueError("evaluation segment lengths must be positive multiples of encoder stride")
-            if int(geometry.get("input_window", p["wsz"])) != context_length + target_length:
-                raise ValueError("input_window must equal context_length + target_length")
-            model.context_crop = (0, context_length // model.total_stride)
-            model.target_crop = (context_length // model.total_stride,
-                                 (context_length + target_length) // model.total_stride)
-        if "context_crop" in geometry or "target_crop" in geometry:
-            if not {"context_crop", "target_crop"} <= geometry.keys():
-                raise ValueError("evaluation needs both context_crop and target_crop")
-            context = model._interval(geometry["context_crop"])
-            target = model._interval(geometry["target_crop"])
-            if (context is None) != (target is None):
-                raise ValueError("evaluation crops must both be null or both be intervals")
-            if context is not None:
-                step = model.total_stride
-                if any(edge % step for edge in (*context, *target)):
-                    raise ValueError("evaluation crops must align to the feature stride")
-                context = tuple(edge // step for edge in context)
-                target = tuple(edge // step for edge in target)
-            model.context_crop, model.target_crop = context, target
-        options = scoring_options(p, model)
-    else:
-        if {"context_crop", "target_crop", "context_length", "target_length"} & (p.get("evaluation", {}) or {}).keys():
-            raise ValueError("evaluation crops require the cross_attention runner")
-        options = model_evaluation_options(p, model)
-    window, stride = options.pop("wsz"), options.pop("stride")
     if datasets is None:
-        train_dataset, _ = get_jepa_datasets(p)
-        test_dataset = JEPADataset(p, train=False)
-    else:
-        train_dataset, test_dataset = datasets
-
-    class InputResolutionScores:
-        """LEWM's native map is latent-resolution when its encoder downsamples."""
-
-        def to(self, _device):
-            return self  # the captured model is already on the requested device
-
-        def eval(self):
-            model.eval()
-            return self
-
-        def score(self, x):
-            output = model.score(x)
-            if exp.runner == "lewm" and not getattr(model, "score_input_resolution", False):
-                step = int(model.level_strides[0])
-                output["fused"] = output["fused"].repeat_interleave(step, dim=-1)
-                output["levels"] = {
-                    name: value.repeat_interleave(step, dim=-1)
-                    for name, value in output["levels"].items()}
-                output["signals"] = {
-                    name: value.repeat_interleave(step, dim=-1)
-                    for name, value in output["signals"].items()}
-            return output
-
-    scorer_model = InputResolutionScores()
-    benchmark = p.get("inference_benchmark", False)
-    inference_speed = None
-    if benchmark is not False and benchmark is not None:
-        from utils.inference_benchmark import benchmark_inference
-
-        inference_speed = benchmark_inference(
-            scorer_model, test_dataset.series, window,
-            int(p.get("score_batch_size", p["batch_size"])), device,
-            {} if benchmark is True else benchmark)
-    quantile = float(p.get("calibration_kwargs", {}).get(
-        "quantile", p.get("calibration_quantile", 0.995)))
-    evaluation, test, non_overlap_test, non_overlap_stride = evaluate_aggregations(
-        scorer_model, train_dataset.full_train_series, test_dataset.series, test_dataset.targets,
-        {**p, "calibration_quantile": quantile}, device,
-        options={"wsz": window, "stride": stride, **options})
-    thresholds = {name: values["calibrated"]["threshold"]
-                  for name, values in evaluation.items()}
-    report = {
-        "framework": exp.framework, "experiment_name": exp.name,
-        "experiment_key": exp.key,
-        "phase1_experiment": exp.config.get("phase1_experiment"),
-        "run": p["version"], "dataset": p["train_db_name"], "fname": p["fname"], "runner": exp.runner,
-        "selection": {"weights": str(weights), "source": "configured checkpoint" if p.get("score_checkpoint") else "validation loss"},
-        "evaluation_settings": {"input_window": window, "stride": stride,
-                                "eval_window_size": int(p.get("eval_window_size", 100)),
-                                **options},
-        "calibration_source": "full training series",
-        "evaluation": evaluation,
-        "coverage": {"scored_timesteps": int((test["cover_counts"] > 0).sum()),
-                     "total_timesteps": len(test_dataset.series),
-                     "first_scored_timestep": int(test["starts"].min()),
-                     "input_window": window,
-                     "output_window": int(test["ends"][0] - test["starts"][0])},
-    }
-    if non_overlap_test is not None:
-        report["coverage"]["non_overlap_window"] = {
-            "stride": non_overlap_stride,
-            "window_count": len(non_overlap_test["window_scores"]),
-            "scored_timesteps": int((non_overlap_test["cover_counts"] > 0).sum()),
-            "total_timesteps": len(test_dataset.series),
-            "include_last_window": False,
-        }
-    if exp.runner == "cross_attention":
-        context, target = model.crop_ranges(window)
-        report["evaluation_settings"].update(
-            context_crop=[edge * model.total_stride for edge in context],
-            target_crop=[edge * model.total_stride for edge in target],
-            crop_units="input timesteps", total_stride=model.total_stride,
-            context_length=(context[1] - context[0]) * model.total_stride,
-            target_length=(target[1] - target[0]) * model.total_stride,
-            query_source=model.query_source)
-    if exp.runner == "lewm" and options["check_mask"] is not None and "lewm_modules" in p:
-        from models.input_engines import ForecastEngine
-
-        if isinstance(model.engine, ForecastEngine):
-            context, target = model.engine.resolve_crop_ranges(window)
-            report["evaluation_settings"].update(
-                context_crop=list(context), target_crop=list(target), crop_units="input timesteps",
-                total_stride=model.total_stride, conditioning="observed_future_key")
-    if inference_speed is not None:
-        report["inference_speed"] = inference_speed
-    if exp.runner == "recon":
-        report["evaluation_settings"]["score_aux_crop"] = False
-    from utils.evaluation_artifacts import write_final_artifacts
-    report["figures"] = write_final_artifacts(
-        p["jepa_dir"], evaluation, test, test_dataset.targets, non_overlap_test)
-    # Replay is an explicit debugging artifact; regular evaluation uses
-    # bounded final score figures and never rescans every window for a replay.
-    if ("timeseries" in thresholds and isinstance(p.get("decision_trace"), dict)
-            and p["decision_trace"].get("enabled", False)):
-        from utils.decision_trace import write_final_decision_trace
-        report["decision_trace"] = write_final_decision_trace(
-            scorer_model, device, test_dataset.series, p, thresholds["timeseries"],
-            options={"wsz": window, "stride": stride, **options},
-            threshold_operator="gt", labels=test_dataset.targets)
-    calibration = {"source": "full training series", "quantile": quantile,
-                   **{f"{mode}_threshold": value for mode, value in thresholds.items()}}
-    for path, payload in ((p["metrics_path"], report), (p["calibration_path"], calibration)):
-        with open(path, "w") as stream:
-            json.dump(payload, stream, indent=2)
+        from data.jepa_dataset import JEPADataset, JEPACorpusDataset
+        train_data, _ = get_jepa_datasets(p)
+        test_data = None if isinstance(train_data, JEPACorpusDataset) else JEPADataset(p, train=False)
+        datasets = train_data, test_data
+    weights = Path(p.get("score_checkpoint") or p["jepa_model"])
+    if not weights.is_file():
+        raise FileNotFoundError(f"primary selected checkpoint missing: {weights}")
+    checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
+    p = prepare_feature_source_config(p, datasets[0].feature_schema, resume_checkpoint=checkpoint)
+    p["_feature_schema"] = list(datasets[0].feature_schema)
+    p["_preprocessing"] = datasets[0].preprocessing
+    device = get_device(p)
+    if model is None:
+        model = get_model(p, input_channels=len(datasets[0].feature_schema)).to(device)
+    Trainer.validate_run_contract(p, checkpoint)
+    Trainer.load_weights(weights, model, strict=True)
+    report = evaluate_run(model, p, device, datasets=datasets, write=True)
+    report["selection"] = {"weights": str(weights), **checkpoint.get("selection", {})}
+    path = Path(p["jepa_dir"]) / "metrics.json"
+    path.write_text(json.dumps(report, indent=2))
     return report
-
-
-def _save_resolved_config(exp, directory):
-    path = directory / "resolved_config.yml"
-    if path.exists():
-        old = _load_yaml(path)
-        new = copy.deepcopy(exp.config)
-        # Epoch extensions and runtime placement can change on resume.
-        for config in (old, new):
-            for key in ("epochs", "device", "amp", "num_workers", "score_batch_size"):
-                config.pop(key, None)
-        if old != new:
-            raise ValueError(f"{exp.key}: configuration changed in an existing run; use a new experiment_name or --version")
-    path.write_text(yaml.safe_dump(exp.config, sort_keys=False))
-
-
-def write_summary(directory, rows):
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "summary.json").write_text(json.dumps(rows, indent=2))
-    from utils.evaluation_summary import write_mode_csvs
-    write_mode_csvs(directory, rows)
-
-
-def run_suite(plan, root_dir, env_path, version, *, score_only=False,
-              fail_fast=False):
-    """Run dependencies once, save partial summaries, and isolate failed experiments."""
-    rows, statuses = [], {}
-    planned_keys = {exp.key for exp in plan}
-    identities = {(exp.config["train_db_name"], exp.config["fname"],
-                   exp.config.get("experiment_version")) for exp in plan}
-    if len(identities) != 1:
-        raise ValueError("a suite run must contain one dataset, series and experiment_version")
-    dataset, fname, _ = identities.pop()
-    summary_dir = Path(dataset_output_dir(root_dir, plan[0].config)) / "summaries"
-    if version != DEFAULT_VERSION:
-        summary_dir /= version
-    if fname != dataset:
-        summary_dir /= fname
-    summary_path = summary_dir / "summary.json"
-    existing = json.loads(summary_path.read_text()) if summary_path.exists() else []
-    combined = {row.get("experiment_key", f"{row['framework']}/{row['experiment_name']}"): row for row in existing}
-    for exp in plan:
-        directory = experiment_dir(exp, root_dir, version)
-        row = {"framework": exp.framework, "experiment_name": exp.name,
-               "experiment_key": exp.key, "phase1_experiment": exp.config.get("phase1_experiment"),
-               "runner": exp.runner, "dataset": dataset, "fname": fname, "run": exp.run_version or version,
-               "checkpoint": str(checkpoint_path(exp, root_dir, version)),
-               "metrics_path": str(directory / "metrics.json")}
-        started = time.monotonic()
-        print(f"{'SCORE' if score_only else 'RUN'} {exp.key} -> {directory}", flush=True)
-        if not score_only:
-            filename = "last.pth.tar" if exp.runner in ("ae", "vae") else "checkpoint.pth.tar"
-            state = directory / filename
-            print(f"  {'Resume from ' + str(state) if state.is_file() else 'Start fresh'}", flush=True)
-        try:
-            if (exp.dependency and statuses.get(exp.dependency) != "completed"
-                    and not (exp.dependency not in planned_keys
-                             and Path(exp.config.get("pretrained_from", "")).is_file())):
-                row.update(status="blocked", error=f"source experiment {exp.dependency} failed")
-            else:
-                directory.mkdir(parents=True, exist_ok=True)
-                _save_resolved_config(exp, directory)
-                if not score_only:
-                    train_experiment(exp, env_path, version)
-                report = score_experiment(exp, env_path, version)
-                values = report["evaluation"]
-                row.update(status="completed", evaluation=values,
-                           timeseries_f1=values["timeseries"]["calibrated"]["f1"],
-                           window_f1=values["window"]["calibrated"]["f1"],
-                           vus_pr=values["timeseries"]["vus_pr"],
-                           vus_roc=values["timeseries"]["vus_roc"],
-                           **{k: report["coverage"][k] for k in
-                              ("scored_timesteps", "total_timesteps", "output_window")})
-        except Exception as exc:
-            row.update(status="failed", error=str(exc))
-            if directory.exists():
-                (directory / "suite_error.txt").write_text(traceback.format_exc())
-            print(f"FAILED {exp.key}: {exc}", flush=True)
-        row["seconds"] = round(time.monotonic() - started, 2)
-        statuses[exp.key] = row["status"]
-        rows.append(row)
-        combined[exp.key] = row
-        write_summary(summary_dir, list(combined.values()))
-        if fail_fast and row["status"] != "completed":
-            break
-    print("\nExperiment                                      Status       Series F1  Window F1  VUS PR")
-    for row in combined.values():
-        values = "  ".join(f"{row[k]:.4f}" if row.get(k) is not None else "   -  "
-                            for k in ("timeseries_f1", "window_f1", "vus_pr"))
-        print(f"{row.get('experiment_key', row['framework']+'/'+row['experiment_name']):<47} {row['status']:<12} {values}")
-    print(f"Reports: {summary_dir}", flush=True)
-    return rows

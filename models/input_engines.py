@@ -54,11 +54,15 @@ class MaskedEngine(nn.Module):
 
 
 class ForecastEngine(nn.Module):
-    def __init__(self, encoder_strides=1, input_window=None, context_crop=None, target_crop=None):
+    def __init__(self, encoder_strides=1, input_window=None, context_crop=None, target_crop=None,
+                 context_ratio=2):
         super().__init__()
         if type(encoder_strides) is not int or encoder_strides < 1:
             raise ValueError("encoder_strides must be a positive integer")
         self.encoder_strides = encoder_strides
+        if not isinstance(context_ratio, (int, float)) or context_ratio <= 0:
+            raise ValueError("context_ratio must be positive")
+        self.context_ratio = context_ratio
         self.context_crop = self._interval(context_crop)
         self.target_crop = self._interval(target_crop)
         if (self.context_crop is None) != (self.target_crop is None):
@@ -81,9 +85,9 @@ class ForecastEngine(nn.Module):
             raise ValueError("window must contain at least two tokens and be divisible by feature stride")
         context, target = self.context_crop, self.target_crop
         if context is None:
-            if window % (2 * stride):
-                raise ValueError("default half split requires an even feature length")
-            context, target = (0, window // 2), (window // 2, window)
+            tokens = window // stride
+            split = min(tokens - 1, max(1, int(tokens * self.context_ratio / (1 + self.context_ratio)))) * stride
+            context, target = (0, split), (split, window)
         if (any(edge % stride for edge in (*context, *target))
                 or not 0 <= context[0] < context[1] <= target[0] < target[1] <= window):
             raise ValueError("crops must be nonempty, ordered and stride-aligned inside the window")

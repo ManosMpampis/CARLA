@@ -1,8 +1,8 @@
 extends: ../frequency_aux/phase1.yml
-framework: lewm_composable
+framework: lewm
 phase1_experiment: null
 experiment_name: masked_frequency
-experiment_description: "Masked latent reconstruction with a raw-time FiLM action and raw reconstruction head"
+experiment_description: "Predicted-mask conditional latent reconstruction through one STFT pyramid"
 tag_jepa: null
 
 lewm_modules:
@@ -15,12 +15,13 @@ lewm_modules:
     name: resnet
     in_channels: 38
     enc_channels: [32, 64, 128]
-    enc_strides: [2, 2, 2]
+    enc_strides: [1, 1, 1]
     output_act: identity
+    latent_output: unrestricted
   action:
     name: masked
     aux_input: raw
-    train_mask: known
+    train_mask: predicted
     aux:
       aux_channels: [32, 32, 32]
   predictor:
@@ -30,12 +31,11 @@ lewm_modules:
     n_fft: 64
     hop_length: 16
     win_length: 64
-  head:
-    name: mirrored
-  score_domain: raw
+  head: null
+  score_domain: latent
 
 criterion_kwargs:
-  loss2_kind: l1
+  loss2_kind: kl
   mask_loss_kind: bce
   w_aux: 1.0
-  w_recon: 1.0
+  w_recon: 0.0

@@ -1,10 +1,12 @@
-# Conditional LeWM experiments: audit and draft implementation specification
+# Conditional LeWM experiments: approved implementation specification
 
-Status: **consolidated draft, awaiting final shared-understanding confirmation and L2 convention**. Audited the current working tree on
+Status: **approved for implementation, 2026-11-10; Q1–Q21 confirmed**. Audited the working tree on
 2026-11-09, including its uncommitted changes and deleted files. This document
 does not describe HEAD alone. No model, trainer, dataset, or configuration changes
-were made for this audit. Confirmed decisions are recorded in section 6;
-remaining recommendations are proposals until the interview concludes.
+were made during the initial audit. Confirmed decisions are recorded in section 6.
+The user authorized local ticket creation, implementation with separate test
+agents, and architectural coordination after approving Q21. Implementation
+starts from commit `22dc54c1a8ac573c198e2517c46ba8915d33c9c7`.
 
 ## 1. Requested experiment
 
@@ -99,7 +101,7 @@ scoring. This geometry difference is intentional and must not be rejected or
 silently changed. Retain the shared trainable encoder, dual SIGReg and
 unrestricted latent outputs. The AE/VAE baseline objectives remain unchanged.
 
-## 3. Current support and evidence
+## 3. Audited baseline support and evidence (22dc54c)
 
 ### 3.1 Models
 
@@ -253,7 +255,7 @@ Working contracts to preserve:
 - Target-only forecast scores are placed on their raw target intervals and
   overlap aggregation uses cover counts (`utils/scoring.py:117`).
 
-## 4. Proposed implementation
+## 4. Approved implementation
 
 ### P0. Make model semantics trustworthy
 
@@ -332,10 +334,9 @@ per-token discrepancy definitions but have independent selectors:
 | `kl` | Symmetric channel-softmax KL above, default temperature 1 | Mean over batch and tokens |
 | `l1` | `mean_D(abs(prediction - target))` | Mean over batch and tokens |
 | `mse` | `mean_D((prediction - target)^2)` | Mean over batch and tokens |
-| `l2` | Proposed: `norm_2(prediction - target) / sqrt(D)` (RMS residual, matching existing L2 scoring) | Mean over batch and tokens |
+| `l2` | `norm_2(prediction - target) / sqrt(D)` (RMS residual, matching existing L2 scoring) | Mean over batch and tokens |
 
-The L2 convention is the sole new semantic detail awaiting final review. For
-training, implement its norm so a perfect match has finite, zero gradient;
+Q21 confirms this L2 convention. For training, implement its norm so a perfect match has finite, zero gradient;
 naively differentiating `sqrt(mean(error^2))` at zero can produce NaN. Test
 all four loss choices independently of score choices, including default KL/L1,
 finite gradients through both operands, zero residuals and FP32 scoring.
@@ -348,6 +349,16 @@ source checkpoint, reconstruct it or reject conflicting destination options,
 then load its state strictly. The description includes constructor type/options,
 activations, kernels/dilations/strides, normalization, dropout, latent width,
 feature ordering and normalization provenance.
+
+Compatibility is exact for the encoder's function on normalized-tensor inputs.
+Source and destination scaler statistics may differ, including historical
+full-train normalization versus the new optimization-row-only fit. Record both
+preprocessing descriptions and a normalization-changed flag; this difference
+alone does not reject encoder weights. Keep the destination train-only scaler;
+neither silently restore source statistics nor insert an implicit rescaling
+adapter. Reject incompatible architecture or sensor schema/order. Historical
+source preprocessing remains visible provenance, not a new fit on validation
+or test data.
 
 Support source roles explicitly: a standalone source `encoder`, and (only if
 requested) an effective source feature path containing `backbone + encoder`.
@@ -383,7 +394,7 @@ Introduce a small planning interface that returns concrete training/evaluation
 jobs. Jobs call the existing `train.run`; dataset selection must not create a
 parallel training implementation.
 
-Proposed CLI for the final review:
+Approved CLI:
 
 ```bash
 ./venv/bin/python train.py --config_exp <experiment.yml> --dataset psm
@@ -422,7 +433,7 @@ continue other jobs. Resume unfinished jobs without retraining completed jobs.
 Update or remove references to obsolete runners; do not restore deleted legacy
 code as an incidental dependency.
 
-Expose bounded concurrent job execution, proposed as `--jobs N` (or the
+Expose bounded concurrent job execution as `--jobs N` (or the
 equivalent config setting), default 1. Values greater than 1 enable parallel
 jobs. Use independent worker processes, per-job model/optimizer/RNG state and
 distinct output directories; the parent process owns the suite manifest.
@@ -436,6 +447,8 @@ silently alter batch size or experiment settings.
 1. Fit normalization on optimization-training rows and reuse it unchanged for
    validation, clean calibration and test. Fix synthetic test normalization.
 2. Use disjoint temporal validation when the source can hold both splits.
+   If there are at least two window lengths of rows, clamp the requested split
+   to leave at least one complete window on each side.
    Otherwise use the agreed validation-unavailable/best-training fallback
    below; reject inputs too short to produce even one legal training window.
    Preserve machine boundaries in joint splits. Invalidate caches when sources
@@ -566,20 +579,20 @@ provenance, and a concise pass/fail report with limitations.
 
 ### Final shared-understanding review
 
-All experiment choices above are recorded. Proposed Q21: preserve the existing
+All experiment choices above are confirmed. Q21 preserves the existing
 L2 score convention for the new L2 loss, namely RMS over channels per token,
 then mean over batch/time for training. This distinguishes L2 from MSE and
-keeps its value normalized across latent widths. Final user confirmation of
-this convention and the consolidated specification completes the interview.
+keeps its value normalized across latent widths. The user confirmed this
+convention and authorized implementation on 2026-11-10, completing the interview.
 
-The proposed minimal latent refinement is one length-preserving stride-1,
+The approved minimal latent refinement is one length-preserving stride-1,
 kernel-3 ConvTranspose1d with unrestricted output. Compute scalar errors on the
 latent grid first, then linearly interpolate the score map to the raw target
 span when necessary. Resolve source checkpoints to validation-best, falling
 back to best-training when validation is unavailable, consistent with Q12.
 Keep raw reconstruction opt-in: training a new raw decoder requires an
 explicitly enabled raw loss; both default LeWM presets remain latent-only.
-These proposed defaults are included in the final shared-understanding review.
+These engineering defaults are included in the approved implementation.
 Crop rounding, feature-grid position encoding, concurrency configuration and
 checkpoint naming can use documented engineering defaults in that review.
 Optimizer gradient accumulation is not currently requested; objective summation
@@ -588,5 +601,6 @@ and epoch loss aggregation are required and will be checked in the smoke experim
 The user requested `/grill-me` after the initial check. The installed
 [grilling skill](/home/manosbampis/.codex/skills/grilling/SKILL.md) says:
 “Do not act on it until the user confirms you have reached a shared understanding.”
-Accordingly this is a reviewable draft; implementation and final smoke acceptance
-follow the interview, as the user requested.
+The interview is complete. Implementation and final smoke acceptance are now
+authorized. Local execution tickets live under
+`AGENTIC_DOCS/implementation/lewm-conditional/issues/`.

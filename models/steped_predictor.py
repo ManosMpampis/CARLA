@@ -155,8 +155,7 @@ class FreqPredictor(ReconstructionPredictor):
         # spec: (B*S, F, T') -> (B, 2S, T', F)
         spec = spec.permute(0, 2, 1).contiguous()
         t_prime, n_freq = spec.size(1), spec.size(2)
-        tf = torch.stack([spec.real, spec.imag], dim=2).reshape(
-            b, 2 * self.stem_channels, t_prime, n_freq)
+        tf = self.pack_spectrum(spec, b)
 
         # Down path (full -> /2 -> /4 -> /4), FiLM-steered per scale.
         g = self.in_proj(tf)
@@ -174,12 +173,23 @@ class FreqPredictor(ReconstructionPredictor):
             [F.interpolate(n1, size=p0.shape[2:], mode="nearest"), p0], dim=1))
         out = self.out_proj(n0)
 
-        real, imag = out.float().chunk(2, dim=1)
-        cout = torch.complex(real, imag).reshape(b * self.stem_channels,
-                                                 t_prime, n_freq)
+        cout = self.unpack_spectrum(out)
         cout = cout.permute(0, 2, 1).contiguous()
         with torch.autocast(device_type=h.device.type, enabled=False):
             rec = torch.istft(cout, n_fft=n_fft, hop_length=hop, win_length=win,
                               window=window, center=True, length=w)
         rec = rec.reshape(b, self.stem_channels, w).to(z_tok.dtype)
         return self.to_latent(rec)
+
+    @staticmethod
+    def pack_spectrum(spec, batch_size):
+        """(B*S,T,F) complex -> (B,2*S,T,F), grouped real/imag channels."""
+        _, frames, bins = spec.shape
+        shaped = spec.reshape(batch_size, -1, frames, bins)
+        return torch.cat((shaped.real, shaped.imag), dim=1)
+
+    @staticmethod
+    def unpack_spectrum(features):
+        """Exact inverse of pack_spectrum before the STFT-axis permutation."""
+        real, imag = features.float().chunk(2, dim=1)
+        return torch.complex(real, imag).flatten(0, 1)
