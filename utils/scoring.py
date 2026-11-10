@@ -117,6 +117,22 @@ def aggregate_score_maps(series: np.ndarray, wsz: int, stride: int,
     }
 
 
+def model_evaluation_options(config, model):
+    """Place target-only score maps on the raw input timeline."""
+    options = evaluation_options(config)
+    if not hasattr(model, "target_input_range"):
+        return options
+    span = list(model.target_input_range(options["wsz"]))
+    if span == [0, options["wsz"]] and getattr(model, "score_input_resolution", False):
+        return options
+    if options["check_mask"] is not None and list(options["check_mask"]) != span:
+        raise ValueError(f"evaluation.check_mask must match the target crop {span}")
+    if options["latency_offset"] != 0:
+        raise ValueError("target crop scores require latency_offset=0")
+    options["check_mask"] = span
+    return options
+
+
 class Scorer:
     """Emits per-timestep anomaly scores with window bookkeeping.
 

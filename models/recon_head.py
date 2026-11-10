@@ -13,7 +13,7 @@ Grilled contract (Q8/Q8a/Q8b):
 
 import torch.nn as nn
 
-from models.blocks import make_norm, _init_weights
+from models.blocks import make_norm1d, _init_weights
 
 
 class ReconUpsampleBlock(nn.Module):
@@ -37,7 +37,7 @@ class ReconUpsampleBlock(nn.Module):
             int(in_ch), int(out_ch), kernel_size=int(kernel),
             stride=stride, padding=int(pad), output_padding=int(out_pad),
             dilation=int(dilation))
-        self.norm = make_norm(norm, int(out_ch))
+        self.norm = make_norm1d(norm, int(out_ch))
         self.act = nn.GELU()
         self.drop = nn.Dropout(dropout) if dropout and dropout > 0.0 else nn.Identity()
         _init_weights(self.deconv)
@@ -102,7 +102,7 @@ def build_mirrored_head(encoder, norm: str = "batch", dropout: float = 0.0,
     if hasattr(encoder, "channel_ladder"):
         ladder = list(encoder.channel_ladder)
     else:
-        ladder = [encoder.blocks[0].main[0].conv.in_channels, encoder.output_dims]
+        ladder = [encoder.input_dims, encoder.output_dims]
     strides = list(getattr(encoder, "enc_strides", [1] * (len(ladder) - 1)))
     if out_channels is not None:
         if int(out_channels) < 1:

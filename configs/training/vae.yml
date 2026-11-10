@@ -1,0 +1,3 @@
+extends: ae.yml
+framework: vae
+loss: {name: reconstruction, beta: 0.3}

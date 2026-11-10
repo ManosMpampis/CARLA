@@ -67,66 +67,46 @@ def make_act(kind: str) -> nn.Module:
 
 
 class Conv1dSamePadding(nn.Conv1d):
-    """Represents the "Same" padding functionality from Tensorflow.
-    See: https://github.com/pytorch/pytorch/issues/3867
-    Note that the padding argument in the initializer doesn't do anything now
-    """
-    def forward(self, input):
-
-        kernel, dilation, stride = self.weight.size()[2], self.dilation[0], self.stride[0]
-        l_out = l_in = input.size()[2]
-        padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-        input = F.pad(input, [0, padding % 2])
-        padding = (padding // 2,)
-        output = F.conv1d(input=input, weight=self.weight, bias=self.bias, stride=stride,
-                        padding=padding, dilation=dilation, groups=self.groups)
-        return output
-
-
-class Conv2dSamePadding(nn.Conv1d):
-    """Represents the "Same" padding functionality from Tensorflow.
-    See: https://github.com/pytorch/pytorch/issues/3867
-    Note that the padding argument in the initializer doesn't do anything now
-    """
-    def forward(self, input):
-
-        kernel, dilation, stride = self.weight.size()[2], self.dilation[0], self.stride[0]
-        l_out = l_in = input.size()[2]
-        padding = (((l_out - 1) * stride) - l_in + (dilation * (kernel - 1)) + 1)
-        input = F.pad(input, [0, padding % 2])
-        padding = (padding // 2,)
-        output = F.conv2d(input=input, weight=self.weight, bias=self.bias, stride=stride,
-                        padding=padding, dilation=dilation, groups=self.groups)
-        return output
-
-    
-class Conv1dBlock(nn.Module):
-    """One Conv1d + norm + act + dropout with true striding.
-
-    Unlike the legacy same-padding helper (stride-1 assumption), padding
-    here preserves length only when stride == 1.
-    """
-
-    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5, stride: int = 1, dilation: int = 1,
-                 norm: str = "batch", act: str = "gelu", dropout: float = 0.0):
-        super().__init__()
-        # Padding preserves length at stride 1; stride > 1 downsamples by design.
-        self.net = nn.Sequential(
-            Conv1dSamePadding(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
-                                        padding=kernel // 2),
-            make_norm1d(norm, out_ch),
-            make_act(act),
-            nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity(),
-        )
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                _init_weights(m)
-            elif isinstance(m, (nn.BatchNorm1d, nn.InstanceNorm1d, nn.LayerNorm)):
-                _init_weights(m)
+    """Centered padding with output length ceil(input length / stride)."""
 
     def forward(self, x):
-        """Apply convolution, normalization, activation, dropout."""
-        return self.net(x)
+        extent = self.dilation[0] * (self.kernel_size[0] - 1)
+        left = extent // 2
+        return F.conv1d(F.pad(x, (left, extent - left)), self.weight, self.bias,
+                        stride=self.stride, dilation=self.dilation, groups=self.groups)
+
+
+class Conv1dBlock(nn.Module):
+    """One Conv1d + norm + activation + dropout with true striding."""
+
+    def __init__(self, in_ch: int, out_ch: int, kernel: int = 5, stride: int = 1,
+                 dilation: int = 1, norm: str = "batch", act: str = "gelu",
+                 dropout: float = 0.0):
+        super().__init__()
+        extent = dilation * (kernel - 1)
+        # Keep the historical Conv1d path and state keys for odd kernels.
+        conv = nn.Conv1d if extent % 2 == 0 else Conv1dSamePadding
+        self.conv = conv(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
+                         padding=extent // 2 if conv is nn.Conv1d else 0)
+        self.norm = make_norm1d(norm, out_ch)
+        self.act = make_act(act)
+        self.drop = nn.Dropout(float(dropout)) if dropout else nn.Identity()
+        _init_weights(self.conv)
+        _init_weights(self.norm)
+
+    def forward(self, x):
+        return self.drop(self.act(self.norm(self.conv(x))))
+
+
+class Conv2dSamePadding(nn.Conv2d):
+    """Centered 2D padding with true striding on both axes."""
+
+    def forward(self, x):
+        height, width = (rate * (size - 1) for rate, size in zip(self.dilation, self.kernel_size))
+        left, top = width // 2, height // 2
+        x = F.pad(x, (left, width - left, top, height - top))
+        return F.conv2d(x, self.weight, self.bias, stride=self.stride,
+                        dilation=self.dilation, groups=self.groups)
 
 
 class Conv2dBlock(nn.Module):
@@ -135,9 +115,11 @@ class Conv2dBlock(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, kernel: int = 3, stride: int = 1,
                  dilation: int = 1, act: str = "gelu", dropout: float = 0.0):
         super().__init__()
+        extent = dilation * (kernel - 1)
+        conv = nn.Conv2d if extent % 2 == 0 else Conv2dSamePadding
         self.net = nn.Sequential(
-            Conv2dSamePadding(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
-                      padding=kernel // 2),
+            conv(in_ch, out_ch, kernel, stride=stride, dilation=dilation,
+                 padding=extent // 2 if conv is nn.Conv2d else 0),
             nn.BatchNorm2d(out_ch),
             make_act(act),
             nn.Dropout2d(p=dropout) if dropout > 0.0 else nn.Identity()
@@ -158,22 +140,20 @@ class StackedConv1dBlock(nn.Module):
 
     Args:
         in_ch: input channels. out_ch: output channels.
-        depth: total convs in this block (>= 1).
-        kernels: kernel per conv (scalar broadcasts).
-        stride: applied to the FIRST conv only; rest are stride-1.
+        kernels: per-layer kernel sizes, or one kernel for a single convolution.
+        stride: one stride for the first convolution, or a stride per layer.
     """
 
     def __init__(self, in_ch: int, out_ch: int,
                  kernels=(5, 5), stride: int = 2, dilation: int = 1,
                  norm: str = "batch", act: str = "gelu", dropout: float = 0.1):
         super().__init__()
-        ks = list(kernels)
-        st = list(stride)
-        dl = list(dilation)
-        if len(st) == 1:
-            st = st * len(ks)
-        if len(dl) == 1:
-            dl = dl * len(ks)
+        ks = [kernels] if isinstance(kernels, int) else list(kernels)
+        if not ks:
+            raise ValueError("kernels must contain at least one layer")
+        st = [stride] + [1] * (len(ks) - 1) if isinstance(stride, int) else stride
+        st = _per_layer(st, len(ks), "stride")
+        dl = _per_layer(dilation, len(ks), "dilation")
         layers = []
         ch = in_ch
         for i in range(len(ks)):
@@ -199,10 +179,10 @@ class ResNetBlock(nn.Module):
     """
 
     def __init__(self, in_ch: int, out_ch: int, kernels=(7, 5, 3),
-                 residual_kernel: int = 5, norm: str = "batch", act: str = "relu",
-                 dropout: float = 0.0, stride: int = 1):
+                 residual_kernel: int = 5, norm: str = "batch", act: str = "gelu",
+                 dropout: float = 0.0, stride: int = 1, output_act=None):
         super().__init__()
-        self.stride = list(stride)
+        self.stride = int(stride)
         ks = list(kernels)
         chs = [in_ch] + [out_ch] * len(ks)
         self.main = nn.Sequential(
@@ -212,9 +192,9 @@ class ResNetBlock(nn.Module):
               for i, k in enumerate(ks)]
         )
         self.residual = Conv1dBlock(in_ch, out_ch, kernel=int(residual_kernel),
-                                    stride=self.stride, norm=norm, act="identity",
+                                    stride=self.stride, norm=norm, act=act,
                                     dropout=dropout)
-        self.act = make_act(act)
+        self.act = make_act(act if output_act is None else output_act)
 
     def forward(self, x):
         """Add residual branch to main branch, then activate."""
@@ -255,62 +235,22 @@ class CausalConv1dBlock(nn.Module):
         return self.net(x)
 
 
-class Encoder(nn.Module): 
-    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3),
-                 stride=(1, 1, 1), dilation=(1, 1, 1), norm: str = "batch", act: str = "relu", dropout: float = 0.1):
-        super().__init__()
-        ks = list(kernels)
-        chs = [in_dim] + list(hidden_dims)
-        self.net = nn.Sequential(
-            *[
-                Conv1dBlock(chs[i], chs[i + 1], kernel=ks[i], stride=stride[i],
-                            dilation=dilation[i], norm=norm, act=act, dropout=dropout)
-                for i in len(ks)
-            ],
-            nn.Conv1d(chs[-1], out_dims, kernel_size=1)
-        )
-        self.receptive_field = 1 + sum([(k - 1) * d for k, d in zip(kernels, dilation)])
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                _init_weights(m)
-
-    def forward(self, x):
-        x = self.net(x)
-        return x
-
-
-class TCNEncoder(nn.Module): 
-    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3),
-                 stride=(1, 1, 1), dilation=(1, 1, 1), norm: str = "batch", act: str = "relu", dropout: float = 0.1):
-        super().__init__()
-        ks = list(kernels)
-        chs = [in_dim] + list(hidden_dims)
-        self.net = nn.Sequential(
-            *[
-                CausalConv1dBlock(chs[i], chs[i + 1], kernel=ks[i], stride=stride[i], 
-                                  dilation=dilation[i], norm=norm, act=act, dropout=dropout)
-                for i in len(ks)
-            ],
-            nn.Conv1d(chs[-1], out_dims, kernel_size=1)
-        )
-        self.receptive_field = 1 + sum([(k - 1) * d for k, d in zip(kernels, dilation)])
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                _init_weights(m)
-
-    def forward(self, x):
-        x = self.net(x)
-        return x
+def _per_layer(values, count, name):
+    values = [values] * count if isinstance(values, int) else list(values)
+    if len(values) != count or any(type(value) is not int or value < 1 for value in values):
+        raise ValueError(f"{name} needs {count} positive integer values")
+    return values
 
 
 class CrossAttention(nn.Module):
     """Scaled cross attention and reconstruction."""
 
-    def __init__(self, head, qk_channels=8, value_channels=8, num_heads=1,
+    def __init__(self, head=None, qk_channels=8, value_channels=8, num_heads=1,
                  dropout=0.0, input_projection=None, position_encoding="none",
                  position_on="both", position_scale=1.0, diagonal_mask=False):
         super().__init__()
-        if num_heads < 1 or qk_channels % num_heads or value_channels % num_heads:
+        if (min(num_heads, qk_channels, value_channels) < 1
+                or qk_channels % num_heads or value_channels % num_heads):
             raise ValueError("num_heads must divide both qk_channels and value_channels")
         if not 0 <= dropout < 1:
             raise ValueError("attention dropout must be in [0, 1)")
@@ -324,7 +264,7 @@ class CrossAttention(nn.Module):
         if not isinstance(diagonal_mask, bool):
             raise ValueError("diagonal_mask must be true or false")
         self.diagonal_mask = diagonal_mask
-        self.head = head
+        self.head = head if head is not None else nn.Identity()
         self.input_projection = input_projection if input_projection is not None else nn.Identity()
         self.num_heads = num_heads
         self.dropout = dropout
@@ -332,10 +272,10 @@ class CrossAttention(nn.Module):
         self.position_on = position_on
         self.position_scale = float(position_scale)
 
-    def _with_position(self, z: torch.tensor):
+    def _with_position(self, z, start):
         """Add fixed sinusoids in feature-token units, supporting any length/width."""
         channels, length = z.shape[1:]
-        positions = torch.arange(0, length, device=z.device, dtype=z.dtype)
+        positions = torch.arange(start, start + length, device=z.device, dtype=torch.float32)
         frequencies = torch.exp(torch.arange(0, channels, 2, device=z.device,
                                             dtype=torch.float32) * (-math.log(10000.0) / channels))
         angles = frequencies[:, None] * positions[None, :]
@@ -344,16 +284,17 @@ class CrossAttention(nn.Module):
         encoding[1::2] = angles[:channels // 2].cos()
         return z + self.position_scale * encoding.to(z.dtype).unsqueeze(0)
 
-    def forward(self, q, k, v):
-        # Enrich attention addressing only. Keep content Q/K/V unchanged for
-        # SIGReg and the clean Query reconstruction target.
+    def forward(self, q, k, v, *, query_start=0, key_start=0):
+        if (q.ndim != 3 or k.ndim != 3 or v.ndim != 3
+                or q.size(0) != k.size(0) or k.size(0) != v.size(0)
+                or q.size(1) != k.size(1) or k.size(-1) != v.size(-1)
+                or q.size(1) % self.num_heads or v.size(1) % self.num_heads):
+            raise ValueError("attention requires matching Q/K widths and K/V lengths")
         if self.position_encoding != "none" and self.position_scale:
-            if self.position_on in ("query", "both", "all"):
-                q = self._with_position(q)
-            if self.position_on in ("key", "both", "all"):
-                k = self._with_position(k)
-            if self.position_on in ("value", "all"):
-                v = self._with_position(v)
+            if self.position_on in ("query", "both"):
+                q = self._with_position(q, query_start)
+            if self.position_on in ("key", "both"):
+                k = self._with_position(k, key_start)
 
         def heads(z):
             b, c, t = z.shape
@@ -365,7 +306,7 @@ class CrossAttention(nn.Module):
             # crop indices: allow only keys strictly earlier than each query.
             # The first query has no allowed keys; SDPA returns zero there.
             query_indices = torch.arange(q.size(-1), device=q.device)
-            key_indices = torch.arange(q.size(-1), device=q.device)
+            key_indices = torch.arange(k.size(-1), device=q.device)
             attention_mask = key_indices[None, :] < query_indices[:, None]
 
         attended = F.scaled_dot_product_attention(
@@ -385,4 +326,3 @@ class Identity(nn.Module):
 
     def forward(self, x):
         return x
-    

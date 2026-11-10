@@ -1,47 +1,81 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+"""Time-domain feature extractors with explicit channel and stride metadata."""
 
-from models.blocks import ResNetBlock
+import math
+
+from torch import nn
+
+from models.blocks import CausalConv1dBlock, Conv1dBlock, ResNetBlock, _init_weights, _per_layer
+
 
 class ResNetEncoder(nn.Module):
-    """Two-block time-domain encoder, single scale.
-
-    ``enc_strides`` holds one stride per block (default [1, 1]: exact
-    legacy behavior, length-preserving). Total stride S = prod(enc_strides)
-    is exposed as ``level_strides=[S]`` so scorers map tokens back to input
-    steps (token i covers input [i*S, (i+1)*S)). Phase-2 contract: training
-    and inference windows must satisfy ``W % S == 0``; no crop/pad logic
-    lives in the model by design (grilled Q8a).
-    """
-
     def __init__(self, in_channels: int = 38, enc_channels=(32, 64),
-                 kernels=(7, 5, 3), residual_kernel: int = 5, act: str = "relu",
-                 norm: str = "batch", dropout: bool = True,
-                 enc_strides=None):
+                 kernels=(7, 5, 3), residual_kernel: int = 5, act: str = "gelu",
+                 norm: str = "batch", dropout: float = 0.1, enc_strides=None,
+                 output_act=None):
         super().__init__()
-        enc_channels = [in_channels] + list(enc_channels)
-        n_blocks = len(enc_channels) - 1
-        if enc_strides is None:
-            enc_strides = [1] * n_blocks
-        enc_strides = [int(s) for s in enc_strides]
-        assert len(enc_strides) == n_blocks, \
-            f"enc_strides {enc_strides} must match num blocks {n_blocks}"
-        self.enc_strides = list(enc_strides)
-        self.blocks = nn.Sequential(
-            *[ResNetBlock(
-                enc_channels[i], enc_channels[i + 1],
-                kernels=kernels, residual_kernel=residual_kernel, act=act,
-                norm=norm, dropout=dropout, stride=enc_strides[i])
-              for i in range(n_blocks)]
-        )
-        self.output_dims = enc_channels[-1]
-        # Channel ladder (incl. input) for the mirrored recon head.
-        self.channel_ladder = [int(c) for c in enc_channels]
-        self.total_stride = 1
-        for s in self.enc_strides:
-            self.total_stride *= int(s)
+        channels = [in_channels, *enc_channels]
+        self.channel_ladder = channels
+        self.input_dims = in_channels
+        self.output_dims = channels[-1]
+        count = len(enc_channels)
+        if not count:
+            raise ValueError("enc_channels must contain at least one width")
+        self.enc_strides = _per_layer(1 if enc_strides is None else enc_strides,
+                                      count, "enc_strides")
+        self.blocks = nn.Sequential(*[
+            ResNetBlock(channels[index], channels[index + 1], kernels=kernels,
+                        residual_kernel=residual_kernel,
+                        stride=stride, norm=norm, act=act, dropout=dropout,
+                        output_act=output_act if index == count - 1 else None)
+            for index, stride in enumerate(self.enc_strides)
+        ])
+        self.total_stride = math.prod(self.enc_strides)
+        self.level_names = ["L0"]
+        self.level_dims = [self.output_dims]
+        self.level_strides = [self.total_stride]
 
     def forward(self, x):
-        """Encode (B, C, W) -> (B, D, W/S). Requires W % S == 0."""
         return self.blocks(x)
+
+
+class Encoder(nn.Module):
+    """Convolution stack with a linear output projection."""
+
+    block = Conv1dBlock
+
+    def __init__(self, in_dim, hidden_dims, out_dims, kernels=3, stride=1,
+                 dilation=1, norm="batch", act="gelu", dropout=0.0):
+        super().__init__()
+        hidden_dims = list(hidden_dims)
+        count = len(hidden_dims)
+        kernels = _per_layer(kernels, count, "kernels")
+        strides = _per_layer(stride, count, "stride")
+        dilations = _per_layer(dilation, count, "dilation")
+        widths = [in_dim, *hidden_dims]
+        self.input_dims = in_dim
+        self.output_dims = out_dims
+        self.total_stride = math.prod(strides)
+        self.channel_ladder = [*widths, out_dims]
+        self.enc_strides = [*strides, 1]
+        self.net = nn.Sequential(*[
+            self.block(a, b, kernel=kernel, stride=step, dilation=rate,
+                       norm=norm, act=act, dropout=dropout)
+            for a, b, kernel, step, rate in zip(widths, widths[1:], kernels, strides, dilations)
+        ], nn.Conv1d(widths[-1], out_dims, 1))
+        _init_weights(self.net[-1])
+        self.receptive_field = 1 + sum(
+            (kernel - 1) * rate * math.prod(strides[:index])
+            for index, (kernel, rate) in enumerate(zip(kernels, dilations))
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class TCNEncoder(Encoder):
+    """Left-padded temporal encoder. Default normalization is time-local."""
+
+    block = CausalConv1dBlock
+
+    def __init__(self, *args, norm="none", **kwargs):
+        super().__init__(*args, norm=norm, **kwargs)

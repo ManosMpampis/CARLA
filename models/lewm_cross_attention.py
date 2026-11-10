@@ -1,68 +1,293 @@
-"""LEWM (Encoder) -> (Decoder) convolutional Q/V -> attention -> mirrored head.
-                 |-> (Action)  convolution K ------>|
-"""
+"""Frozen LEWM features -> convolutional Q/K/V -> attention -> mirrored head."""
 
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from models.blocks import CrossAttention, StackedConv1dBlock, ResNetBlock, TCNEncoder, Encoder
+from models.blocks import CrossAttention, _init_weights
+from models.input_engines import ForecastEngine
 from models.recon_head import build_mirrored_head
-from utils.reconstruction_scores import reconstruction_score_map
+from utils.reconstruction_scores import normalize_score_mode, reconstruction_score_map
 
 
-class CrossAttentionPredictor(nn.Module):
+class ConvQKVEncoder(nn.Module):
+    """Three length-preserving convolutions, with independent Q/K and V widths."""
 
-    def __init__(self, encoder, action, kernels=(7,5,3), strides=(1, 1, 1), residual_kernel: int = 5,
-                 norm: str = "batch", act: str = "relu", dropout: int = 0.1, attention_heads: int = 1,
-                 input_projection=None, position_encoding="sinusoidal", position_on="both", diagonal_mask: bool = False):
+    def __init__(self, in_channels, qk_channels=8, value_channels=8,
+                 kernel_size=3):
         super().__init__()
-        encoder_output = encoder.output_dims
+        if min(in_channels, qk_channels, value_channels, kernel_size) < 1:
+            raise ValueError("Q/K/V channels and kernel_size must be positive")
+        if kernel_size % 2 != 1:
+            raise ValueError("Q/K/V kernel_size must be odd to preserve length")
+        self.query = nn.Conv1d(in_channels, qk_channels, kernel_size,
+                               padding=kernel_size // 2)
+        self.key = nn.Conv1d(in_channels, qk_channels, kernel_size,
+                             padding=kernel_size // 2)
+        self.value = nn.Conv1d(in_channels, value_channels, kernel_size,
+                               padding=kernel_size // 2)
+        self.apply(_init_weights)
 
-        encoder_type = action.encoder_type
-        action_params = {
-            "in_dim": action.input_dims,
-            "out_dims": action.output_dims,
-            "hidden_dims": action.hiddent_dims,
-            "kernels": action.kernels,
-            "norm": action.norm,
-            "act": action.act,
-            "dropout": action.dropout,
-        }
-        assert encoder_output == action_params["in_dim"], "encoder and action should have the same output dim for cross entropy"
-        self.attention_heads = attention_heads
+    def forward(self, context, query_input):
+        return {"key": self.key(context), "value": self.value(context),
+                "query": self.query(query_input)}
 
-        if encoder_type:
-            self.convK = TCNEncoder(*action_params) # use the same encoder model
-            self.convV = TCNEncoder(*action_params) # use the same encoder model
-        else:
-            self.convK = Encoder(*action_params)
-            self.convV = Encoder(*action_params)
 
-        self.cross_attention = CrossAttention(num_heads=attention_heads, dropout=dropout,
-                                            input_projection=input_projection, position_encoding=position_encoding, 
-                                            position_on=position_on, diagonal_mask=diagonal_mask)
-        kernels = list(kernels)
-        if len(kernels) == 0:
-            self.pred = nn.Identity()
-        else:
-            strides = list(strides)
-            residual_kernel = list(residual_kernel)
-            if len(residual_kernel)==1:
-                residual_kernel = residual_kernel * len(strides)
+class CrossAttentionPredictor(CrossAttention):
+    """Legacy observed/context query adapter with its reconstruction head."""
 
-            if residual_kernel[0]>=0:
-                self.pred = nn.Sequential(*
-                    [
-                        ResNetBlock(encoder_output, encoder_output, kernels=kernels, stride=st, residual_kernel=rk, norm=norm, act=act, dropout=dropout) for st, rk in zip(strides, residual_kernel)
-                    ]
-                )
+    def forward(self, qkv, *, query_start=0):
+        key = qkv["key"]
+        return super().forward(qkv["query"], key, qkv["value"],
+                               query_start=query_start, key_start=-key.size(-1))
+
+
+class GuidedCrossAttentionPredictor(nn.Module):
+    """Use the action's future keys to attend over history-derived values."""
+
+    def __init__(self, in_dim, qk_channels=8, value_channels=8, num_heads=1,
+                 dropout=0.0, position_encoding="sinusoidal", diagonal_mask=False):
+        super().__init__()
+        self.query = nn.Conv1d(in_dim, qk_channels, 1)
+        self.value = nn.Conv1d(in_dim, value_channels, 1)
+        self.to_latent = nn.Conv1d(value_channels, in_dim, 1)
+        self.attention = CrossAttention(qk_channels=qk_channels, value_channels=value_channels,
+                                        num_heads=num_heads, dropout=dropout,
+                                        position_encoding=position_encoding,
+                                        diagonal_mask=diagonal_mask)
+        self.apply(_init_weights)
+
+    def predict(self, current, action, *, target_tokens, query_start=0):
+        return self(current, action, target_tokens=target_tokens, query_start=query_start)
+
+    def forward(self, current, action, *, target_tokens, query_start=0):
+        history = F.interpolate(current, size=target_tokens, mode="linear", align_corners=False)
+        attended = self.attention(q=self.query(history), k=action.key, v=self.value(history),
+                                  query_start=query_start, key_start=query_start)
+        return self.to_latent(attended)
+
+
+class CrossAttentionLeWM(nn.Module):
+    """Two crop LEWM with a fixed feature extractor and trainable Q/K/V encoder.
+
+    Crop intervals are half-open feature token indices. Omitted intervals split in half.
+    ``observed`` obtains Query from the second crop (conditional reconstruction).
+    ``context`` obtains Query from the first crop (past-only forecasting).
+    Separate extraction isolates receptive fields; full extraction is available
+    for the observed arm to literally crop one full-window feature map.
+    """
+
+    def __init__(self, encoder, freeze_encoder=True, target="features", query_source="observed",
+                 context_crop=None, target_crop=None, feature_extraction="separate",
+                 qk_channels=8, value_channels=8, kernel_size=3, num_heads=1,
+                 attention_dropout=0.0, head_channels=None, norm="batch",
+                 dropout=0.0, score_mode="l1", position_encoding="none",
+                 position_on="both", position_scale=1.0, diagonal_mask=False):
+        super().__init__()
+        if target not in ("features", "input", "query"):
+            raise ValueError("target must be features, input, or query")
+        if query_source not in ("observed", "context"):
+            raise ValueError("query_source must be observed or context")
+        if feature_extraction not in ("separate", "full"):
+            raise ValueError("feature_extraction must be separate or full")
+        if query_source == "context" and feature_extraction != "separate":
+            raise ValueError("forecasting requires separate feature extraction to prevent future leakage")
+        if (context_crop is None) != (target_crop is None):
+            raise ValueError("set both context_crop and target_crop, or neither")
+        self.context_crop = self._interval(context_crop)
+        self.target_crop = self._interval(target_crop)
+        self.encoder = encoder
+        if not isinstance(freeze_encoder, bool):
+            raise ValueError("freeze_encoder must be true or false")
+        self.encoder_frozen = freeze_encoder
+        self.encoder.requires_grad_(not freeze_encoder)
+        if freeze_encoder:
+            self.encoder.eval()
+        self.target = target
+        self.query_source = query_source
+        self.feature_extraction = feature_extraction
+        self.total_stride = int(encoder.total_stride)
+        self.qkv_encoder = ConvQKVEncoder(encoder.output_dims, qk_channels,
+                                         value_channels, kernel_size)
+        out_channels = {"features": encoder.output_dims,
+                        "input": encoder.channel_ladder[0], "query": qk_channels}[target]
+        # Accept old configs only when they agree with the automatic mirror.
+        # The encoder's deepest width must never become the attention width.
+        if head_channels is not None and list(head_channels) != list(encoder.channel_ladder[1:-1]):
+            raise ValueError("head_channels is derived from the encoder; remove the override")
+        head = build_mirrored_head(encoder, norm=norm, dropout=dropout,
+                                   out_channels=out_channels, upsample=target == "input")
+        input_projection = nn.Conv1d(value_channels, encoder.output_dims, kernel_size=1) \
+            if value_channels != encoder.output_dims else nn.Identity()
+        input_projection.apply(_init_weights)
+        self.predictor = CrossAttentionPredictor(head, qk_channels, value_channels,
+                                                 num_heads, attention_dropout,
+                                                 input_projection=input_projection,
+                                                 position_encoding=position_encoding,
+                                                 position_on=position_on,
+                                                 position_scale=position_scale,
+                                                 diagonal_mask=diagonal_mask)
+        self.score_mode = normalize_score_mode(score_mode)
+        self.level_names = ["L0"]
+        self.level_dims = [value_channels]
+        self.level_strides = [self.total_stride]
+        self.target_encoder = None
+        self.codebook = None
+        self.anti_collapse = "sigreg"
+        # Persist task semantics as well as weights: equal-shaped arms must
+        # not silently resume/score with a different Query source or crop.
+        self._task = dict(target=target, query_source=query_source,
+                          feature_extraction=feature_extraction,
+                          context_crop=self.context_crop, target_crop=self.target_crop,
+                          qk_channels=qk_channels, value_channels=value_channels,
+                          kernel_size=kernel_size, num_heads=num_heads,
+                          attention_dropout=attention_dropout,
+                          position_encoding=position_encoding,
+                          position_on=position_on, position_scale=float(position_scale),
+                          diagonal_mask=diagonal_mask,
+                          attention_mask_layout="local_strict_lower_v1" if diagonal_mask else None,
+                          reconstructor="encoder_mirror_v2",
+                          freeze_encoder=freeze_encoder, norm=norm, dropout=dropout,
+                          total_stride=self.total_stride,
+                          enc_strides=list(encoder.enc_strides),
+                          channel_ladder=list(encoder.channel_ladder))
+
+    @staticmethod
+    def _interval(crop):
+        if crop is None:
+            return None
+        if (not isinstance(crop, (list, tuple)) or len(crop) != 2
+                or any(type(v) is not int for v in crop)
+                or not 0 <= crop[0] < crop[1]):
+            raise ValueError("crops must be integer [start, end] with 0 <= start < end")
+        return tuple(crop)
+
+    def get_extra_state(self):
+        return self._task
+
+    def set_extra_state(self, state):
+        # Checkpoints predating positional attention retain their original
+        # no-position behavior; enabled/changed positional tasks cannot resume them.
+        state = {"position_encoding": "none", "position_on": "both",
+                 "position_scale": 1.0, "diagonal_mask": False,
+                 "attention_mask_layout": None, **state}
+        if state != self._task:
+            raise ValueError(f"checkpoint task differs from configured task: {state} != {self._task}")
+
+    def train(self, mode=True):
+        super().train(mode)
+        if self.encoder_frozen:
+            self.encoder.eval()
+        return self
+
+    @staticmethod
+    def resolve_crop_ranges(window, stride, context_crop=None, target_crop=None):
+        def raw(crop):
+            crop = ForecastEngine._interval(crop)
+            return None if crop is None else tuple(edge * stride for edge in crop)
+
+        context, target = ForecastEngine(stride, context_crop=raw(context_crop),
+                                         target_crop=raw(target_crop)).resolve_crop_ranges(window)
+        return tuple(i // stride for i in context), tuple(i // stride for i in target)
+
+    def crop_ranges(self, window):
+        return self.resolve_crop_ranges(window, self.total_stride, self.context_crop, self.target_crop)
+
+    def target_input_range(self, window):
+        _, (a, b) = self.crop_ranges(window)
+        return a * self.total_stride, b * self.total_stride
+
+    def _features(self, x):
+        context, target = self.crop_ranges(x.size(-1))
+        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.encoder_frozen):
+            if self.feature_extraction == "full":
+                z = self.encoder(x)
+                return z[..., context[0]:context[1]], z[..., target[0]:target[1]]
+            s = self.total_stride
+            return (self.encoder(x[..., context[0]*s:context[1]*s]),
+                    self.encoder(x[..., target[0]*s:target[1]*s]))
+
+    def _qkv(self, context, second):
+        query_input = second if self.query_source == "observed" else F.interpolate(
+            context, size=second.size(-1), mode="linear", align_corners=False)
+        return self.qkv_encoder(context, query_input)
+
+    def _query_start(self):
+        """Target offset from the context's exclusive end, in feature tokens."""
+        return 0 if self.target_crop is None else self.target_crop[0] - self.context_crop[1]
+
+    def forward(self, x, mask=None, action=None):
+        if action is not None:
+            raise ValueError("use mask with input or X_inj for injected LEWM training")
+        first, second = self._features(x)
+        clean_qkv = self.qkv_encoder(first, second)
+        if mask is not None:
+            if "X_inj" in mask:
+                injected = mask["X_inj"].to(device=x.device, dtype=x.dtype)
+                if injected.shape != x.shape:
+                    raise ValueError("X_inj must have the same shape as input")
             else:
-                self.pred = StackedConv1dBlock(encoder_output, encoder_output, kernels=kernels, strides=strides, norm=norm, act=act, dropout=dropout)
+                injected = x.masked_fill(mask["input"].to(x.device).bool().unsqueeze(1), 0)
+            inj_first, inj_second = self._features(injected)
+        else:
+            inj_first, inj_second = first, second
+        qkv = self._qkv(inj_first, inj_second)
+        prediction = self.predictor(qkv, query_start=self._query_start())
+        a, b = self.target_input_range(x.size(-1))
+        target = {"features": second, "input": x[..., a:b],
+                  "query": clean_qkv["query"]}[self.target]
+        return {"recon": prediction, "target": target,
+                "qkv": qkv, "clean_qkv": clean_qkv,
+                "context": {"L0": qkv["value"]},
+                "latents": {"L0": clean_qkv["value"]},
+                "targets": {"L0": target}, "predicted": {"L0": prediction}}
 
-    def forward(self, kv, q):
-        # query should come from action
-        key = self.convK(kv["key"])
-        value = self.convV(kv["value"])
+    @torch.no_grad()
+    def predict_next(self, context, target_tokens=None):
+        """Forecast from ONLY the raw context crop; output uses this arm's domain."""
+        if self.query_source != "context":
+            raise ValueError("predict_next requires query_source=context; observed Query needs the next crop")
+        was_training = self.training
+        self.eval()
+        try:
+            if context.size(-1) % self.total_stride:
+                raise ValueError("context length must be divisible by feature stride")
+            first = self.encoder(context.float())
+            if target_tokens is None:
+                if self.target_crop is None:
+                    target_tokens = first.size(-1)
+                else:
+                    target_tokens = self.target_crop[1] - self.target_crop[0]
+            if type(target_tokens) is not int or target_tokens < 1:
+                raise ValueError("target_tokens must be a positive integer")
+            query_input = F.interpolate(first, size=target_tokens, mode="linear",
+                                        align_corners=False)
+            return self.predictor(self.qkv_encoder(first, query_input),
+                                  query_start=self._query_start())
+        finally:
+            self.train(was_training)
 
-        x = self.cross_attention(key.clone(), q.clone(), value.clone())
-        x = self.pred(x)
-        return x
+    @torch.no_grad()
+    def score(self, x):
+        """Return only the target crop's score map, always in input timesteps."""
+        was_training = self.training
+        self.eval()
+        try:
+            with torch.autocast(device_type=x.device.type, enabled=False):
+                out = self(x.float())
+                fused, _ = reconstruction_score_map(out["recon"], out["target"], self.score_mode)
+                if self.target != "input":
+                    fused = fused.repeat_interleave(self.total_stride, dim=-1)
+                return {"fused": fused, "levels": {"L0": fused}, "signals": {}}
+        finally:
+            self.train(was_training)
+
+    def update_ema(self):
+        """No teacher in LEWM."""
+
+    def update_running_stats(self, latents):
+        """No additional running statistics."""
+
+    def latent_variance(self, latents):
+        z = latents["L0"]
+        return z.transpose(1, 2).reshape(-1, z.size(1)).var(dim=0, unbiased=False).mean().item()

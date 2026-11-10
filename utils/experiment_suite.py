@@ -36,11 +36,11 @@ class Experiment:
 
 # Existing training entries remain the authority for their training behavior.
 RUNNERS = {
-    "ae": ("utils.reconstruction_baselines:train_arm", "models.builders:get_ae_model", "best_validation_loss.pth.tar"),
-    "vae": ("utils.reconstruction_baselines:train_arm", "models.builders:get_vae_model", "best_validation_loss.pth.tar"),
-    "lewm": ("lewm:main", "models.builders:get_lewm_model", "model.pth.tar"),
-    "recon": ("lewm_reconstruction:main", "models.builders:get_recon_model", "model.pth.tar"),
-    "cross_attention": ("lewm_cross_attention:main", "models.builders:get_cross_attention_model", "model.pth.tar"),
+    "ae": ("utils.reconstruction_baselines:train_arm", "models:get_ae_model", "best_validation_loss.pth.tar"),
+    "vae": ("utils.reconstruction_baselines:train_arm", "models:get_vae_model", "best_validation_loss.pth.tar"),
+    "lewm": ("lewm:main", "models:get_lewm_model", "model.pth.tar"),
+    "recon": ("lewm_reconstruction:main", "models:get_recon_model", "model.pth.tar"),
+    "cross_attention": ("lewm_cross_attention:main", "models:get_cross_attention_model", "model.pth.tar"),
 }
 
 
@@ -293,14 +293,13 @@ def score_experiment(exp, env_path, version, *, fname=None, output_dir=None):
     return score_config(p, exp)
 
 
-def score_config(p, exp):
+def score_config(p, exp, *, model=None, datasets=None):
     """All score entry points share artifacts and never open TensorBoard."""
     import torch
     from data.jepa_dataset import JEPADataset
     from utils.common_config import get_jepa_datasets
-    from utils.reconstruction_baselines import (evaluate_from_scores,
-                                               evaluate_non_overlap_window, score_both)
-    from utils.scoring import evaluation_options
+    from utils.reconstruction_baselines import evaluate_aggregations
+    from utils.scoring import model_evaluation_options
     from utils.trainer import Trainer
     if isinstance(exp, str):
         exp = Experiment(p.get("framework", exp), p.get("experiment_name", "default"),
@@ -311,7 +310,7 @@ def score_config(p, exp):
     p = dict(p)
     if exp.runner == "recon":
         p["score_aux_crop"] = False
-    model = _build_model(exp, p).to(device)
+    model = (_build_model(exp, p) if model is None else model).to(device)
     weights = Path(p.get("score_checkpoint") or Path(p["jepa_dir"]) / RUNNERS[exp.runner][2])
     if not weights.is_file():
         raise FileNotFoundError(f"validation-selected checkpoint missing: {weights}")
@@ -334,8 +333,9 @@ def score_config(p, exp):
                 raise ValueError("evaluation segment lengths must be positive multiples of encoder stride")
             if int(geometry.get("input_window", p["wsz"])) != context_length + target_length:
                 raise ValueError("input_window must equal context_length + target_length")
-            model.context_crop = (0, context_length)
-            model.target_crop = (context_length, context_length + target_length)
+            model.context_crop = (0, context_length // model.total_stride)
+            model.target_crop = (context_length // model.total_stride,
+                                 (context_length + target_length) // model.total_stride)
         if "context_crop" in geometry or "target_crop" in geometry:
             if not {"context_crop", "target_crop"} <= geometry.keys():
                 raise ValueError("evaluation needs both context_crop and target_crop")
@@ -343,15 +343,24 @@ def score_config(p, exp):
             target = model._interval(geometry["target_crop"])
             if (context is None) != (target is None):
                 raise ValueError("evaluation crops must both be null or both be intervals")
+            if context is not None:
+                step = model.total_stride
+                if any(edge % step for edge in (*context, *target)):
+                    raise ValueError("evaluation crops must align to the feature stride")
+                context = tuple(edge // step for edge in context)
+                target = tuple(edge // step for edge in target)
             model.context_crop, model.target_crop = context, target
         options = scoring_options(p, model)
     else:
         if {"context_crop", "target_crop", "context_length", "target_length"} & (p.get("evaluation", {}) or {}).keys():
             raise ValueError("evaluation crops require the cross_attention runner")
-        options = evaluation_options(p)
+        options = model_evaluation_options(p, model)
     window, stride = options.pop("wsz"), options.pop("stride")
-    train_dataset, _ = get_jepa_datasets(p)
-    test_dataset = JEPADataset(p, train=False)
+    if datasets is None:
+        train_dataset, _ = get_jepa_datasets(p)
+        test_dataset = JEPADataset(p, train=False)
+    else:
+        train_dataset, test_dataset = datasets
 
     class InputResolutionScores:
         """LEWM's native map is latent-resolution when its encoder downsamples."""
@@ -365,7 +374,7 @@ def score_config(p, exp):
 
         def score(self, x):
             output = model.score(x)
-            if exp.runner == "lewm":
+            if exp.runner == "lewm" and not getattr(model, "score_input_resolution", False):
                 step = int(model.level_strides[0])
                 output["fused"] = output["fused"].repeat_interleave(step, dim=-1)
                 output["levels"] = {
@@ -377,28 +386,21 @@ def score_config(p, exp):
             return output
 
     scorer_model = InputResolutionScores()
-    batch_size = int(p.get("score_batch_size", p["batch_size"]))
     benchmark = p.get("inference_benchmark", False)
     inference_speed = None
     if benchmark is not False and benchmark is not None:
         from utils.inference_benchmark import benchmark_inference
 
         inference_speed = benchmark_inference(
-            scorer_model, test_dataset.series, window, batch_size, device,
+            scorer_model, test_dataset.series, window,
+            int(p.get("score_batch_size", p["batch_size"])), device,
             {} if benchmark is True else benchmark)
-    clean = score_both(scorer_model, train_dataset.full_train_series, window, stride,
-                       batch_size, device, **options)
-    test = score_both(scorer_model, test_dataset.series, window, stride,
-                      batch_size, device, **options)
     quantile = float(p.get("calibration_kwargs", {}).get(
         "quantile", p.get("calibration_quantile", 0.995)))
-    evaluation = evaluate_from_scores(clean, test, test_dataset.targets,
-                                      {**p, "calibration_quantile": quantile})
-    non_overlap, _, non_overlap_test, non_overlap_stride = evaluate_non_overlap_window(
+    evaluation, test, non_overlap_test, non_overlap_stride = evaluate_aggregations(
         scorer_model, train_dataset.full_train_series, test_dataset.series, test_dataset.targets,
         {**p, "calibration_quantile": quantile}, device,
         options={"wsz": window, "stride": stride, **options})
-    evaluation["non_overlap_window"] = non_overlap
     thresholds = {name: values["calibrated"]["threshold"]
                   for name, values in evaluation.items()}
     report = {
@@ -416,22 +418,33 @@ def score_config(p, exp):
                      "total_timesteps": len(test_dataset.series),
                      "first_scored_timestep": int(test["starts"].min()),
                      "input_window": window,
-                     "output_window": int(test["ends"][0] - test["starts"][0]),
-                     "non_overlap_window": {
-                         "stride": non_overlap_stride,
-                         "window_count": len(non_overlap_test["window_scores"]),
-                         "scored_timesteps": int((non_overlap_test["cover_counts"] > 0).sum()),
-                         "total_timesteps": len(test_dataset.series),
-                         "include_last_window": False}},
+                     "output_window": int(test["ends"][0] - test["starts"][0])},
     }
+    if non_overlap_test is not None:
+        report["coverage"]["non_overlap_window"] = {
+            "stride": non_overlap_stride,
+            "window_count": len(non_overlap_test["window_scores"]),
+            "scored_timesteps": int((non_overlap_test["cover_counts"] > 0).sum()),
+            "total_timesteps": len(test_dataset.series),
+            "include_last_window": False,
+        }
     if exp.runner == "cross_attention":
         context, target = model.crop_ranges(window)
         report["evaluation_settings"].update(
-            context_crop=model.context_crop, target_crop=model.target_crop,
+            context_crop=[edge * model.total_stride for edge in context],
+            target_crop=[edge * model.total_stride for edge in target],
             crop_units="input timesteps", total_stride=model.total_stride,
             context_length=(context[1] - context[0]) * model.total_stride,
             target_length=(target[1] - target[0]) * model.total_stride,
             query_source=model.query_source)
+    if exp.runner == "lewm" and options["check_mask"] is not None and "lewm_modules" in p:
+        from models.input_engines import ForecastEngine
+
+        if isinstance(model.engine, ForecastEngine):
+            context, target = model.engine.resolve_crop_ranges(window)
+            report["evaluation_settings"].update(
+                context_crop=list(context), target_crop=list(target), crop_units="input timesteps",
+                total_stride=model.total_stride, conditioning="observed_future_key")
     if inference_speed is not None:
         report["inference_speed"] = inference_speed
     if exp.runner == "recon":
@@ -441,16 +454,15 @@ def score_config(p, exp):
         p["jepa_dir"], evaluation, test, test_dataset.targets, non_overlap_test)
     # Replay is an explicit debugging artifact; regular evaluation uses
     # bounded final score figures and never rescans every window for a replay.
-    if isinstance(p.get("decision_trace"), dict) and p["decision_trace"].get("enabled", False):
+    if ("timeseries" in thresholds and isinstance(p.get("decision_trace"), dict)
+            and p["decision_trace"].get("enabled", False)):
         from utils.decision_trace import write_final_decision_trace
         report["decision_trace"] = write_final_decision_trace(
             scorer_model, device, test_dataset.series, p, thresholds["timeseries"],
             options={"wsz": window, "stride": stride, **options},
             threshold_operator="gt", labels=test_dataset.targets)
     calibration = {"source": "full training series", "quantile": quantile,
-                   "window_threshold": thresholds["window"],
-                   "timeseries_threshold": thresholds["timeseries"],
-                   "non_overlap_window_threshold": thresholds["non_overlap_window"]}
+                   **{f"{mode}_threshold": value for mode, value in thresholds.items()}}
     for path, payload in ((p["metrics_path"], report), (p["calibration_path"], calibration)):
         with open(path, "w") as stream:
             json.dump(payload, stream, indent=2)

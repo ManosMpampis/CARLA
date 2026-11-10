@@ -34,16 +34,21 @@ class ReconstructionBaseline(nn.Module):
     def total_stride(self) -> int:
         return self.encoder.total_stride
 
-    def forward(self, x: torch.Tensor, sample: bool | None = None) -> dict:
+    def forward(self, x: torch.Tensor, sample: bool | None = None, *, mask=None, action=None) -> dict:
+        if mask is not None or action is not None:
+            raise ValueError("AE and VAE do not use masks or actions")
         h = self.encoder(x)
-        if not self.variational:
-            return {"recon": self.decoder(h), "mu": None, "logvar": None, "latent": h}
-        mu = self.mu(h)
-        logvar = self.logvar(h).clamp(-20.0, 20.0)
-        if sample is None:
-            sample = self.training
-        z = mu + torch.randn_like(mu) * torch.exp(0.5 * logvar) if sample else mu
-        return {"recon": self.decoder(z), "mu": mu, "logvar": logvar, "latent": mu}
+        if self.variational:
+            mu = self.mu(h)
+            logvar = self.logvar(h).clamp(-20.0, 20.0)
+            sample = self.training if sample is None else sample
+            z = mu + torch.randn_like(mu) * torch.exp(0.5 * logvar) if sample else mu
+            latent = mu
+        else:
+            mu = logvar = None
+            z = latent = h
+        return {"recon": self.decoder(z), "target": x, "mu": mu, "logvar": logvar,
+                "latent": latent, "latents": latent}
 
     @torch.no_grad()
     def score(self, x: torch.Tensor) -> dict:
@@ -58,7 +63,10 @@ class ReconstructionBaseline(nn.Module):
 
 def reconstruction_objective(outputs: dict, target: torch.Tensor,
                              beta: float) -> dict:
-    mse = (outputs["recon"] - target).square().mean()
+    recon = outputs["recon"]
+    if recon.shape != target.shape:
+        raise ValueError(f"reconstruction {recon.shape} must match target {target.shape}")
+    mse = (recon.float() - target.float()).square().mean()
     if outputs["mu"] is None:
         kl = mse.new_zeros(())
     else:

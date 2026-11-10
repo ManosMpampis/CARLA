@@ -115,13 +115,85 @@ def experiment_base_dir(root_dir, config, fname, version):
     return os.path.join(dataset_dir, *run_parts, *series_parts)
 
 
+def _training_sections(config):
+    """Map grouped training YAML onto the existing runtime settings."""
+    if "train_hyperparameters" not in config and "data" not in config:
+        return config
+    p = dict(config)
+    framework = p.get("framework")
+    if framework not in ("ae", "vae", "lewm"):
+        raise ValueError("framework must be ae, vae, or lewm")
+
+    data = dict(p.pop("data", {}))
+    for source, target in (("name", "train_db_name"), ("file", "fname"),
+                           ("root", "dataset_root"), ("window", "wsz")):
+        if source in data:
+            data[target] = data.pop(source)
+    p.update(data)
+    for key in ("train_db_name", "wsz", "stride"):
+        if key not in p:
+            raise ValueError(f"data requires {key}")
+    p.setdefault("val_db_name", p["train_db_name"])
+
+    training = dict(p.pop("train_hyperparameters", {}))
+    for kind, default in (("optimizer", "adamw"), ("scheduler", "constant")):
+        options = training.pop(kind, {"name": default})
+        if isinstance(options, str):
+            options = {"name": options}
+        options = dict(options)
+        training[kind] = options.pop("name", default)
+        training[f"{kind}_kwargs"] = options
+    training["optimizer_kwargs"].setdefault("lr", 1e-3)
+    p.update(training)
+    for key, default in (("setup", "jepa"), ("batch_size", 32), ("num_workers", 0),
+                         ("epochs", 1)):
+        p.setdefault(key, default)
+
+    loss = dict(p.pop("loss", {}))
+    default_loss = "lewm" if framework == "lewm" else "reconstruction"
+    p["criterion"] = loss.pop("name", default_loss)
+    if p["criterion"] == "reconstruction":
+        loss.setdefault("beta", 0.3 if framework == "vae" else 0.0)
+    p["criterion_kwargs"] = loss
+
+    scorer = dict(p.pop("scorer", {}))
+    p["score_mode"] = scorer.pop("mode", "l1")
+    calibration = dict(p.get("calibration_kwargs", {}))
+    quantile = calibration.get("quantile", p.get("calibration_quantile", 0.99))
+    p["calibration_quantile"] = scorer.pop("calibration_quantile", quantile)
+    if calibration:
+        p["calibration_kwargs"] = {**calibration, "quantile": p["calibration_quantile"]}
+    if framework == "lewm":
+        modules = {role: p.pop(role) for role in
+                   ("engine", "backbone", "encoder", "action", "predictor", "head") if role in p}
+        if "domain" in scorer:
+            modules["score_domain"] = scorer.pop("domain")
+        if "name" in scorer:
+            modules["score_fn"] = scorer.pop("name")
+        p["lewm_modules"] = modules
+    else:
+        encoder = dict(p.pop("encoder", {}))
+        p["backbone"] = encoder.pop("name", "resnet")
+        p["model_kwargs"] = encoder
+        head = dict(p.pop("head", {}))
+        if head.pop("name", "mirrored") != "mirrored":
+            raise ValueError("AE and VAE use the mirrored reconstruction head")
+        p["recon_kwargs"] = head
+        p["arm"] = framework
+        if scorer.pop("domain", "raw") != "raw" or scorer.pop("name", "residual") != "residual":
+            raise ValueError("AE and VAE use raw residual scores")
+    if scorer:
+        raise ValueError(f"unknown scorer options: {', '.join(scorer)}")
+    return p
+
+
 def create_config(config_file_env, config_file_exp, fname, version=None, update_dictionary=None,
                   *, output_dir=None):
     # Config for environment path
     with open(config_file_env, 'r') as stream:
         root_dir = yaml.safe_load(stream)['root_dir']
    
-    config = load_experiment_config(config_file_exp)
+    config = _training_sections(load_experiment_config(config_file_exp))
     
     cfg = EasyDict()
    
@@ -156,53 +228,18 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
     cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
 
-    if cfg['setup'] == 'jepa':
-        jepa_tag = cfg.get('tag_jepa', None)
-        cfg['jepa_tag'] = ("_"+jepa_tag) if jepa_tag else ""
-        jepa_dir = base_dir if output_dir is not None else os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
-        mkdir(base_dir)
-        mkdir(jepa_dir)
-        cfg['jepa_dir'] = jepa_dir
-        cfg['jepa_checkpoint'] = os.path.join(jepa_dir, 'checkpoint.pth.tar')
-        cfg['jepa_model'] = os.path.join(jepa_dir, 'model.pth.tar')
-        cfg['jepa_model_best'] = os.path.join(jepa_dir, "model_best_eval.pth.tar")
-        cfg['calibration_path'] = os.path.join(jepa_dir, 'calibration.json')
-        cfg['scores_path'] = os.path.join(jepa_dir, 'scores.npz')
-        cfg['metrics_path'] = os.path.join(jepa_dir, 'metrics.json')
-
-    if cfg['setup'] in ['classification', 'classification_e2e']:
-        classification_tag = cfg.get('tag_class', None)
-        cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
-        classification_dir = os.path.join(base_dir, f'classification{cfg['classification_tag']}')
-        mkdir(base_dir)
-        mkdir(classification_dir)
-        cfg['classification_dir'] = classification_dir
-        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
-        cfg['classification_checkpoint_last'] = os.path.join(classification_dir, 'checkpoint_last.pth.tar')
-        cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')
-        cfg['classification_trainfeatures'] = os.path.join(classification_dir, 'classification_traintfeatures.csv')
-        cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')
-        cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')
-        cfg['classification_testprobs'] = os.path.join(classification_dir, 'classification_testprobs.csv')
-        # Evaluation paths
-        mkdir(os.path.join(classification_dir, 'best'))
-        cfg['eval_train_csl'] = os.path.join(classification_dir, 'best', 'eval_train_cls.csv')
-        cfg['eval_train_best'] = os.path.join(classification_dir, 'best', 'eval_train_best.csv')
-        cfg['eval_test_cls'] = os.path.join(classification_dir, 'best', 'eval_test_cls.csv')
-        cfg['eval_test_best'] = os.path.join(classification_dir, 'best', 'eval_test_best.csv')
-        cfg['eval_test_train_th'] = os.path.join(classification_dir, 'best', 'eval_test_train_th.csv')
-        cfg['eval_tstest_cls'] = os.path.join(classification_dir, 'best', 'eval_timeseries_cls.csv')
-        cfg['eval_tstest_best'] = os.path.join(classification_dir, 'best', 'eval_timeseries_best.csv')
-        cfg['eval_tstest_trainth'] = os.path.join(classification_dir, 'best', 'eval_timeseries_train_th.csv')
-        mkdir(os.path.join(classification_dir, 'cls'))
-        cfg['clseval_train_csl'] = os.path.join(classification_dir, 'cls', 'eval_train_cls.csv')
-        cfg['clseval_train_best'] = os.path.join(classification_dir, 'cls', 'eval_train_best.csv')
-        cfg['clseval_test_cls'] = os.path.join(classification_dir, 'cls', 'eval_test_cls.csv')
-        cfg['clseval_test_best'] = os.path.join(classification_dir, 'cls', 'eval_test_best.csv')
-        cfg['clseval_test_train_th'] = os.path.join(classification_dir, 'cls', 'eval_test_train_th.csv')
-        cfg['clseval_tstest_cls'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_cls.csv')
-        cfg['clseval_tstest_best'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_best.csv')
-        cfg['clseval_tstest_trainth'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_train_th.csv')
+    jepa_tag = cfg.get('tag_jepa', None)
+    cfg['jepa_tag'] = ("_"+jepa_tag) if jepa_tag else ""
+    jepa_dir = base_dir if output_dir is not None else os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
+    mkdir(base_dir)
+    mkdir(jepa_dir)
+    cfg['jepa_dir'] = jepa_dir
+    cfg['jepa_checkpoint'] = os.path.join(jepa_dir, 'checkpoint.pth.tar')
+    cfg['jepa_model'] = os.path.join(jepa_dir, 'model.pth.tar')
+    cfg['jepa_model_best'] = os.path.join(jepa_dir, "model_best_eval.pth.tar")
+    cfg['calibration_path'] = os.path.join(jepa_dir, 'calibration.json')
+    cfg['scores_path'] = os.path.join(jepa_dir, 'scores.npz')
+    cfg['metrics_path'] = os.path.join(jepa_dir, 'metrics.json')
         
 
     if "res_kwargs" in cfg:

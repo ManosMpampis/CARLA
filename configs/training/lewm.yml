@@ -1,0 +1,17 @@
+extends: ae.yml
+framework: lewm
+experiment_name: masked_frequency
+
+engine: {name: mask, mask_type: injection}
+encoder:
+  output_act: identity
+action:
+  name: masked
+  aux_input: raw
+  aux: {aux_channels: [32, 32, 32]}
+predictor:
+  name: frequency
+  stem_channels: 32
+  neck_widths: [64, 96, 128]
+scorer: {domain: raw}
+loss: {name: lewm, w_aux: 1.0, w_recon: 1.0}

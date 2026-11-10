@@ -1,4 +1,8 @@
 """Factories shared by LeWM pretraining and reconstruction."""
+
+import random
+
+import numpy as np
 import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 
@@ -6,11 +10,26 @@ from utils.collate import collate_custom
 
 
 CRITERION_BUILDERS = {
+    "reconstruction": "losses.reconstruction:ReconstructionObjective",
     "lewm_rec_ca": "losses.lewm_rec_ca:RecCALoss",
     "recon_l1": "losses.reconstruction:ReconL1Loss",
     "lewm": "losses.lewm:LeWMLoss",
     "lewm_cross_attention": "losses.lewm_cross_attention:CrossAttentionLeWMLoss",
 }
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def get_device(config):
+    device = str(config.get("device", "cpu")).lower()
+    return torch.device("cpu" if device.startswith("cuda") and not torch.cuda.is_available() else device)
 
 
 def get_criterion(p):
@@ -22,7 +41,11 @@ def get_criterion(p):
         raise ValueError("Invalid criterion {}".format(name))
     module_name, class_name = CRITERION_BUILDERS[name].split(":")
     cls = getattr(importlib.import_module(module_name), class_name)
-    return cls(**p["criterion_kwargs"])
+    options = dict(p.get("criterion_kwargs", {}))
+    if name == "lewm" and "lewm_modules" in p:
+        options = {"loss2_kind": "l1", "mask_loss_kind": "bce", "w_aux": 0.0,
+                   "require_mask": True, **options}
+    return cls(**options)
 
 
 def get_jepa_datasets(p):
@@ -81,7 +104,7 @@ def get_optimizer(p, model, cluster_head_only=False):
                 param.requires_grad = False
         params = list(filter(lambda p: p.requires_grad, model.parameters()))
     else:
-        params = model.parameters()
+        params = getattr(model, "optimizer_parameters", model.parameters)()
 
     if p["optimizer"].lower() == "sgd":
         optimizer = torch.optim.SGD(params, **p["optimizer_kwargs"])

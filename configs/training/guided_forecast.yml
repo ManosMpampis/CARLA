@@ -1,0 +1,30 @@
+extends: ae.yml
+framework: lewm
+experiment_name: guided_forecast
+
+engine:
+  name: forecast
+  context_crop: [0, 320]
+  target_crop: [320, 512]
+backbone:
+  name: resnet
+  enc_channels: [32, 64, 128]
+  enc_strides: [2, 2, 2]
+  output_act: identity
+  pretrained_from: results/smd/lewm/masked_frequency/machine-1-1.txt/jepa/model.pth.tar
+encoder:
+  enc_channels: [64]
+  enc_strides: [1]
+  output_act: identity
+action:
+  name: tcn
+  hidden_dims: [32, 32, 32]
+  dilation: [1, 2, 4]
+predictor:
+  name: cross_attention
+  qk_channels: 16
+  value_channels: 32
+  num_heads: 4
+head: null
+scorer: {domain: latent}
+loss: {name: lewm}

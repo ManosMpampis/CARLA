@@ -1,0 +1,41 @@
+extends: ../frequency_aux/phase1.yml
+framework: lewm_composable
+phase1_experiment: null
+experiment_name: masked_frequency
+experiment_description: "Masked latent reconstruction with a raw-time FiLM action and raw reconstruction head"
+tag_jepa: null
+
+lewm_modules:
+  engine:
+    name: mask
+    mask_type: injection
+    min_ratio: 0.1
+    max_ratio: 0.9
+  encoder:
+    name: resnet
+    in_channels: 38
+    enc_channels: [32, 64, 128]
+    enc_strides: [2, 2, 2]
+    output_act: identity
+  action:
+    name: masked
+    aux_input: raw
+    train_mask: known
+    aux:
+      aux_channels: [32, 32, 32]
+  predictor:
+    name: frequency
+    stem_channels: 32
+    neck_widths: [64, 96, 128]
+    n_fft: 64
+    hop_length: 16
+    win_length: 64
+  head:
+    name: mirrored
+  score_domain: raw
+
+criterion_kwargs:
+  loss2_kind: l1
+  mask_loss_kind: bce
+  w_aux: 1.0
+  w_recon: 1.0

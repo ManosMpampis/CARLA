@@ -1,0 +1,34 @@
+{
+  "ae": {
+    "source_loss": 1.854035496711731,
+    "backbone_exact": true,
+    "source_destination_feature_mae": 0.10128826647996902,
+    "backbone_frozen_eval": true,
+    "backbone_unchanged_after_step": true,
+    "downstream_encoder_grad": 16.858596814097837,
+    "forecast_prediction_shape": [
+      4,
+      4,
+      6
+    ]
+  },
+  "lewm": {
+    "source_loss": 3.5511937141418457,
+    "backbone_exact": true,
+    "source_destination_feature_mae": 0.0,
+    "backbone_frozen_eval": true,
+    "backbone_unchanged_after_step": true,
+    "downstream_encoder_grad": 64.68698309056708,
+    "forecast_prediction_shape": [
+      4,
+      4,
+      6
+    ]
+  },
+  "semantic_mismatch_transfer_accepted": {
+    "stride": 2,
+    "source_stride": 4
+  },
+  "changed_crop_strict_load_accepted": true,
+  "task_extra_state_present": false
+}

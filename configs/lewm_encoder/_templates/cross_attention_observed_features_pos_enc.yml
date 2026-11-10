@@ -11,8 +11,8 @@ cross_attention_kwargs:
   freeze_encoder: true
   target: features
   query_source: observed
-  context_crop: [0, 513] # null uses the first half at any encoder stride
-  target_crop: [513, 769] # null uses the second half; explicit intervals use feature tokens
+  context_crop: [0, 64] # 512 input steps at stride 8
+  target_crop: [64, 96] # 256 input steps at stride 8
   feature_extraction: full # seperate | full; separate uses the encoder's feature extractor for each crop, full uses the same features for both crops
   qk_channels: 8
   value_channels: 8
@@ -45,7 +45,7 @@ score_mode: l1
 train_db_name: smd
 val_db_name: smd
 fname: machine-1-1.txt
-wsz: 769
+wsz: 768
 stride: 10
 val_fraction: 0.1
 score_batch_size: 256

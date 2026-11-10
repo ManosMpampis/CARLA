@@ -91,6 +91,22 @@ def soft_dtw_divergence(a: torch.Tensor, b: torch.Tensor,
     return module(a.unsqueeze(0), b.unsqueeze(0)).squeeze(0)
 
 
+class ReconstructionObjective(nn.Module):
+    """AE reconstruction MSE with an optional VAE KL term."""
+
+    def __init__(self, beta=0.0):
+        super().__init__()
+        if not 0 <= beta < float("inf"):
+            raise ValueError("beta must be finite and nonnegative")
+        self.beta = beta
+
+    def forward(self, outputs):
+        from models.ae_baseline import reconstruction_objective
+
+        losses = reconstruction_objective(outputs, outputs["target"], self.beta)
+        return {**losses, "pred_loss": losses["mse"]}
+
+
 class ReconL1Loss(nn.Module):
     """Phase-2 criterion: mean L1 |recon - target| over C x W (grilled Q9).
 

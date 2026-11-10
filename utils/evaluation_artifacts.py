@@ -72,11 +72,11 @@ def write_final_artifacts(directory, evaluation, test, labels, non_overlap):
         "window": window_arrays(test),
         "timeseries": (test["timeseries_scores"][covered], labels[covered],
                        positions, positions + 1, {"cover_count": test["cover_counts"][covered]}),
-        "non_overlap_window": window_arrays(non_overlap),
+        "non_overlap_window": window_arrays(non_overlap) if non_overlap is not None else None,
     }
     artifacts = {}
-    for protocol, section in MODES.items():
-        metrics = evaluation[protocol]
+    for protocol, metrics in evaluation.items():
+        section = MODES[protocol]
         row = evaluation_row(metrics)
         with (directory / f"{section}_metrics.csv").open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(row))

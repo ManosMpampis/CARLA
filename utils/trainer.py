@@ -48,10 +48,11 @@ class Trainer:
             ts = ts.transpose(1, 2)
         return ts.contiguous()
 
-    def _make_mask(self, collator, batch_size: int, window: int,
-                     level_strides, ts=None):
+    def _make_mask(self, collator, ts):
         if collator is None:
             return None
+        batch_size, window = ts.size(0), ts.size(-1)
+        level_strides = self.model.level_strides
         try:
             mask = collator(batch_size, window, list(level_strides), ts)
         except TypeError:
@@ -60,11 +61,14 @@ class Trainer:
 
     def _forward_loss(self, batch):
         ts = self._to_model_input(batch["ts"], self.device)
-        mask = self._make_mask(self.collator, ts.size(0), ts.size(-1),
-                               self.model.level_strides, ts)
+        mask = self._make_mask(self.collator, ts)
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16,
                             enabled=self.amp):
-            outputs = self.model(ts, mask=mask)
+            action = batch.get("action")
+            if action is None:
+                outputs = self.model(ts, mask=mask)
+            else:
+                outputs = self.model(ts, mask=mask, action=action.to(self.device))
             losses = self.criterion(outputs)
         return losses, {"latents": outputs["latents"], "ts": ts}
 
@@ -73,14 +77,17 @@ class Trainer:
         if getattr(self.model, "encoder_frozen", False):
             # frozen adaptation: BN stats of the encoder must not move
             self.model.encoder.eval()
-        if self.model.target_encoder is not None:
-            self.model.target_encoder.train_mode()
-        if self.model.codebook is not None and epoch == 0 \
-                and not self.model.codebook.initialized:
+        target_encoder = getattr(self.model, "target_encoder", None)
+        if target_encoder is not None:
+            target_encoder.train_mode()
+        codebook = getattr(self.model, "codebook", None)
+        if codebook is not None and epoch == 0 and not codebook.initialized:
             # collect first-epoch latents for the k-means warmup
             samples: dict[str, list] = {name: [] for name in self.model.level_names}
             self._codebook_samples = samples
         meters = {}
+        update_ema = getattr(self.model, "update_ema", None)
+        update_stats = getattr(self.model, "update_running_stats", None)
         for i, batch in enumerate(loader):
             self.optimizer.zero_grad()
 
@@ -92,8 +99,10 @@ class Trainer:
             self.scaler.step(self.optimizer)
             self.scaler.update()
             
-            self.model.update_ema()
-            self.model.update_running_stats(extras["latents"])
+            if update_ema is not None:
+                update_ema()
+            if update_stats is not None:
+                update_stats(extras["latents"])
 
             values = loss_metrics(losses)
             values["latent_var"] = latent_variance(extras["latents"])
@@ -104,8 +113,7 @@ class Trainer:
                 meters[key].update(scalar, extras["ts"].size(0))
 
         if self._codebook_samples is not None:
-            self.model.codebook.init_from_latents(self._codebook_samples,
-                                                  logger=self.logger)
+            codebook.init_from_latents(self._codebook_samples, logger=self.logger)
             self._codebook_samples = None
         return {key: meter.avg for key, meter in meters.items()}
 
@@ -122,9 +130,12 @@ class Trainer:
         totals, count = {}, 0
         for batch in loader:
             ts = self._to_model_input(batch["ts"], self.device)
-            mask = self._make_mask(self.val_collator, ts.size(0), ts.size(-1),
-                                   self.model.level_strides, ts)
-            outputs = self.model(ts, mask=mask)
+            mask = self._make_mask(self.val_collator, ts)
+            action = batch.get("action")
+            if action is None:
+                outputs = self.model(ts, mask=mask)
+            else:
+                outputs = self.model(ts, mask=mask, action=action.to(self.device))
             losses = self.criterion(outputs)
             values = loss_metrics(losses)
             values["latent_var"] = latent_variance(outputs["latents"])
@@ -156,7 +167,7 @@ class Trainer:
         best = {**previous.get("best", {}), "validation_loss": best_val_loss}
         checkpoints = Checkpoints(self.p, self.model, self.optimizer, self.scheduler,
                                   best=best, extra={
-                                      "anti_collapse": self.model.anti_collapse,
+                                      "anti_collapse": getattr(self.model, "anti_collapse", "none"),
                                       "inference": inference_metadata(
                                           self.p, getattr(train_loader, "dataset", None))})
         epochs = int(self.p["epochs"])
@@ -225,6 +236,20 @@ class Trainer:
         update_schedule(scheduler)
         if logger is not None:
             logger.log(f"Resumed optimizer learning rate overridden to {lr}")
+
+    @staticmethod
+    def initialize_backbone(model, source, prefix="encoder."):
+        """Transfer only the source encoder to the destination backbone."""
+        if model.backbone is None:
+            raise ValueError("pretrained_from requires a backbone module")
+        checkpoint = torch.load(source, map_location="cpu", weights_only=False)
+        state = checkpoint.get("model", checkpoint)
+        if prefix:
+            state = {key.removeprefix(prefix): value for key, value in state.items()
+                     if key.startswith(prefix)}
+        if not state:
+            raise ValueError(f"no backbone weights with prefix {prefix!r} in {source}")
+        model.backbone.load_state_dict(state, strict=True)
 
     @staticmethod
     def initialize_weights(path, model, logger=None):

@@ -9,7 +9,7 @@ from sklearn.metrics import precision_recall_curve
 
 from data.jepa_dataset import JEPADataset
 from models.ae_baseline import reconstruction_objective
-from models.builders import get_ae_model, get_vae_model
+from models import get_ae_model, get_vae_model
 from utils.common_config import (get_jepa_datasets, get_optimizer, get_scheduler,
                                  get_train_dataloader, get_val_dataloader)
 from utils.config import create_config, entry_overrides, load_experiment_config
@@ -133,45 +133,68 @@ def _evaluate_protocol(scores, labels, clean_scores, quantile, vus_window):
     }
 
 
-def evaluate_from_scores(clean, test, test_labels, config) -> dict:
-    """Evaluate window and time-series score arrays with distinct thresholds."""
+def aggregation_modes(config):
+    """Resolve the public aggregation names into the report keys."""
+    names = ("window", "non_overlap_window", "timeseries")
+    selection = config.get("aggregate_output_strategy",
+                           config.get("agregate_output_strategy", "all"))
+    if selection == "all":
+        return names
+    if isinstance(selection, str):
+        selection = [selection]
+    if not isinstance(selection, (list, tuple)) or not selection:
+        raise ValueError("aggregate_output_strategy must be all or one or more aggregation names")
+    modes = tuple("non_overlap_window" if mode == "non_overlap" else mode for mode in selection)
+    if any(mode not in names for mode in modes):
+        raise ValueError("aggregation names are window, non_overlap, and timeseries")
+    return modes
+
+
+def evaluate_from_scores(clean, test, test_labels, config, *, modes=("window", "timeseries")) -> dict:
+    """Evaluate the selected score arrays with distinct thresholds."""
     stride = evaluation_options(config)["stride"]
-    window_labels = np.asarray([
-        np.any(test_labels[s:e]) for s, e in zip(test["starts"], test["ends"])
-    ], dtype=np.int64)
     quantile = float(config.get("calibration_quantile", 0.99))
     vus_steps = int(config.get("eval_window_size", 100))
-    clean_series = clean["timeseries_scores"][clean["cover_counts"] > 0]
-    test_series, covered_labels, _, _ = covered_evaluation_view(
-        test["timeseries_scores"], test_labels, test["starts"],
-        test["ends"], test["cover_counts"])
-    result = {
-        "window": _evaluate_protocol(test["window_scores"], window_labels,
-                                     clean["window_scores"], quantile,
-                                     max(1, vus_steps // stride)),
-        "timeseries": _evaluate_protocol(test_series,
-                                         covered_labels,
-                                         clean_series, quantile,
-                                         vus_steps),
-    }
+    result = {}
+    if "window" in modes:
+        labels = np.asarray([np.any(test_labels[s:e]) for s, e in zip(test["starts"], test["ends"])],
+                            dtype=np.int64)
+        result["window"] = _evaluate_protocol(test["window_scores"], labels, clean["window_scores"],
+                                              quantile, max(1, vus_steps // stride))
+    if "timeseries" in modes:
+        clean_series = clean["timeseries_scores"][clean["cover_counts"] > 0]
+        test_series, labels, _, _ = covered_evaluation_view(
+            test["timeseries_scores"], test_labels, test["starts"],
+            test["ends"], test["cover_counts"])
+        result["timeseries"] = _evaluate_protocol(test_series, labels, clean_series, quantile, vus_steps)
     return result
 
 
-def evaluate(model, train_series, test_series, test_labels, config, device,
-             *, options=None) -> dict:
-    """Distinct window and overlap-averaged time-series evaluation."""
-    options = dict(evaluation_options(config) if options is None else options)
+def evaluate_aggregations(model, train_series, test_series, test_labels, config, device, *, options):
+    """Evaluate only the requested aggregations and retain score arrays for export."""
+    modes = aggregation_modes(config)
+    options = dict(options)
     window, stride = options.pop("wsz"), options.pop("stride")
-    batch_size = int(config.get("score_batch_size", config["batch_size"]))
-    clean = score_both(model, train_series, window, stride, batch_size, device,
-                       **options)
-    test = score_both(model, test_series, window, stride, batch_size, device,
-                      **options)
-    result = evaluate_from_scores(clean, test, test_labels, config)
-    result["non_overlap_window"], _, _, _ = evaluate_non_overlap_window(
-        model, train_series, test_series, test_labels, config, device,
-        options={"wsz": window, "stride": stride, **options})
-    return result
+    metrics = {}
+    test = non_overlap = non_overlap_stride = None
+    if "window" in modes or "timeseries" in modes:
+        batch_size = int(config.get("score_batch_size", config["batch_size"]))
+        clean = score_both(model, train_series, window, stride, batch_size, device, **options)
+        test = score_both(model, test_series, window, stride, batch_size, device, **options)
+        metrics.update(evaluate_from_scores(clean, test, test_labels, config, modes=modes))
+    if "non_overlap_window" in modes:
+        metrics["non_overlap_window"], _, non_overlap, non_overlap_stride = evaluate_non_overlap_window(
+            model, train_series, test_series, test_labels, config, device,
+            options={"wsz": window, "stride": stride, **options})
+    return metrics, test if test is not None else non_overlap, non_overlap, non_overlap_stride
+
+
+def evaluate(model, train_series, test_series, test_labels, config, device, *, options=None) -> dict:
+    if options is None:
+        options = evaluation_options(config)
+    metrics, _, _, _ = evaluate_aggregations(model, train_series, test_series, test_labels,
+                                             config, device, options=options)
+    return metrics
 
 
 def evaluate_non_overlap_window(model, train_series, test_series, test_labels,
@@ -237,10 +260,13 @@ record_test_evaluation = record_evaluation
 
 
 def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
-                     input_resolution=False):
+                     input_resolution=False, datasets=None):
     """Monitoring hook shared by all LEWM stages and phase-two heads."""
-    train_dataset, _ = get_jepa_datasets(config)
-    test_dataset = JEPADataset(config, train=False)
+    if datasets is None:
+        train_dataset, _ = get_jepa_datasets(config)
+        test_dataset = JEPADataset(config, train=False)
+    else:
+        train_dataset, test_dataset = datasets
     eval_config = dict(config)
     eval_config["calibration_quantile"] = float(config.get(
         "calibration_quantile", config.get("calibration_kwargs", {}).get("quantile", 0.99)))
@@ -254,7 +280,12 @@ def evaluate_on_test(model, config, device, logger, epoch, *, options=None,
             return {"fused": model.score(x)["fused"].repeat_interleave(
                 int(model.level_strides[0]), dim=-1)}
 
-    scorer = InputResolutionScores() if input_resolution else model
+    from utils.scoring import model_evaluation_options
+
+    if options is None:
+        options = model_evaluation_options(config, model)
+    scorer = (InputResolutionScores() if input_resolution
+              and not getattr(model, "score_input_resolution", False) else model)
     metrics = evaluate(scorer, train_dataset.full_train_series, test_dataset.series,
                        test_dataset.targets, eval_config, device, options=options)
 

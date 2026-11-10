@@ -1,38 +1,26 @@
-"""Single-scale LeWM models with time or frequency predictors.
+"""Time-domain and STFT predictors for length-preserving latent reconstruction."""
 
-Terminology (spec `specs/lewm-time-steered-freq-predictor.md`):
-- ResNet Encoder: time-domain only, two blocks of [7,5,3] + residual k=5.
-- Convolution time auxiliary: 3-conv stack [7,5,3], sees only Encoder(X_inj).
-  Never receives the action. Emits Time_mask logits + FiLM features.
-- Predictor = a time-convolution or STFT-based frequency neck. Both accept
-  mask-token-replaced latents and optional time-varying FiLM features.
-  Predictor input latents are mask-token-replaced (option 4): masked
-  positions show a learned mask token instead of the corrupted values, so
-  the mask tells the predictor what to reconstruct. When present, the
-  auxiliary sees the raw corrupted latents to localize and steer.
-
-Single scale: level_names ["L0"], level_strides [1], latents (B, D, W).
-No stop-grad anywhere; anti-collapse is dual SIGReg in the criterion.
-"""
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+from torch.nn import functional as F
 
-from models.blocks import Conv1dBlock, Conv2dBlock
+from models.blocks import Conv1dBlock, Conv2dBlock, _init_weights
 
-    
+
 class IdentityFiLM(nn.Module):
-    """Identity FiLM: no time steering."""
+    def forward(self, features, aux_feat):
+        return features
 
-    def __init__(self):
-        super().__init__()
 
-    def forward(self, h_f, aux_feat):
-        return h_f
+class ReconstructionPredictor(nn.Module):
+    def predict(self, current, action, *, target_tokens, query_start=0):
+        if target_tokens != current.size(-1):
+            raise ValueError("reconstruction predictor requires equal current and target token counts")
+        return self(action.token_input, action.film_feat)
 
 
 class TimeFiLM(nn.Module):
-    """Per-position FiLM for a 1D temporal feature map."""
+    """Apply temporal FiLM to a 1D feature map or broadcast it over frequency."""
 
     def __init__(self, aux_dim: int, channels: int):
         super().__init__()
@@ -42,63 +30,43 @@ class TimeFiLM(nn.Module):
             nn.init.zeros_(layer.weight)
             nn.init.zeros_(layer.bias)
 
-    def forward(self, h, aux_feat):
-        a = F.interpolate(aux_feat.float(), size=h.size(-1), mode="linear",
-                          align_corners=False)
-        return (1 + self.to_gamma(a)) * h + self.to_beta(a)
+    def forward(self, features, aux_feat):
+        aux = F.interpolate(aux_feat.float(), size=features.size(2), mode="linear",
+                            align_corners=False)
+        gamma, beta = self.to_gamma(aux), self.to_beta(aux)
+        if features.ndim == 4:
+            gamma, beta = gamma.unsqueeze(-1), beta.unsqueeze(-1)
+        return (1 + gamma) * features + beta
 
 
-class TimeVaryingFiLM(TimeFiLM):
-    """Per-timestep FiLM: aux time features -> gamma/beta broadcast over F."""
-
-    def __init__(self, aux_dim: int, freq_dim: int):
-        super().__init__(aux_dim, freq_dim)
-        self.freq_dim = int(freq_dim)
-
-    def forward(self, h_f, aux_feat):
-        """Modulate (B, Df, T', F) by time-indexed (B, Da, W) features."""
-        t_prime = h_f.size(2)
-        a = F.interpolate(aux_feat.float(), size=t_prime, mode="linear",
-                          align_corners=False)
-        gamma = self.to_gamma(a).unsqueeze(-1)
-        beta = self.to_beta(a).unsqueeze(-1)
-        return (1 + gamma) * h_f + beta
-
-
-class TimePredictor(nn.Module):
+class TimePredictor(ReconstructionPredictor):
     """Temporal convolution neck with the same three-scale FiLM interface."""
 
     def __init__(self, in_dim: int, stem_channels: int = 64,
-                 neck_widths=(64, 64, 64), act: str = "relu", norm: str = "batch", dropout: float = 0.1):
+                 neck_widths=(64, 64, 64), aux_dim: int = 32,
+                 time_steering: bool = True, dropout: float = 0.1):
         super().__init__()
-        w = [int(c) for c in neck_widths]
-        if len(w) != 3:
+        widths = [int(c) for c in neck_widths]
+        if len(widths) != 3:
             raise ValueError("neck_widths must contain three channel counts")
-        self.neck_widths = w
-        self.stem_conv = Conv1dBlock(in_dim, stem_channels, kernel=7, act=act, norm=norm,
+        w0, w1, w2 = widths
+        self.time_steering = bool(time_steering)
+        self.stem_conv = Conv1dBlock(in_dim, stem_channels, kernel=7,
                                      dropout=dropout)
-        self.in_proj = Conv1dBlock(stem_channels, w[0], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.c0 = Conv1dBlock(w[0], w[1], kernel=3, stride=2, act=act, norm=norm,
-                                     dropout=dropout)
-        self.c1 = Conv1dBlock(w[1], w[2], kernel=3, stride=2, act=act, norm=norm,
-                                     dropout=dropout)
-        self.c2 = Conv1dBlock(w[2], w[2], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.up2 = Conv1dBlock(w[2] + w[1], w[1], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.up1 = Conv1dBlock(w[1] + w[0], w[0], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.down_p0 = Conv1dBlock(w[0], w[0], kernel=3, stride=2, act=act, norm=norm,
-                                     dropout=dropout)
-        self.pan1 = Conv1dBlock(w[0] + w[1], w[1], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.final = Conv1dBlock(w[1] + w[0], w[0], kernel=3, act=act, norm=norm,
-                                     dropout=dropout)
-        self.to_latent = Conv1dBlock(w[0], in_dim, kernel_size=1, act=act, norm=norm, dropout=dropout)
-        self.film0 = IdentityFiLM()
-        self.film1 = IdentityFiLM()
-        self.film2 = IdentityFiLM()
+        self.in_proj = Conv1dBlock(stem_channels, w0, kernel=3)
+        self.c0 = Conv1dBlock(w0, w1, kernel=3, stride=2)
+        self.c1 = Conv1dBlock(w1, w2, kernel=3, stride=2)
+        self.c2 = Conv1dBlock(w2, w2, kernel=3)
+        self.up2 = Conv1dBlock(w2 + w1, w1, kernel=3)
+        self.up1 = Conv1dBlock(w1 + w0, w0, kernel=3)
+        self.down_p0 = Conv1dBlock(w0, w0, kernel=3, stride=2)
+        self.pan1 = Conv1dBlock(w0 + w1, w1, kernel=3)
+        self.final = Conv1dBlock(w1 + w0, w0, kernel=3)
+        self.to_latent = nn.Conv1d(w0, in_dim, kernel_size=1)
+        _init_weights(self.to_latent)
+        self.film0 = TimeFiLM(aux_dim, w1) if time_steering else IdentityFiLM()
+        self.film1 = TimeFiLM(aux_dim, w2) if time_steering else IdentityFiLM()
+        self.film2 = TimeFiLM(aux_dim, w2) if time_steering else IdentityFiLM()
 
     def forward(self, z_tok, aux_feat):
         g = self.in_proj(self.stem_conv(z_tok))
@@ -115,18 +83,7 @@ class TimePredictor(nn.Module):
         return self.to_latent(n0)
 
 
-class TimePredictorFiLM(nn.Module):
-    """Temporal convolution neck with the same three-scale FiLM interface."""
-
-    def __init__(self, in_dim: int, stem_channels: int = 64,
-                 neck_widths=(64, 64, 64), act: str = "relu", norm: str = "batch", dropout: float = 0.1):
-        super().__init__(in_dim, stem_channels, neck_widths, act, norm, dropout)
-        self.film0 = TimeFiLM(in_dim, self.neck_widths[1])
-        self.film1 = TimeFiLM(in_dim, self.neck_widths[2])
-        self.film2 = TimeFiLM(in_dim, self.neck_widths[2])
-
-
-class FreqPredictor(nn.Module):
+class FreqPredictor(ReconstructionPredictor):
     """Frequency-only predictor: token-masked latents -> STFT -> neck -> iSTFT.
 
     The what-to-reconstruct signal is mask-token replacement applied by the
@@ -138,49 +95,38 @@ class FreqPredictor(nn.Module):
     """
 
     def __init__(self, in_dim: int, stem_channels: int = 64,
-                 neck_widths=(64, 64, 64),
-                 n_fft: int = 64, hop_length: int = 16,
-                 win_length: int = 64, act: str = "relu",
-                 norm: str = "batch", dropout: float = 0.1):
+                 neck_widths=(64, 64, 64), aux_dim: int = 32,
+                 n_fft: int = 64, hop_length: int = 16, time_steering: bool = True,
+                 win_length: int = 64, dropout: float = 0.1):
         super().__init__()
+        self.time_steering = time_steering
         self.in_dim = int(in_dim)
         self.stem_channels = int(stem_channels)
         self.stem_conv = Conv1dBlock(self.in_dim, self.stem_channels,
-                                     kernel=7, stride=1, act=act, norm=norm,
+                                     kernel=7, stride=1, norm="batch",
                                      dropout=dropout)
 
         w = [int(c) for c in neck_widths]
-        assert len(w) == 3
+        if len(w) != 3:
+            raise ValueError("neck_widths must contain three channel counts")
         self.neck_widths = w
-        self.in_proj = Conv2dBlock(2 * self.stem_channels, w[0], act=act,
-                                     dropout=dropout)
-        self.c0 = Conv2dBlock(w[0], w[1], stride=2, act=act,
-                                     dropout=dropout)
-        self.c1 = Conv2dBlock(w[1], w[2], stride=2, act=act,
-                                     dropout=dropout)
-        self.c2 = Conv2dBlock(w[2], w[2], act=act,
-                                     dropout=dropout)
-
-        self.up2 = Conv2dBlock(w[2] + w[1], w[1], act=act,
-                                     dropout=dropout)
-        self.up1 = Conv2dBlock(w[1] + w[0], w[0], act=act,
-                                     dropout=dropout)
-        
-        self.down_p0 = Conv2dBlock(w[0], w[0], stride=2, act=act,
-                                     dropout=dropout)
-        self.pan1 = Conv2dBlock(w[0] + w[1], w[1], act=act,
-                                     dropout=dropout)
-        self.final = Conv2dBlock(w[1] + w[0], w[0], act=act,
-                                     dropout=dropout)
-        
-        self.out_proj = Conv2dBlock(w[0], 2 * self.stem_channels, kernel_size=1, act=act,
-                                     dropout=dropout)
-        self.to_latent = Conv1dBlock(self.stem_channels, self.in_dim,
-                                   kernel_size=1, act=act, norm=norm,
-                                   dropout=dropout)
-        self.film0 = IdentityFiLM()
-        self.film1 = IdentityFiLM()
-        self.film2 = IdentityFiLM()
+        self.in_proj = Conv2dBlock(2 * self.stem_channels, w[0])
+        self.c0 = Conv2dBlock(w[0], w[1], stride=2, dropout=0.0)
+        self.c1 = Conv2dBlock(w[1], w[2], stride=2, dropout=0.0)
+        self.c2 = Conv2dBlock(w[2], w[2], dropout=0.0)
+        self.up2 = Conv2dBlock(w[2] + w[1], w[1], dropout=0.0)
+        self.up1 = Conv2dBlock(w[1] + w[0], w[0], dropout=0.0)
+        self.down_p0 = Conv2dBlock(w[0], w[0], stride=2, dropout=0.0)
+        self.pan1 = Conv2dBlock(w[0] + w[1], w[1], dropout=0.0)
+        self.final = Conv2dBlock(w[1] + w[0], w[0], dropout=0.0)
+        self.out_proj = nn.Conv2d(w[0], 2 * self.stem_channels, kernel_size=1)
+        _init_weights(self.out_proj)
+        self.to_latent = nn.Conv1d(self.stem_channels, self.in_dim,
+                                   kernel_size=1)
+        _init_weights(self.to_latent)
+        self.film0 = TimeFiLM(aux_dim, w[1]) if self.time_steering else IdentityFiLM()
+        self.film1 = TimeFiLM(aux_dim, w[2]) if self.time_steering else IdentityFiLM()
+        self.film2 = TimeFiLM(aux_dim, w[2]) if self.time_steering else IdentityFiLM()
 
         self.n_fft = int(n_fft)
         self.hop_length = int(hop_length)
@@ -189,7 +135,7 @@ class FreqPredictor(nn.Module):
     def _resolve_stft(self, w: int):
         n_fft = max(8, min(self.n_fft, int(w)))
         win = max(4, min(self.win_length, n_fft))
-        hop = max(1, min(self.hop_length, max(n_fft // 4, 1)))
+        hop = max(1, min(self.hop_length, max(win // 4, 1)))
         return n_fft, hop, win
 
     def forward(self, z_tok, aux_feat):
@@ -201,8 +147,11 @@ class FreqPredictor(nn.Module):
         window = torch.hann_window(win, device=h.device, dtype=torch.float32)
         hf = h.float().reshape(b * self.stem_channels, w)
 
-        spec = torch.stft(hf, n_fft=n_fft, hop_length=hop, win_length=win,
-                          window=window, center=True, return_complex=True)
+        with torch.autocast(device_type=h.device.type, enabled=False):
+            spec = torch.stft(hf, n_fft=n_fft, hop_length=hop, win_length=win,
+                              window=window, center=True,
+                              pad_mode="reflect" if w > n_fft // 2 else "constant",
+                              return_complex=True)
         # spec: (B*S, F, T') -> (B, 2S, T', F)
         spec = spec.permute(0, 2, 1).contiguous()
         t_prime, n_freq = spec.size(1), spec.size(2)
@@ -225,52 +174,12 @@ class FreqPredictor(nn.Module):
             [F.interpolate(n1, size=p0.shape[2:], mode="nearest"), p0], dim=1))
         out = self.out_proj(n0)
 
-        real, imag = out.chunk(2, dim=1)
+        real, imag = out.float().chunk(2, dim=1)
         cout = torch.complex(real, imag).reshape(b * self.stem_channels,
                                                  t_prime, n_freq)
         cout = cout.permute(0, 2, 1).contiguous()
-        rec = torch.istft(cout, n_fft=n_fft, hop_length=hop, win_length=win,
-                          window=window, center=True, length=w)
+        with torch.autocast(device_type=h.device.type, enabled=False):
+            rec = torch.istft(cout, n_fft=n_fft, hop_length=hop, win_length=win,
+                              window=window, center=True, length=w)
         rec = rec.reshape(b, self.stem_channels, w).to(z_tok.dtype)
         return self.to_latent(rec)
-
-    @torch.no_grad()
-    def score(self, x):
-        """Self-proposed-action anomaly evidence fused to (B, W)."""
-        was_training = self.training
-        self.eval()
-        z = self.encoder(x.float())
-        if self.aux is None:
-            feat = None
-            m_hat = z.new_zeros(z.size(0), z.size(-1))
-        else:
-            logits, feat = self.aux(z)
-            m_hat = torch.sigmoid(logits)
-        zp = self.predictor(self._token_blend(z, m_hat), feat)
-        fused = (zp - z).abs().mean(dim=1)
-        if was_training:
-            self.train()
-        return {"fused": fused, "levels": {"L0": fused}, "signals": {}}
-
-
-class FreqPredictorFiLM(FreqPredictor):
-    """Frequency-only predictor: token-masked latents -> STFT -> neck -> iSTFT.
-
-    The what-to-reconstruct signal is mask-token replacement applied by the
-    model before entry (option 4): masked latent positions already show the
-    learned token, so the stem takes latents alone with no mask concat.
-    STFT/iSTFT run in float32 for AMP safety; the neck is real-valued 2D
-    convs on stacked real/imag channels with YOLO-style concat fusion:
-    strided down path, top-down upsample+concat path, bottom-up PAN path.
-    """
-
-    def __init__(self, in_dim: int, stem_channels: int = 64,
-                 neck_widths=(64, 64, 64),
-                 n_fft: int = 64, hop_length: int = 16,
-                 win_length: int = 64, act: str = "relu", norm: str = "batch", dropout: float = 0.1):
-        super().__init__(in_dim, stem_channels, neck_widths, n_fft, hop_length,
-                        win_length, act, norm, dropout)
-
-        self.film0 = TimeVaryingFiLM(in_dim, self.neck_widths[0]) 
-        self.film1 = TimeVaryingFiLM(in_dim, self.neck_widths[1])
-        self.film2 = TimeVaryingFiLM(in_dim, self.neck_widths[2])

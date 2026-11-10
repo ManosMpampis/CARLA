@@ -1,104 +1,100 @@
-"""Shared convolutional building blocks (configurable, documented).
+"""Prepare raw current and target views before feature extraction."""
 
-All blocks are plain classes with methods. Kernel/stride/depth choices
-come from config; scalar args broadcast over the block's convolutions.
-"""
+from dataclasses import dataclass
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torch import nn
+
+from utils.masking_steered import SubAnomalyMaskCollator
+
+
+@dataclass(frozen=True)
+class InputViews:
+    current_input: torch.Tensor
+    target_input: torch.Tensor
+    current_range: tuple[int, int]
+    target_range: tuple[int, int]
+    mask_target: torch.Tensor | None = None
 
 
 class MaskedEngine(nn.Module):
-    def __init__(self, mask_type):
+    def __init__(self, mask_type="injection", *, sample=True, min_ratio=0.1, max_ratio=0.9):
         super().__init__()
-        self.mask_type = mask_type
-        if self.mask_type not in ("injection", "zero"):
+        if mask_type not in ("injection", "zero"):
             raise ValueError("mask_type must be injection or zero")
-        if self.mask_type == "injection":
-            # Add subanomaly to input to simulate a mask token and pass it to the device.
-            self.mask_function = self._inject_mask_input
-        elif self.mask_type == "zero":
-            # Zero out parts of the input and pass it to the device.
-            self.mask_function = self._zero_mask_input
-            
-    @staticmethod
-    def _zero_mask_input(x, input_mask):
-        m = input_mask.to(torch.bool)
-        while m.ndim < x.ndim:
-            m = m.unsqueeze(1)
-        return x.masked_fill(m.expand_as(x), 0.0)
-    
-    def forward(self, x):
-        """
-        """
+        if not 0 < min_ratio <= max_ratio <= 1:
+            raise ValueError("mask ratios must satisfy 0 < min_ratio <= max_ratio <= 1")
+        self.mask_type = mask_type
+        self.sample = sample
+        self.collator = SubAnomalyMaskCollator(min_ratio=min_ratio, max_ratio=max_ratio)
 
-        x_inj, m = self.mask_function(x)
-        m_bool = m.to(torch.bool) if m.dtype == torch.bool else (m > 0.5)
-        
-        return {"current_state": x,
-                "future_state": x_inj,
-                "query_start": 0,
-                "target_range": (0, x.size(-1)),
-                "mask": m_bool,
-                "mask_float": m}
-    
+    def forward(self, x, mask=None, *, corrupt=True):
+        batch, _, window = x.shape
+        if mask is None and corrupt and self.sample:
+            source = x if self.mask_type == "injection" else None
+            mask = self.collator(batch, window, [1], source)
+        if mask is None:
+            return InputViews(x, x, (0, window), (0, window))
+        if not isinstance(mask, dict) or "input" not in mask:
+            raise ValueError("mask must provide an 'input' tensor of shape (B, W)")
+        known = mask["input"].to(device=x.device, dtype=torch.bool)
+        if known.shape != (batch, window):
+            raise ValueError(f"mask input shape {tuple(known.shape)} must equal {(batch, window)}")
+        if "X_inj" in mask:
+            current = mask["X_inj"].to(device=x.device, dtype=x.dtype)
+            if current.shape != x.shape:
+                raise ValueError("X_inj must have the same shape as input")
+        else:
+            current = x.masked_fill(known.unsqueeze(1), 0.0)
+        return InputViews(current, x, (0, window), (0, window), known)
+
+    @staticmethod
+    def target_input_range(window):
+        return 0, window
+
+
 class ForecastEngine(nn.Module):
-    def __init__(self, encoder_strides, input_window, context_crop=None, target_crop=None):
+    def __init__(self, encoder_strides=1, input_window=None, context_crop=None, target_crop=None):
         super().__init__()
+        if type(encoder_strides) is not int or encoder_strides < 1:
+            raise ValueError("encoder_strides must be a positive integer")
+        self.encoder_strides = encoder_strides
         self.context_crop = self._interval(context_crop)
         self.target_crop = self._interval(target_crop)
-        self.input_window = input_window
         if (self.context_crop is None) != (self.target_crop is None):
             raise ValueError("set both context_crop and target_crop, or neither")
-        self.encoder_strides = encoder_strides
-        if input_window % self.encoder_strides:
-            raise ValueError("window must be divisible by feature extractor stride")
-        
-        return
-
-    def forward(self, x):
-        context, target = self.resolve_crop_ranges(x.size(-1))
-        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.encoder_frozen):
-            if self.feature_extraction == "full":
-                z = self.encoder(x)
-                return z[..., context[0]:context[1]], z[..., target[0]:target[1]]
-            s = self.total_stride
-            return {"current_state": x[..., context[0]*s:context[1]*s],
-                    "future_state": x[..., target[0]*s:target[1]*s],
-                    "query_start": self._query_start(),
-                    "target_range": self.target_input_range(x.size(-1))}
-
-    def _query_start(self):
-        return self.target_crop[0] - self.context_crop[1]
-    
-    def target_input_range(self, window):
-        _, (a, b) = self.resolve_crop_ranges(window)
-        return a * self.total_stride, b * self.total_stride
-        
-    def resolve_crop_ranges(self, window):
-        """Validate crop geometry without constructing an encoder or model."""
-        tokens = window // self.encoder_strides
-        if self.context_crop is None:
-            if tokens < 2 or tokens % 2:
-                raise ValueError("default half split requires an even feature length >= 2")
-            context, target = (0, tokens // 2), (tokens // 2, tokens)
-        else:
-            context = (self.context_crop[0] // self.encoder_strides, self.context_crop[1] // self.encoder_strides)
-            target = (self.target_crop[0] // self.encoder_strides, self.target_crop[1] // self.encoder_strides)
-        if not context[1] <= target[0] < target[1] <= tokens:
-            raise ValueError(
-                f"context_crop={self.context_crop} and target_crop={self.target_crop} must precede "
-                f"one another without overlap, inside window={window} "
-                f"(feature stride={self.encoder_strides}, tokens={tokens})")
-        return context, target
+        if input_window is not None:
+            self.resolve_crop_ranges(input_window)
 
     @staticmethod
     def _interval(crop):
         if crop is None:
             return None
-        if (not isinstance(crop, (list, tuple)) or len(crop) != 2
-                or any(type(v) is not int for v in crop)
-                or not 0 <= crop[0] < crop[1]):
+        if (not isinstance(crop, (tuple, list)) or len(crop) != 2
+                or any(type(v) is not int for v in crop) or not 0 <= crop[0] < crop[1]):
             raise ValueError("crops must be integer [start, end] with 0 <= start < end")
         return tuple(crop)
-    
+
+    def resolve_crop_ranges(self, window):
+        stride = self.encoder_strides
+        if window < 2 * stride or window % stride:
+            raise ValueError("window must contain at least two tokens and be divisible by feature stride")
+        context, target = self.context_crop, self.target_crop
+        if context is None:
+            if window % (2 * stride):
+                raise ValueError("default half split requires an even feature length")
+            context, target = (0, window // 2), (window // 2, window)
+        if (any(edge % stride for edge in (*context, *target))
+                or not 0 <= context[0] < context[1] <= target[0] < target[1] <= window):
+            raise ValueError("crops must be nonempty, ordered and stride-aligned inside the window")
+        return context, target
+
+    def target_input_range(self, window):
+        return self.resolve_crop_ranges(window)[1]
+
+    def forward(self, x, mask=None, *, corrupt=True):
+        if mask is not None:
+            raise ValueError("forecast views do not accept a corruption mask")
+        context, target = self.resolve_crop_ranges(x.size(-1))
+        return InputViews(x[..., context[0]:context[1]], x[..., target[0]:target[1]],
+                          context, target)

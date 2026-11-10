@@ -1,132 +1,145 @@
-"""Shared convolutional building blocks (configurable, documented).
+"""Action modules for mask-conditioned and guided latent prediction."""
 
-All blocks are plain classes with methods. Kernel/stride/depth choices
-come from config; scalar args broadcast over the block's convolutions.
-"""
+from dataclasses import dataclass
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from models.blocks import Conv1dBlock, TCNEncoder, Encoder, _init_weights
+from torch import nn
+from torch.nn import functional as F
+
+from models.blocks import Conv1dBlock, _init_weights, _per_layer
+
+
+@dataclass
+class ActionOutput:
+    token_input: torch.Tensor | None = None
+    film_feat: torch.Tensor | None = None
+    key: torch.Tensor | None = None
+    mask_logits: torch.Tensor | None = None
+    mask_target: torch.Tensor | None = None
+    mask_proposal: torch.Tensor | None = None
 
 
 class TimeAuxiliary(nn.Module):
-    """Convolution time auxiliary: localizes mask, feeds FiLM features.
+    """Localize corruption and extract temporal features from one input view."""
 
-    Action is never an input here (LeWM requirement); the mask head learns
-    purely from Encoder(X_inj).
-    """
-
-    def __init__(self, in_dim: int, aux_channels=(32, 32, 32),
-                 kernels=(7, 5, 3), norm: str = "batch", act: str = "relu",
-                 dropout: float = 0.1):
+    def __init__(self, in_dim, aux_channels=(32, 32, 32), kernels=(7, 5, 3),
+                 norm="batch", act="gelu", dropout=0.1):
         super().__init__()
-        ks = list(kernels)
-        chs = [in_dim] + list(aux_channels)
-        self.convs = nn.Sequential(
-            *[Conv1dBlock(chs[i], chs[i + 1], kernel=ks[i], stride=1,
-                          norm=norm, act=act, dropout=dropout)
-              for i in range(len(chs) - 1)]
-        )
-        self.mask_head = nn.Conv1d(chs[-1], 1, kernel_size=1)
+        channels = [in_dim, *aux_channels]
+        kernels = _per_layer(kernels, len(aux_channels), "auxiliary kernels")
+        self.convs = nn.Sequential(*[
+            Conv1dBlock(a, b, kernel=k, norm=norm, act=act, dropout=dropout)
+            for a, b, k in zip(channels, channels[1:], kernels)
+        ])
+        self.mask_head = nn.Conv1d(channels[-1], 1, kernel_size=1)
         _init_weights(self.mask_head)
-        self.feat_dim = int(chs[-1])
+        self.feat_dim = channels[-1]
 
     def forward(self, z):
-        """Return (mask_logits (B, W), film_features (B, Da, W))."""
-        h = self.convs(z)
-        logits = self.mask_head(h).squeeze(1)
-        return logits, h
-
-
-class EncoderAction(nn.Module):
-    def __init__(self, in_dim: int, hidden_dims: list, out_dims: int, kernels=(7, 5, 3), stride=(1, 1, 1),
-                 norm: str = "batch", act: str = "relu", dropout: float = 0.1, encoder_type: str = "tcn"):
-        super().__init__()
-        self.encoder_type = encoder_type.lower()
-        assert self.encoder_type in ("tcn", "normal"), "encoder_type should be tcn or normal"
-        
-        self.input_dims = in_dim
-        self.hidden_dims = hidden_dims
-        self.output_dims = out_dims
-        self.kernels = kernels
-        self.norm = norm
-        self.act = act
-        self.dropout = dropout
-        
-        if self.encoder_type == "tcn":
-            self.net = TCNEncoder(in_dim, out_dims, kernels, norm, act, stride, dropout)
-        else:
-            self.net = Encoder(in_dim, out_dims, kernels, norm, act, stride, dropout)
-
-    def forward(self, x):
-        x = self.net(x)
-        return {
-            "action": {"action_token": x}
-        }
+        features = self.convs(z)
+        return self.mask_head(features).squeeze(1), features
 
 
 class MaskedRepresentationAction(nn.Module):
-    def __init__(self, encoder_input_dim):
+    """Replace masked latents with a learned token and supply FiLM features."""
+
+    def __init__(self, latent_dim, aux=None, *, aux_input="latent", train_mask="known",
+                 mask_reduction="max"):
         super().__init__()
-        # Learned unknown-token: marks what-to-reconstruct
-        # positions in the predictor input. When present, the auxiliary
-        # still sees raw corrupted latents.
-        self.mask_token = nn.Parameter(torch.zeros(1, encoder_input_dim, 1))
+        if aux_input not in ("latent", "raw"):
+            raise ValueError("aux_input must be latent or raw")
+        if train_mask not in ("known", "predicted"):
+            raise ValueError("train_mask must be known or predicted")
+        if train_mask == "predicted" and aux is None:
+            raise ValueError("predicted masks require an auxiliary")
+        if mask_reduction not in ("max", "nearest"):
+            raise ValueError("mask_reduction must be max or nearest")
+        self.aux = aux
+        self.film_dim = aux.feat_dim if aux is not None else 0
+        self.aux_input = aux_input
+        self.train_mask = train_mask
+        self.mask_reduction = mask_reduction
+        self.mask_token = nn.Parameter(torch.empty(1, latent_dim, 1))
         nn.init.normal_(self.mask_token, std=0.02)
 
-    def forward(self, zhat, z, input):
-        """Blend learned token into masked positions (hard if binary).
-        During training the m_float is the actual mask, during inference is the proposed mask from the auxiliary."""
-        if "mask_float" not in input:
-            raise ValueError("input must contain 'mask_float' key for MaskedRepresentationAction")
-        m_float = input["mask_float"]
-        if m_float.ndim == 1:
-            m_float = m_float.unsqueeze(0)
-        if m_float.size(-1) != z.size(-1):
-            m_float = F.interpolate(m_float.unsqueeze(1).float(),
-                                    size=z.size(-1),
-                                    mode="nearest").squeeze(1).to(z.dtype)
-        
-        blend = m_float.unsqueeze(1).expand_as(zhat)
-        tok = self.mask_token.expand_as(zhat)
-        return {
-            "action": {"action_token": blend * tok + (1 - blend) * zhat},
-        }
+    def _token_blend(self, current, mask):
+        weights = mask.unsqueeze(1).to(current.dtype)
+        return current * (1 - weights) + self.mask_token.to(current.dtype) * weights
+
+    def _token_mask(self, mask, tokens):
+        if mask.size(-1) == tokens:
+            return mask
+        if self.mask_reduction == "nearest":
+            return F.interpolate(mask.float().unsqueeze(1), size=tokens, mode="nearest").squeeze(1)
+        return mask.reshape(mask.size(0), tokens, -1).amax(dim=-1)
+
+    def forward(self, current, target, views, *, action=None, propose=False):
+        tokens = current.size(-1)
+        known = views.mask_target
+        if known is None:
+            known = current.new_zeros(current.size(0), views.current_input.size(-1))
+        aux_input = views.current_input if self.aux_input == "raw" else current
+        logits, features = self.aux(aux_input) if self.aux is not None else (None, None)
+
+        if action is not None:
+            if not torch.is_tensor(action) or action.shape not in (known.shape, (known.size(0), tokens)):
+                raise ValueError("mask action must have shape (B, W) or (B, T_current)")
+            mask = action.to(device=current.device)
+        elif logits is not None and (propose or self.train_mask == "predicted"):
+            mask = logits.sigmoid()
+        else:
+            mask = torch.zeros_like(known) if propose else known
+
+        blend = self._token_mask(mask, tokens)
+        if features is not None and features.size(-1) != tokens:
+            features = F.adaptive_avg_pool1d(features, tokens)
+        mask_target = known if self.aux_input == "raw" else self._token_mask(known, tokens)
+        return ActionOutput(
+            token_input=self._token_blend(current, blend),
+            film_feat=features,
+            mask_logits=logits,
+            mask_target=mask_target,
+            mask_proposal=blend,
+        )
 
 
-class MaskedRepresentationAuxiliaryGuidedAction(nn.Module):
-    def __init__(self, encoder_input_dim, aux_channels=32, aux_kernels=(3, 5, 7), norm="batch", dropout=0.0, aux_mask_during_training=True):
+class EncoderAction(nn.Module):
+    """Encode the observed target latent into length-preserving attention keys."""
+
+    def __init__(self, encoder):
         super().__init__()
-        # Learned unknown-token guided by auxilary head: marks what-to-reconstruct
-        # positions in the predictor input. When present, the auxiliary
-        # still sees raw corrupted latents.
-        self.aux_mask_during_training = aux_mask_during_training
-        self.mask_token = nn.Parameter(torch.zeros(1, encoder_input_dim, 1))
-        nn.init.normal_(self.mask_token, std=0.02)
-        self.aux = TimeAuxiliary(encoder_input_dim, aux_channels=aux_channels,
-                            kernels=tuple(aux_kernels), norm=norm,
-                            dropout=dropout)
+        if encoder.total_stride != 1:
+            raise ValueError("guided action keys must preserve the target token count")
+        self.net = encoder
 
-    def forward(self, zhat, z, input):
-        """Blend learned token into masked positions (hard if binary).
-        During training the m_float is the actual mask, during inference is the proposed mask from the auxiliary."""
-        if "mask_float" not in input:
-            raise ValueError("input must contain 'mask_float' key for MaskedRepresentationAuxiliaryGuidedAction")
-        m_float = input["mask_float"]
+    def forward(self, current, target, views, *, action=None, propose=False):
+        if action is not None:
+            raise ValueError("guided action keys are derived from the observed target")
+        return ActionOutput(key=self.net(target))
 
-        mask_logits, film_feat = self.aux(zhat)
-        if not self.training or self.aux_mask_during_training:
-            m_float = torch.sigmoid(mask_logits).detach().to(z.dtype) if mask_logits is not None \
-                            else z.new_zeros(z.size(0), z.size(-1))
-        if m_float.ndim == 1:
-            m_float = m_float.unsqueeze(0)
-        if m_float.size(-1) != z.size(-1):
-            m_float = F.interpolate(m_float.unsqueeze(1).float(),
-                                    size=z.size(-1),
-                                    mode="nearest").squeeze(1).to(z.dtype)
-        
-        blend = m_float.unsqueeze(1).expand_as(zhat)
-        tok = self.mask_token.expand_as(zhat)
-        return {
-            "action": {"action_token": blend * tok + (1 - blend) * zhat, "film_feat": film_feat},
-        }
+
+class DiscreteAction(nn.Module):
+    """Embed observed or planner-proposed action IDs as conditioning features."""
+
+    def __init__(self, num_actions, embedding_dim):
+        super().__init__()
+        self.embedding = nn.Embedding(num_actions, embedding_dim)
+        self.film_dim = embedding_dim
+
+    def forward(self, current, target, views, *, action=None, propose=False):
+        if not torch.is_tensor(action) or action.dtype not in (torch.int32, torch.int64):
+            raise ValueError("discrete action requires integer action IDs")
+        if action.shape not in ((current.size(0),), (current.size(0), current.size(-1))):
+            raise ValueError("action IDs must have shape (B,) or (B, T_current)")
+        if action.ndim == 1:
+            action = action.unsqueeze(-1)
+        return ActionOutput(token_input=current, film_feat=self.embedding(action.to(current.device)).transpose(1, 2))
+
+
+class NoAction(nn.Module):
+    film_dim = 0
+
+    def forward(self, current, target, views, *, action=None, propose=False):
+        if action is not None:
+            raise ValueError("this predictor has no action module")
+        return ActionOutput(token_input=current)
