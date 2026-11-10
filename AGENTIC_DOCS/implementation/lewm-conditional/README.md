@@ -36,3 +36,12 @@ data, training/config/checkpoint/suite/scoring orchestration. Test agent owns
 tests and the acceptance report. Architect owns this tracker/spec, integration,
 review and final commits. Coordinate shared interfaces directly; agents do not
 commit independently.
+
+Implementation candidate: `6557f7a`. Independent acceptance passed all 29 groups
+across four assertion scripts, including CUDA checks and real PSM/SMD samples;
+TSB collections were verified with generated format/list fixtures only. See the
+[acceptance report](../../reports/lewm_conditional_acceptance/REPORT.md).
+All seven tickets are verified. Separate standards and specification reviewers
+found no actionable findings. See [review.md](review.md) for the reviewed range
+and final reports. The implementation and acceptance evidence are committed
+on the existing branch.

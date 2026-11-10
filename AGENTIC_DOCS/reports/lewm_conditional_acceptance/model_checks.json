@@ -1,0 +1,306 @@
+[
+  {
+    "case": "shipped defaults",
+    "status": "passed",
+    "detail": {
+      "lewm": {
+        "latent_loss": "kl",
+        "score": "l1"
+      },
+      "guided_forecast": {
+        "latent_loss": "kl",
+        "score": "l1"
+      }
+    }
+  },
+  {
+    "case": "literal objective equations",
+    "status": "passed",
+    "detail": {
+      "l1": 1.5,
+      "mse": 5.0,
+      "l2": 1.5811388492584229,
+      "kl": 0.19039854407310486
+    }
+  },
+  {
+    "case": "independent score equations",
+    "status": "passed",
+    "detail": {
+      "l1": [
+        [
+          0.0,
+          3.0
+        ]
+      ],
+      "mse": [
+        [
+          0.0,
+          10.0
+        ]
+      ],
+      "l2": [
+        [
+          0.0,
+          3.1622776601683795
+        ]
+      ],
+      "kl": [
+        [
+          0.0,
+          0.38079707797788237
+        ]
+      ]
+    }
+  },
+  {
+    "case": "spectral coordinate roundtrip",
+    "status": "passed",
+    "detail": [
+      {
+        "input": [
+          1,
+          6,
+          32
+        ],
+        "packed": [
+          1,
+          8,
+          17,
+          5
+        ]
+      },
+      {
+        "input": [
+          2,
+          6,
+          35
+        ],
+        "packed": [
+          2,
+          8,
+          18,
+          5
+        ]
+      },
+      {
+        "input": [
+          3,
+          6,
+          48
+        ],
+        "packed": [
+          3,
+          8,
+          25,
+          5
+        ]
+      }
+    ]
+  },
+  {
+    "case": "predicted mask and gradients",
+    "status": "passed",
+    "detail": {
+      "loss": 2.3144493103027344,
+      "pred_loss": 0.8742117285728455,
+      "aux_loss": 0.8570921421051025,
+      "sigreg": 3.3738911151885986,
+      "sigreg_tgt": 2.4575605392456055
+    }
+  },
+  {
+    "case": "unrestricted latent",
+    "status": "passed",
+    "detail": {
+      "latent_min": -4.0,
+      "latent_max": -4.0
+    }
+  },
+  {
+    "case": "future Q historical KV",
+    "status": "passed",
+    "detail": [
+      {
+        "input": [
+          2,
+          3,
+          48
+        ],
+        "history_tokens": 32,
+        "future_tokens": 16
+      },
+      {
+        "input": [
+          2,
+          3,
+          63
+        ],
+        "history_tokens": 42,
+        "future_tokens": 21
+      },
+      {
+        "input": [
+          2,
+          3,
+          90
+        ],
+        "history_tokens": 60,
+        "future_tokens": 30
+      }
+    ]
+  },
+  {
+    "case": "scalar score interpolation",
+    "status": "passed",
+    "detail": [
+      {
+        "model": "lewm",
+        "span": [
+          0,
+          66
+        ],
+        "stride": 2
+      },
+      {
+        "model": "guided_forecast",
+        "span": [
+          44,
+          66
+        ],
+        "stride": 2
+      }
+    ]
+  },
+  {
+    "case": "optional raw weighted total",
+    "status": "passed",
+    "detail": {
+      "loss": 5.827879428863525,
+      "pred_loss": 0.7210318446159363,
+      "aux_loss": 0.8512765765190125,
+      "sigreg": 2.173738956451416,
+      "sigreg_tgt": 2.4843080043792725,
+      "recon_loss": 0.8070298433303833
+    }
+  },
+  {
+    "case": "fixed batch optimization conditioning",
+    "status": "passed",
+    "detail": {
+      "lewm": {
+        "initial_loss": 1.2971864938735962,
+        "final_loss": 0.5104230642318726,
+        "steps": 45,
+        "guide_shuffle_mean_difference": 0.03171588107943535,
+        "history_shuffle_mean_difference": 0.36260029673576355
+      },
+      "guided_forecast": {
+        "initial_loss": 1.075000286102295,
+        "final_loss": 0.1794237494468689,
+        "steps": 45,
+        "guide_shuffle_mean_difference": 0.08055750280618668,
+        "history_shuffle_mean_difference": 0.3240083158016205
+      }
+    }
+  },
+  {
+    "case": "CUDA AMP frequency",
+    "status": "passed",
+    "detail": {
+      "available": true,
+      "device": "NVIDIA GeForce RTX 3060",
+      "loss": 1.9264332056045532,
+      "score_dtype": "torch.float32"
+    }
+  },
+  {
+    "case": "baseline objectives variable widths",
+    "status": "passed",
+    "detail": {
+      "vae_kl": 2.8068528194400546,
+      "cases": [
+        {
+          "model": "ae",
+          "raw_channels": 1,
+          "window": 48
+        },
+        {
+          "model": "ae",
+          "raw_channels": 1,
+          "window": 65
+        },
+        {
+          "model": "ae",
+          "raw_channels": 5,
+          "window": 48
+        },
+        {
+          "model": "ae",
+          "raw_channels": 5,
+          "window": 65
+        },
+        {
+          "model": "vae",
+          "raw_channels": 1,
+          "window": 48
+        },
+        {
+          "model": "vae",
+          "raw_channels": 1,
+          "window": 65
+        },
+        {
+          "model": "vae",
+          "raw_channels": 5,
+          "window": 48
+        },
+        {
+          "model": "vae",
+          "raw_channels": 5,
+          "window": 65
+        },
+        {
+          "model": "lewm",
+          "raw_channels": 1,
+          "window": 48
+        },
+        {
+          "model": "lewm",
+          "raw_channels": 1,
+          "window": 65
+        },
+        {
+          "model": "lewm",
+          "raw_channels": 5,
+          "window": 48
+        },
+        {
+          "model": "lewm",
+          "raw_channels": 5,
+          "window": 65
+        },
+        {
+          "model": "guided_forecast",
+          "raw_channels": 1,
+          "window": 48
+        },
+        {
+          "model": "guided_forecast",
+          "raw_channels": 1,
+          "window": 65
+        },
+        {
+          "model": "guided_forecast",
+          "raw_channels": 5,
+          "window": 48
+        },
+        {
+          "model": "guided_forecast",
+          "raw_channels": 5,
+          "window": 65
+        }
+      ]
+    }
+  }
+]

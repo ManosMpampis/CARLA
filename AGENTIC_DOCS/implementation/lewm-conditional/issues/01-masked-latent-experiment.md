@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** implemented
+**Status:** verified
 
 - [x] The default run is latent-only, with predicted masks in training and scoring, supervised by BCE on synthetic masks.
 - [x] Spectral packing roundtrips without mixing complex, time, batch or feature coordinates.

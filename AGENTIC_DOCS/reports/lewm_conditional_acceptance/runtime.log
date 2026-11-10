@@ -1,0 +1,132 @@
+PASS data normalization and splits
+PASS short and pooled data
+PASS sample weighted summaries
+PASS validation RNG and preflight
+PASS training and score reload
+PASS short training checkpoint
+PASS deterministic resume
+PASS real data samples
+PASS normal entry CUDA AMP
+[11-10 04:14:18]: Using Tensorboard, logs will be saved in /tmp/lewm-conditional-training-srr2_k21/ae
+[11-10 04:14:18]: ae: 10 training windows, 1 validation windows
+[11-10 04:14:18]: No checkpoint file at /tmp/lewm-conditional-training-srr2_k21/ae/checkpoint.pth.tar
+[11-10 04:14:18]: train epoch 1 | loss=1.037170, mse=1.037170, kl=0.000000, pred_loss=1.037170, latent_var=0.361708
+[11-10 04:14:18]: validation epoch 1 | loss=0.931963, mse=0.931963, kl=0.000000, pred_loss=0.931963, latent_var=0.056442
+[11-10 04:14:19]: Test_window epoch 1 | calibrated_threshold=0.971425, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.028221, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 1 | calibrated_threshold=0.967104, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.028221, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 1 | calibrated_threshold=1.380553, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.676923, calibrated_range_f1=0.422983, calibrated_affiliation_f1=0.984850, oracle_threshold=0.685591, oracle_calibration_quantile=0.264802, oracle_event_f1=0.955556, oracle_f1=0.955556, oracle_range_f1=0.637037, oracle_affiliation_f1=0.961838, vus_pr=0.970630, vus_roc=0.910800, auc_pr=0.965237, auc_roc=0.900716, calibrated_pa_f1=1.000000, oracle_pa_f1=0.955556
+[11-10 04:14:19]: train epoch 2 | loss=1.028895, mse=1.028895, kl=0.000000, pred_loss=1.028895, latent_var=0.342340
+[11-10 04:14:19]: validation epoch 2 | loss=0.932070, mse=0.932070, kl=0.000000, pred_loss=0.932070, latent_var=0.057205
+[11-10 04:14:19]: Test_window epoch 2 | calibrated_threshold=0.967193, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.022409, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 2 | calibrated_threshold=0.961629, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.022409, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 2 | calibrated_threshold=1.372252, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.676923, calibrated_range_f1=0.422983, calibrated_affiliation_f1=0.984850, oracle_threshold=0.687459, oracle_calibration_quantile=0.266741, oracle_event_f1=0.955556, oracle_f1=0.955556, oracle_range_f1=0.637037, oracle_affiliation_f1=0.961838, vus_pr=0.972127, vus_roc=0.913878, auc_pr=0.967498, auc_roc=0.905188, calibrated_pa_f1=1.000000, oracle_pa_f1=0.955556
+[11-10 04:14:19]: Best validation loss 0.931963
+[11-10 04:14:19]: Using Tensorboard, logs will be saved in /tmp/lewm-conditional-training-srr2_k21/vae
+[11-10 04:14:19]: vae: 10 training windows, 1 validation windows
+[11-10 04:14:19]: No checkpoint file at /tmp/lewm-conditional-training-srr2_k21/vae/checkpoint.pth.tar
+[11-10 04:14:19]: train epoch 1 | loss=1.120111, mse=1.074548, kl=0.151877, pred_loss=1.074548, latent_var=0.072310
+[11-10 04:14:19]: validation epoch 1 | loss=0.998082, mse=0.980415, kl=0.058890, pred_loss=0.980415, latent_var=0.012759
+[11-10 04:14:19]: Test_window epoch 1 | calibrated_threshold=0.988651, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.941176, calibrated_range_f1=0.953488, calibrated_affiliation_f1=0.995349, oracle_threshold=0.977795, oracle_calibration_quantile=0.919722, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 1 | calibrated_threshold=0.942397, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=0.977795, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 1 | calibrated_threshold=1.376284, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.676923, calibrated_range_f1=0.439768, calibrated_affiliation_f1=0.984689, oracle_threshold=0.765442, oracle_calibration_quantile=0.381305, oracle_event_f1=0.955056, oracle_f1=0.949721, oracle_range_f1=0.617923, oracle_affiliation_f1=0.961388, vus_pr=0.972673, vus_roc=0.911811, auc_pr=0.969075, auc_roc=0.905635, calibrated_pa_f1=1.000000, oracle_pa_f1=0.955556
+[11-10 04:14:19]: train epoch 2 | loss=1.118207, mse=1.073959, kl=0.147494, pred_loss=1.073959, latent_var=0.073456
+[11-10 04:14:19]: validation epoch 2 | loss=0.996640, mse=0.979171, kl=0.058232, pred_loss=0.979171, latent_var=0.012612
+[11-10 04:14:19]: Test_window epoch 2 | calibrated_threshold=0.987227, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.941176, calibrated_range_f1=0.953488, calibrated_affiliation_f1=0.995349, oracle_threshold=0.978028, oracle_calibration_quantile=0.923917, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 2 | calibrated_threshold=0.941888, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=0.978028, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 2 | calibrated_threshold=1.374698, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.676923, calibrated_range_f1=0.439768, calibrated_affiliation_f1=0.984689, oracle_threshold=0.768573, oracle_calibration_quantile=0.387552, oracle_event_f1=0.955056, oracle_f1=0.949721, oracle_range_f1=0.617923, oracle_affiliation_f1=0.961388, vus_pr=0.972820, vus_roc=0.912274, auc_pr=0.969222, auc_roc=0.906082, calibrated_pa_f1=1.000000, oracle_pa_f1=0.955556
+[11-10 04:14:19]: Best validation loss 0.996640
+[11-10 04:14:19]: Using Tensorboard, logs will be saved in /tmp/lewm-conditional-training-srr2_k21/lewm
+[11-10 04:14:19]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:19]: No checkpoint file at /tmp/lewm-conditional-training-srr2_k21/lewm/checkpoint.pth.tar
+[11-10 04:14:19]: train epoch 1 | loss=1.776199, pred_loss=0.599854, aux_loss=0.765868, sigreg=2.191576, sigreg_tgt=1.913189, latent_var=1.144132
+[11-10 04:14:19]: validation epoch 1 | loss=1.052424, pred_loss=0.200162, aux_loss=0.696050, sigreg=0.709738, sigreg_tgt=0.852383, latent_var=0.351970
+[11-10 04:14:19]: Test_window epoch 1 | calibrated_threshold=1.494092, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.970239, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 1 | calibrated_threshold=1.494482, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.970239, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 1 | calibrated_threshold=3.065345, calibrated_calibration_quantile=0.990000, calibrated_event_f1=0.933333, calibrated_f1=0.381818, calibrated_range_f1=0.374376, calibrated_affiliation_f1=0.896796, oracle_threshold=1.101820, oracle_calibration_quantile=0.688586, oracle_event_f1=0.929730, oracle_f1=0.929730, oracle_range_f1=0.929730, oracle_affiliation_f1=0.942666, vus_pr=0.909263, vus_roc=0.828803, auc_pr=0.868435, auc_roc=0.771467, calibrated_pa_f1=0.982857, oracle_pa_f1=0.929730
+[11-10 04:14:19]: train epoch 2 | loss=1.695773, pred_loss=0.630112, aux_loss=0.724986, sigreg=1.895091, sigreg_tgt=1.511666, latent_var=1.248262
+[11-10 04:14:19]: validation epoch 2 | loss=1.048729, pred_loss=0.197687, aux_loss=0.696267, sigreg=0.703444, sigreg_tgt=0.844309, latent_var=0.346379
+[11-10 04:14:19]: Test_window epoch 2 | calibrated_threshold=1.435290, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.926537, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 2 | calibrated_threshold=1.436035, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.926537, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 2 | calibrated_threshold=2.988535, calibrated_calibration_quantile=0.990000, calibrated_event_f1=0.926829, calibrated_f1=0.351852, calibrated_range_f1=0.369088, calibrated_affiliation_f1=0.892048, oracle_threshold=1.073208, oracle_calibration_quantile=0.685979, oracle_event_f1=0.929730, oracle_f1=0.929730, oracle_range_f1=0.929730, oracle_affiliation_f1=0.942666, vus_pr=0.908140, vus_roc=0.830283, auc_pr=0.867860, auc_roc=0.774597, calibrated_pa_f1=0.982857, oracle_pa_f1=0.929730
+[11-10 04:14:19]: Best validation loss 1.048729
+[11-10 04:14:19]: Using Tensorboard, logs will be saved in /tmp/lewm-conditional-training-srr2_k21/guided_forecast
+[11-10 04:14:19]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:19]: No checkpoint file at /tmp/lewm-conditional-training-srr2_k21/guided_forecast/checkpoint.pth.tar
+[11-10 04:14:19]: train epoch 1 | loss=1.363344, pred_loss=1.002087, aux_loss=0.000000, sigreg=1.777760, sigreg_tgt=1.834811, latent_var=1.246762
+[11-10 04:14:19]: validation epoch 1 | loss=0.712626, pred_loss=0.570542, aux_loss=0.000000, sigreg=0.802541, sigreg_tgt=0.618295, latent_var=0.178616
+[11-10 04:14:19]: Test_window epoch 1 | calibrated_threshold=2.775897, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.714286, calibrated_range_f1=0.593750, calibrated_affiliation_f1=0.948052, oracle_threshold=2.236883, oracle_calibration_quantile=0.658748, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 1 | calibrated_threshold=2.723335, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.750000, calibrated_range_f1=0.611111, calibrated_affiliation_f1=0.958333, oracle_threshold=2.236883, oracle_calibration_quantile=0.696497, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 1 | calibrated_threshold=3.129259, calibrated_calibration_quantile=0.990000, calibrated_event_f1=0.933333, calibrated_f1=0.528302, calibrated_range_f1=0.406081, calibrated_affiliation_f1=0.888184, oracle_threshold=1.632370, oracle_calibration_quantile=0.482046, oracle_event_f1=0.967320, oracle_f1=0.967320, oracle_range_f1=0.967320, oracle_affiliation_f1=0.968795, vus_pr=0.926877, vus_roc=0.556698, auc_pr=0.889711, auc_roc=0.441441, calibrated_pa_f1=0.973684, oracle_pa_f1=0.967320
+[11-10 04:14:19]: train epoch 2 | loss=1.318712, pred_loss=0.958144, aux_loss=0.000000, sigreg=1.516135, sigreg_tgt=2.089544, latent_var=1.211290
+[11-10 04:14:19]: validation epoch 2 | loss=0.688705, pred_loss=0.546791, aux_loss=0.000000, sigreg=0.796682, sigreg_tgt=0.622458, latent_var=0.180382
+[11-10 04:14:19]: Test_window epoch 2 | calibrated_threshold=2.675305, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.714286, calibrated_range_f1=0.593750, calibrated_affiliation_f1=0.948052, oracle_threshold=2.189912, oracle_calibration_quantile=0.660741, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_non_overlap epoch 2 | calibrated_threshold=2.624744, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.750000, calibrated_range_f1=0.611111, calibrated_affiliation_f1=0.958333, oracle_threshold=2.189912, oracle_calibration_quantile=0.699694, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:19]: Test_timeseries epoch 2 | calibrated_threshold=3.078222, calibrated_calibration_quantile=0.990000, calibrated_event_f1=0.931034, calibrated_f1=0.514286, calibrated_range_f1=0.403450, calibrated_affiliation_f1=0.886110, oracle_threshold=1.561941, oracle_calibration_quantile=0.473917, oracle_event_f1=0.967320, oracle_f1=0.967320, oracle_range_f1=0.967320, oracle_affiliation_f1=0.968795, vus_pr=0.922608, vus_roc=0.547804, auc_pr=0.884213, auc_roc=0.430180, calibrated_pa_f1=0.973684, oracle_pa_f1=0.967320
+[11-10 04:14:19]: Best validation loss 0.688705
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-short-training-kzse03t3
+[11-10 04:14:20]: ae: 3 training windows, 0 validation windows
+[11-10 04:14:20]: Validation unavailable: train and calibrate on all training rows; primary selection uses training loss
+[11-10 04:14:20]: No checkpoint file at /tmp/lewm-short-training-kzse03t3/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 1 | loss=0.901053, mse=0.901053, kl=0.000000, pred_loss=0.901053, latent_var=0.157515
+[11-10 04:14:20]: Test_window epoch 1 | calibrated_threshold=0.854445, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.055396, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:20]: Test_non_overlap epoch 1 | calibrated_threshold=0.659332, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.055396, oracle_calibration_quantile=0.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:20]: Test_timeseries epoch 1 | calibrated_threshold=1.520246, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.656250, calibrated_range_f1=0.435226, calibrated_affiliation_f1=0.980929, oracle_threshold=0.633582, oracle_calibration_quantile=0.452765, oracle_event_f1=0.950276, oracle_f1=0.950276, oracle_range_f1=0.637037, oracle_affiliation_f1=0.956684, vus_pr=0.968064, vus_roc=0.899609, auc_pr=0.963370, auc_roc=0.891324, calibrated_pa_f1=1.000000, oracle_pa_f1=0.950276
+[11-10 04:14:20]: train epoch 2 | loss=0.898605, mse=0.898605, kl=0.000000, pred_loss=0.898605, latent_var=0.158347
+[11-10 04:14:20]: Test_window epoch 2 | calibrated_threshold=0.853437, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.052790, oracle_calibration_quantile=1.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:20]: Test_non_overlap epoch 2 | calibrated_threshold=0.658491, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=1.000000, calibrated_range_f1=1.000000, calibrated_affiliation_f1=1.000000, oracle_threshold=1.052790, oracle_calibration_quantile=0.000000, oracle_event_f1=1.000000, oracle_f1=1.000000, oracle_range_f1=1.000000, oracle_affiliation_f1=1.000000, calibrated_pa_f1=1.000000, oracle_pa_f1=1.000000
+[11-10 04:14:20]: Test_timeseries epoch 2 | calibrated_threshold=1.519758, calibrated_calibration_quantile=0.990000, calibrated_event_f1=1.000000, calibrated_f1=0.645669, calibrated_range_f1=0.432945, calibrated_affiliation_f1=0.979769, oracle_threshold=0.636445, oracle_calibration_quantile=0.456537, oracle_event_f1=0.950276, oracle_f1=0.950276, oracle_range_f1=0.637037, oracle_affiliation_f1=0.956684, vus_pr=0.968317, vus_roc=0.900296, auc_pr=0.963740, auc_roc=0.892218, calibrated_pa_f1=1.000000, oracle_pa_f1=0.950276
+[11-10 04:14:20]: Best training loss 0.898605
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/vae-full
+[11-10 04:14:20]: vae: 10 training windows, 1 validation windows
+[11-10 04:14:20]: No checkpoint file at /tmp/lewm-deterministic-resume-mxrt6v_i/vae-full/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 1 | loss=1.120111, mse=1.074548, kl=0.151877, pred_loss=1.074548, latent_var=0.072310
+[11-10 04:14:20]: validation epoch 1 | loss=0.998082, mse=0.980415, kl=0.058890, pred_loss=0.980415, latent_var=0.012759
+[11-10 04:14:20]: train epoch 2 | loss=1.118207, mse=1.073959, kl=0.147494, pred_loss=1.073959, latent_var=0.073456
+[11-10 04:14:20]: validation epoch 2 | loss=0.996640, mse=0.979171, kl=0.058232, pred_loss=0.979171, latent_var=0.012612
+[11-10 04:14:20]: train epoch 3 | loss=1.134346, mse=1.091343, kl=0.143342, pred_loss=1.091343, latent_var=0.071982
+[11-10 04:14:20]: validation epoch 3 | loss=0.995477, mse=0.978176, kl=0.057668, pred_loss=0.978176, latent_var=0.012502
+[11-10 04:14:20]: Best validation loss 0.995477
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/vae-interrupted
+[11-10 04:14:20]: vae: 10 training windows, 1 validation windows
+[11-10 04:14:20]: No checkpoint file at /tmp/lewm-deterministic-resume-mxrt6v_i/vae-interrupted/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 1 | loss=1.120111, mse=1.074548, kl=0.151877, pred_loss=1.074548, latent_var=0.072310
+[11-10 04:14:20]: validation epoch 1 | loss=0.998082, mse=0.980415, kl=0.058890, pred_loss=0.980415, latent_var=0.012759
+[11-10 04:14:20]: Best validation loss 0.998082
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/vae-interrupted
+[11-10 04:14:20]: vae: 10 training windows, 1 validation windows
+[11-10 04:14:20]: Restart from checkpoint /tmp/lewm-deterministic-resume-mxrt6v_i/vae-interrupted/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 2 | loss=1.118207, mse=1.073959, kl=0.147494, pred_loss=1.073959, latent_var=0.073456
+[11-10 04:14:20]: validation epoch 2 | loss=0.996640, mse=0.979171, kl=0.058232, pred_loss=0.979171, latent_var=0.012612
+[11-10 04:14:20]: train epoch 3 | loss=1.134346, mse=1.091343, kl=0.143342, pred_loss=1.091343, latent_var=0.071982
+[11-10 04:14:20]: validation epoch 3 | loss=0.995477, mse=0.978176, kl=0.057668, pred_loss=0.978176, latent_var=0.012502
+[11-10 04:14:20]: Best validation loss 0.995477
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-full
+[11-10 04:14:20]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:20]: No checkpoint file at /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-full/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 1 | loss=1.755824, pred_loss=0.599929, aux_loss=0.765868, sigreg=2.288911, sigreg_tgt=1.611362, latent_var=1.143810
+[11-10 04:14:20]: validation epoch 1 | loss=1.064471, pred_loss=0.201063, aux_loss=0.696051, sigreg=0.773865, sigreg_tgt=0.899702, latent_var=0.352037
+[11-10 04:14:20]: train epoch 2 | loss=1.841785, pred_loss=0.644850, aux_loss=0.780525, sigreg=2.306664, sigreg_tgt=1.857430, latent_var=1.060204
+[11-10 04:14:20]: validation epoch 2 | loss=1.061020, pred_loss=0.199209, aux_loss=0.695962, sigreg=0.765403, sigreg_tgt=0.893093, latent_var=0.346784
+[11-10 04:14:20]: train epoch 3 | loss=1.725757, pred_loss=0.620441, aux_loss=0.716061, sigreg=2.113129, sigreg_tgt=1.779414, latent_var=1.231959
+[11-10 04:14:20]: validation epoch 3 | loss=1.057192, pred_loss=0.197413, aux_loss=0.695457, sigreg=0.757132, sigreg_tgt=0.886091, latent_var=0.341614
+[11-10 04:14:20]: Best validation loss 1.057192
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-interrupted
+[11-10 04:14:20]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:20]: No checkpoint file at /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-interrupted/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 1 | loss=1.755824, pred_loss=0.599929, aux_loss=0.765868, sigreg=2.288911, sigreg_tgt=1.611362, latent_var=1.143810
+[11-10 04:14:20]: validation epoch 1 | loss=1.064471, pred_loss=0.201063, aux_loss=0.696051, sigreg=0.773865, sigreg_tgt=0.899702, latent_var=0.352037
+[11-10 04:14:20]: Best validation loss 1.064471
+[11-10 04:14:20]: Using Tensorboard, logs will be saved in /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-interrupted
+[11-10 04:14:20]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:20]: Restart from checkpoint /tmp/lewm-deterministic-resume-mxrt6v_i/lewm-interrupted/checkpoint.pth.tar
+[11-10 04:14:20]: train epoch 2 | loss=1.841785, pred_loss=0.644850, aux_loss=0.780525, sigreg=2.306664, sigreg_tgt=1.857430, latent_var=1.060204
+[11-10 04:14:20]: validation epoch 2 | loss=1.061020, pred_loss=0.199209, aux_loss=0.695962, sigreg=0.765403, sigreg_tgt=0.893093, latent_var=0.346784
+[11-10 04:14:20]: train epoch 3 | loss=1.725757, pred_loss=0.620441, aux_loss=0.716061, sigreg=2.113129, sigreg_tgt=1.779414, latent_var=1.231959
+[11-10 04:14:20]: validation epoch 3 | loss=1.057192, pred_loss=0.197413, aux_loss=0.695457, sigreg=0.757132, sigreg_tgt=0.886091, latent_var=0.341614
+[11-10 04:14:20]: Best validation loss 1.057192
+[11-10 04:14:21]: Using Tensorboard, logs will be saved in /tmp/lewm-normal-amp-c8awrq61
+[11-10 04:14:21]: lewm: 10 training windows, 1 validation windows
+[11-10 04:14:21]: No checkpoint file at /tmp/lewm-normal-amp-c8awrq61/checkpoint.pth.tar
+[11-10 04:14:22]: train epoch 1 | loss=1.799270, pred_loss=0.598285, aux_loss=0.766658, sigreg=2.339326, sigreg_tgt=2.003941, latent_var=1.141393
+[11-10 04:14:22]: validation epoch 1 | loss=1.053428, pred_loss=0.201091, aux_loss=0.696039, sigreg=0.733353, sigreg_tgt=0.829631, latent_var=0.352047
+[11-10 04:14:22]: Best validation loss 1.053428

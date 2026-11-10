@@ -1,0 +1,50 @@
+[
+  {
+    "case": "shipped defaults",
+    "status": "failed",
+    "error": "shipped LeWM preset must default to KL",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 28, in default_contract\n    assert criterion.loss2_kind == \"kl\", \"shipped LeWM preset must default to KL\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: shipped LeWM preset must default to KL\n"
+  },
+  {
+    "case": "literal objective equations",
+    "status": "failed",
+    "error": "Invalid loss2_kind l2",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 52, in objective_equations\n    criterion = LeWMLoss(loss2_kind=kind, w_aux=0, lambda_sigreg=0, lambda_sigreg_tgt=0)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/losses/lewm.py\", line 21, in __init__\n    raise ValueError(f\"Invalid loss2_kind {loss2_kind}\")\nValueError: Invalid loss2_kind l2\n"
+  },
+  {
+    "case": "independent score equations",
+    "status": "failed",
+    "error": "score_mode must be one of ('l1', 'l2', 'mse'); got 'kl'",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 76, in independent_score_equations\n    scores, _ = reconstruction_score_map(prediction, target, kind)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/utils/reconstruction_scores.py\", line 23, in reconstruction_score_map\n    mode = normalize_score_mode(mode)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/utils/reconstruction_scores.py\", line 12, in normalize_score_mode\n    raise ValueError(f\"score_mode must be one of {SCORE_MODES}; got {mode!r}\")\nValueError: score_mode must be one of ('l1', 'l2', 'mse'); got 'kl'\n"
+  },
+  {
+    "case": "spectral coordinate roundtrip",
+    "status": "failed",
+    "error": "Tensor-likes are not close!\n\nMismatched elements: 524 / 680 (77.1%)\nGreatest absolute difference: 11.540149688720703 at index (0, 2, 12, 0) (up to 1e-06 allowed)\nGreatest relative difference: inf at index (0, 1, 1, 1) (up to 1e-05 allowed)",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 110, in spectral_coordinates\n    close(seen[\"packed\"],expected)\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 55, in close\n    torch.testing.assert_close(torch.as_tensor(actual), torch.as_tensor(expected),\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1631, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: Tensor-likes are not close!\n\nMismatched elements: 524 / 680 (77.1%)\nGreatest absolute difference: 11.540149688720703 at index (0, 2, 12, 0) (up to 1e-06 allowed)\nGreatest relative difference: inf at index (0, 1, 1, 1) (up to 1e-05 allowed)\n"
+  },
+  {
+    "case": "predicted mask and gradients",
+    "status": "failed",
+    "error": "Tensor-likes are not close!\n\nMismatched elements: 144 / 144 (100.0%)\nGreatest absolute difference: 0.9964985847473145 at index (1, 39) (up to 1e-06 allowed)\nGreatest relative difference: 1.8536648750305176 at index (2, 19) (up to 1e-05 allowed)",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 138, in predicted_mask_and_gradients\n    close(outputs[\"action\"].mask_proposal,outputs[\"mask_logits\"].sigmoid())\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 55, in close\n    torch.testing.assert_close(torch.as_tensor(actual), torch.as_tensor(expected),\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1631, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: Tensor-likes are not close!\n\nMismatched elements: 144 / 144 (100.0%)\nGreatest absolute difference: 0.9964985847473145 at index (1, 39) (up to 1e-06 allowed)\nGreatest relative difference: 1.8536648750305176 at index (2, 19) (up to 1e-05 allowed)\n"
+  },
+  {
+    "case": "unrestricted latent",
+    "status": "failed",
+    "error": "latent output must permit values below GELU branch lower bound",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 168, in unrestricted_latent\n    assert encoded.max() < -1, \"latent output must permit values below GELU branch lower bound\"\n           ^^^^^^^^^^^^^^^^^^\nAssertionError: latent output must permit values below GELU branch lower bound\n"
+  },
+  {
+    "case": "future Q historical KV",
+    "status": "failed",
+    "error": "crops must be nonempty, ordered and stride-aligned inside the window",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 174, in guided_roles_and_shapes\n    model=get_model(config,input_channels=3).eval()\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/models/__init__.py\", line 274, in get_model\n    model = factory(p)\n            ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/models/__init__.py\", line 161, in get_lewm_model\n    engine = _resolve(INPUT_ENGINE_REGISTRY, engine_name, \"engine\")(**engine_options)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/models/input_engines.py\", line 67, in __init__\n    self.resolve_crop_ranges(input_window)\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/models/input_engines.py\", line 89, in resolve_crop_ranges\n    raise ValueError(\"crops must be nonempty, ordered and stride-aligned inside the window\")\nValueError: crops must be nonempty, ordered and stride-aligned inside the window\n"
+  },
+  {
+    "case": "scalar score interpolation",
+    "status": "failed",
+    "error": "Tensor-likes are not close!\n\nMismatched elements: 132 / 132 (100.0%)\nGreatest absolute difference: 1.7184031009674072 at index (1, 59) (up to 1e-06 allowed)\nGreatest relative difference: 5.565525531768799 at index (0, 4) (up to 1e-05 allowed)",
+    "traceback": "Traceback (most recent call last):\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 65, in run_cases\n    detail = function()\n             ^^^^^^^^^^\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/verify_conditional_models.py\", line 223, in score_interpolation\n    close(actual,expected)\n  File \"/tmp/lewm-acceptance-baseline-h7199zpr/tests/conditional_support.py\", line 55, in close\n    torch.testing.assert_close(torch.as_tensor(actual), torch.as_tensor(expected),\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/torch/testing/_comparison.py\", line 1631, in assert_close\n    raise error_metas[0].to_error(msg)\nAssertionError: Tensor-likes are not close!\n\nMismatched elements: 132 / 132 (100.0%)\nGreatest absolute difference: 1.7184031009674072 at index (1, 59) (up to 1e-06 allowed)\nGreatest relative difference: 5.565525531768799 at index (0, 4) (up to 1e-05 allowed)\n"
+  }
+]

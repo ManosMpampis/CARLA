@@ -1,0 +1,3104 @@
+[
+  {
+    "case": "selection matrix and preflight",
+    "status": "passed",
+    "detail": {
+      "fixtures": "/tmp/lewm-conditional-formats-k7mr53pk",
+      "matrix": [
+        {
+          "collection": "psm",
+          "selection": "default",
+          "jobs": [
+            {
+              "fname": "psm",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/psm/ae/default/selection/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "smd",
+          "selection": "machine-1-1.txt",
+          "jobs": [
+            {
+              "fname": "machine-1-1.txt",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/smd/ae/default/selection/machine-1-1.txt/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "smd",
+          "selection": "all",
+          "jobs": [
+            {
+              "fname": "machine-1-1.txt",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/smd/ae/default/selection/machine-1-1.txt/jepa"
+            },
+            {
+              "fname": "machine-1-2.txt",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/smd/ae/default/selection/machine-1-2.txt/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "smd",
+          "selection": "all-one",
+          "jobs": [
+            {
+              "fname": "all-one",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/smd/ae/default/selection/all-one/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "tsb-ad-u",
+          "selection": "fixture_1_tr_160_1st_198.csv",
+          "jobs": [
+            {
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-u/ae/default/selection/fixture_1_tr_160_1st_198.csv/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "tsb-ad-u",
+          "selection": "/tmp/lewm-conditional-formats-k7mr53pk/tsb-ad-u/selection.csv",
+          "jobs": [
+            {
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-u/ae/default/selection/fixture_1_tr_160_1st_198.csv/jepa"
+            },
+            {
+              "fname": "fixture_2_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-u/ae/default/selection/fixture_2_tr_160_1st_198.csv/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "tsb-ad-m",
+          "selection": "fixture_1_tr_160_1st_198.csv",
+          "jobs": [
+            {
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-m/ae/default/selection/fixture_1_tr_160_1st_198.csv/jepa"
+            }
+          ]
+        },
+        {
+          "collection": "tsb-ad-m",
+          "selection": "/tmp/lewm-conditional-formats-k7mr53pk/tsb-ad-m/selection.csv",
+          "jobs": [
+            {
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-m/ae/default/selection/fixture_1_tr_160_1st_198.csv/jepa"
+            },
+            {
+              "fname": "fixture_2_tr_160_1st_198.csv",
+              "output": "/tmp/lewm-conditional-formats-k7mr53pk/results/tsb-ad-m/ae/default/selection/fixture_2_tr_160_1st_198.csv/jepa"
+            }
+          ]
+        }
+      ],
+      "invalid_lists_rejected": 4
+    }
+  },
+  {
+    "case": "parallel failures and resume",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-conditional-formats-bx4mapgt",
+      "failed_then_repaired": {
+        "version": 1,
+        "concurrency": 2,
+        "jobs": [
+          {
+            "job_id": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+            "fname": "machine-1-1.txt",
+            "seed": 17,
+            "collection": "smd",
+            "resolved_config": {
+              "aggregate_output_strategy": "all",
+              "arm": "ae",
+              "backbone": "resnet",
+              "batch_size": 4,
+              "calibration_quantile": 0.99,
+              "cpu_threads": 1,
+              "criterion": "reconstruction",
+              "criterion_kwargs": {
+                "beta": 0.0
+              },
+              "device": "cpu",
+              "epochs": 1,
+              "eval_every": 1,
+              "eval_window_size": 4,
+              "feature_modules": {
+                "backbone": null,
+                "encoder": {
+                  "dropout": 0.0,
+                  "enc_channels": [
+                    4,
+                    6
+                  ],
+                  "enc_strides": [
+                    1,
+                    1
+                  ],
+                  "kernels": [
+                    3,
+                    3
+                  ],
+                  "name": "resnet",
+                  "norm": "none"
+                },
+                "freeze_encoder": false
+              },
+              "fname": "machine-1-1.txt",
+              "framework": "ae",
+              "model_kwargs": {
+                "dropout": 0.0,
+                "enc_channels": [
+                  4,
+                  6
+                ],
+                "enc_strides": [
+                  1,
+                  1
+                ],
+                "kernels": [
+                  3,
+                  3
+                ],
+                "norm": "none"
+              },
+              "num_workers": 0,
+              "optimizer": "adamw",
+              "optimizer_kwargs": {
+                "lr": 0.002,
+                "weight_decay": 0.01
+              },
+              "recon_kwargs": {
+                "dropout": 0.0,
+                "norm": "none"
+              },
+              "save_every": 1,
+              "scheduler": "constant",
+              "scheduler_kwargs": {},
+              "score_mode": "l1",
+              "score_tau": 1.0,
+              "seed": 17,
+              "setup": "jepa",
+              "stride": 8,
+              "synthetic_kwargs": {
+                "n_channels": 3,
+                "n_steps": 176,
+                "test_n_steps": 112
+              },
+              "train_db_name": "smd",
+              "val_db_name": "smd",
+              "val_fraction": 0.25,
+              "wsz": 24,
+              "dataset_collection": "smd",
+              "dataset_root": "/tmp/lewm-conditional-formats-bx4mapgt/smd",
+              "output_series": "machine-1-1.txt",
+              "pretext_tag": "",
+              "version": "parallel",
+              "root_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results",
+              "experiment_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+              "pretext_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/pretext",
+              "jepa_tag": "",
+              "jepa_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+              "jepa_checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/checkpoint.pth.tar",
+              "jepa_model": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/model.pth.tar",
+              "jepa_model_best": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/model_best_eval.pth.tar",
+              "calibration_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/calibration.json",
+              "scores_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/scores.npz",
+              "metrics_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/metrics.json",
+              "suite_manifest": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/suites/ae/default/parallel/5928f51fa32f.json",
+              "config_exp": "/tmp/lewm-conditional-formats-bx4mapgt/ae.yml",
+              "config_env": "/tmp/lewm-conditional-formats-bx4mapgt/env.yml",
+              "validation_available": true,
+              "_feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "_preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "channel_0",
+                  "channel_1",
+                  "channel_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  1.0702521642049154,
+                  0.9132653951644898,
+                  1.661111115415891
+                ],
+                "std": [
+                  0.6979154118610543,
+                  0.707492684544836,
+                  0.3848868100225456
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-1.txt",
+                      "size": 12000,
+                      "mtime_ns": 1794276870701511064
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test/machine-1-1.txt",
+                      "size": 8414,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test_label/machine-1-1.txt",
+                      "size": 224,
+                      "mtime_ns": 1794276870702511098
+                    }
+                  ]
+                }
+              },
+              "_run_contract": {
+                "framework": "ae",
+                "train_db_name": "smd",
+                "dataset_collection": "smd",
+                "fname": "machine-1-1.txt",
+                "wsz": 24,
+                "stride": 8,
+                "seed": 17,
+                "val_fraction": 0.25,
+                "criterion": "reconstruction",
+                "criterion_kwargs": {
+                  "beta": 0.0
+                },
+                "batch_size": 4,
+                "optimizer": "adamw",
+                "optimizer_kwargs": {
+                  "lr": 0.002,
+                  "weight_decay": 0.01
+                },
+                "score_mode": "l1",
+                "calibration_quantile": 0.99,
+                "scheduler": "constant",
+                "scheduler_kwargs": {},
+                "score_tau": 1.0,
+                "aggregate_output_strategy": "all"
+              },
+              "_feature_transfer": {}
+            },
+            "checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/checkpoint.pth.tar",
+            "metrics": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/metrics.json",
+            "status": "failed",
+            "error": "FileNotFoundError: [Errno 2] No such file or directory: '/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-1.txt'",
+            "traceback": "Traceback (most recent call last):\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/utils/jobs.py\", line 231, in _worker\n    result = run(config)\n             ^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/train.py\", line 69, in run\n    train_data, val_data = get_jepa_datasets(config)\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/utils/common_config.py\", line 68, in get_jepa_datasets\n    train_dataset = JEPADataset(p, train=True)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/data/jepa_dataset.py\", line 153, in __init__\n    raw, test, labels, schema, identity, self.series_start = _raw_source(p)\n                                                             ^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/data/jepa_dataset.py\", line 118, in _raw_source\n    train, features = _numeric_frame(paths[0])\n                      ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/data/jepa_dataset.py\", line 72, in _numeric_frame\n    frame = pd.read_csv(path, header=0 if timestamp else None)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py\", line 1026, in read_csv\n    return _read(filepath_or_buffer, kwds)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py\", line 620, in _read\n    parser = TextFileReader(filepath_or_buffer, **kwds)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py\", line 1620, in __init__\n    self._engine = self._make_engine(f, self.engine)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/pandas/io/parsers/readers.py\", line 1880, in _make_engine\n    self.handles = get_handle(\n                   ^^^^^^^^^^^\n  File \"/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/lib/python3.12/site-packages/pandas/io/common.py\", line 873, in get_handle\n    handle = open(\n             ^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-1.txt'\n",
+            "pid": 2160388,
+            "elapsed_seconds": 0.0016677379608154297
+          },
+          {
+            "job_id": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+            "fname": "machine-1-2.txt",
+            "seed": 17,
+            "collection": "smd",
+            "resolved_config": {
+              "aggregate_output_strategy": "all",
+              "arm": "ae",
+              "backbone": "resnet",
+              "batch_size": 4,
+              "calibration_quantile": 0.99,
+              "cpu_threads": 1,
+              "criterion": "reconstruction",
+              "criterion_kwargs": {
+                "beta": 0.0
+              },
+              "device": "cpu",
+              "epochs": 1,
+              "eval_every": 1,
+              "eval_window_size": 4,
+              "feature_modules": {
+                "backbone": null,
+                "encoder": {
+                  "dropout": 0.0,
+                  "enc_channels": [
+                    4,
+                    6
+                  ],
+                  "enc_strides": [
+                    1,
+                    1
+                  ],
+                  "kernels": [
+                    3,
+                    3
+                  ],
+                  "name": "resnet",
+                  "norm": "none"
+                },
+                "freeze_encoder": false
+              },
+              "fname": "machine-1-2.txt",
+              "framework": "ae",
+              "model_kwargs": {
+                "dropout": 0.0,
+                "enc_channels": [
+                  4,
+                  6
+                ],
+                "enc_strides": [
+                  1,
+                  1
+                ],
+                "kernels": [
+                  3,
+                  3
+                ],
+                "norm": "none"
+              },
+              "num_workers": 0,
+              "optimizer": "adamw",
+              "optimizer_kwargs": {
+                "lr": 0.002,
+                "weight_decay": 0.01
+              },
+              "recon_kwargs": {
+                "dropout": 0.0,
+                "norm": "none"
+              },
+              "save_every": 1,
+              "scheduler": "constant",
+              "scheduler_kwargs": {},
+              "score_mode": "l1",
+              "score_tau": 1.0,
+              "seed": 17,
+              "setup": "jepa",
+              "stride": 8,
+              "synthetic_kwargs": {
+                "n_channels": 3,
+                "n_steps": 176,
+                "test_n_steps": 112
+              },
+              "train_db_name": "smd",
+              "val_db_name": "smd",
+              "val_fraction": 0.25,
+              "wsz": 24,
+              "dataset_collection": "smd",
+              "dataset_root": "/tmp/lewm-conditional-formats-bx4mapgt/smd",
+              "output_series": "machine-1-2.txt",
+              "pretext_tag": "",
+              "version": "parallel",
+              "root_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results",
+              "experiment_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+              "pretext_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/pretext",
+              "jepa_tag": "",
+              "jepa_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+              "jepa_checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/checkpoint.pth.tar",
+              "jepa_model": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/model.pth.tar",
+              "jepa_model_best": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/model_best_eval.pth.tar",
+              "calibration_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/calibration.json",
+              "scores_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/scores.npz",
+              "metrics_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/metrics.json",
+              "suite_manifest": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/suites/ae/default/parallel/5928f51fa32f.json",
+              "config_exp": "/tmp/lewm-conditional-formats-bx4mapgt/ae.yml",
+              "config_env": "/tmp/lewm-conditional-formats-bx4mapgt/env.yml",
+              "validation_available": true,
+              "_feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "_preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "channel_0",
+                  "channel_1",
+                  "channel_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  2.140504328409831,
+                  1.8265307903289796,
+                  3.322222230831782
+                ],
+                "std": [
+                  1.3958308237221086,
+                  1.414985369089672,
+                  0.7697736200450912
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-2.txt",
+                      "size": 12000,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test/machine-1-2.txt",
+                      "size": 8414,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test_label/machine-1-2.txt",
+                      "size": 224,
+                      "mtime_ns": 1794276870702511098
+                    }
+                  ]
+                }
+              },
+              "_run_contract": {
+                "framework": "ae",
+                "train_db_name": "smd",
+                "dataset_collection": "smd",
+                "fname": "machine-1-2.txt",
+                "wsz": 24,
+                "stride": 8,
+                "seed": 17,
+                "val_fraction": 0.25,
+                "criterion": "reconstruction",
+                "criterion_kwargs": {
+                  "beta": 0.0
+                },
+                "batch_size": 4,
+                "optimizer": "adamw",
+                "optimizer_kwargs": {
+                  "lr": 0.002,
+                  "weight_decay": 0.01
+                },
+                "score_mode": "l1",
+                "calibration_quantile": 0.99,
+                "scheduler": "constant",
+                "scheduler_kwargs": {},
+                "score_tau": 1.0,
+                "aggregate_output_strategy": "all"
+              },
+              "_feature_transfer": {}
+            },
+            "checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/checkpoint.pth.tar",
+            "metrics": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/metrics.json",
+            "status": "completed",
+            "result": 565.6967163085938,
+            "pid": 2160385,
+            "elapsed_seconds": 0.8388676643371582
+          }
+        ]
+      },
+      "resumed": {
+        "version": 1,
+        "concurrency": 2,
+        "jobs": [
+          {
+            "job_id": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+            "fname": "machine-1-1.txt",
+            "seed": 17,
+            "collection": "smd",
+            "resolved_config": {
+              "aggregate_output_strategy": "all",
+              "arm": "ae",
+              "backbone": "resnet",
+              "batch_size": 4,
+              "calibration_quantile": 0.99,
+              "cpu_threads": 1,
+              "criterion": "reconstruction",
+              "criterion_kwargs": {
+                "beta": 0.0
+              },
+              "device": "cpu",
+              "epochs": 1,
+              "eval_every": 1,
+              "eval_window_size": 4,
+              "feature_modules": {
+                "backbone": null,
+                "encoder": {
+                  "dropout": 0.0,
+                  "enc_channels": [
+                    4,
+                    6
+                  ],
+                  "enc_strides": [
+                    1,
+                    1
+                  ],
+                  "kernels": [
+                    3,
+                    3
+                  ],
+                  "name": "resnet",
+                  "norm": "none"
+                },
+                "freeze_encoder": false
+              },
+              "fname": "machine-1-1.txt",
+              "framework": "ae",
+              "model_kwargs": {
+                "dropout": 0.0,
+                "enc_channels": [
+                  4,
+                  6
+                ],
+                "enc_strides": [
+                  1,
+                  1
+                ],
+                "kernels": [
+                  3,
+                  3
+                ],
+                "norm": "none"
+              },
+              "num_workers": 0,
+              "optimizer": "adamw",
+              "optimizer_kwargs": {
+                "lr": 0.002,
+                "weight_decay": 0.01
+              },
+              "recon_kwargs": {
+                "dropout": 0.0,
+                "norm": "none"
+              },
+              "save_every": 1,
+              "scheduler": "constant",
+              "scheduler_kwargs": {},
+              "score_mode": "l1",
+              "score_tau": 1.0,
+              "seed": 17,
+              "setup": "jepa",
+              "stride": 8,
+              "synthetic_kwargs": {
+                "n_channels": 3,
+                "n_steps": 176,
+                "test_n_steps": 112
+              },
+              "train_db_name": "smd",
+              "val_db_name": "smd",
+              "val_fraction": 0.25,
+              "wsz": 24,
+              "dataset_collection": "smd",
+              "dataset_root": "/tmp/lewm-conditional-formats-bx4mapgt/smd",
+              "output_series": "machine-1-1.txt",
+              "pretext_tag": "",
+              "version": "parallel",
+              "root_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results",
+              "experiment_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+              "pretext_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/pretext",
+              "jepa_tag": "",
+              "jepa_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa",
+              "jepa_checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/checkpoint.pth.tar",
+              "jepa_model": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/model.pth.tar",
+              "jepa_model_best": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/model_best_eval.pth.tar",
+              "calibration_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/calibration.json",
+              "scores_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/scores.npz",
+              "metrics_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/metrics.json",
+              "suite_manifest": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/suites/ae/default/parallel/5928f51fa32f.json",
+              "config_exp": "/tmp/lewm-conditional-formats-bx4mapgt/ae.yml",
+              "config_env": "/tmp/lewm-conditional-formats-bx4mapgt/env.yml",
+              "validation_available": true,
+              "_feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "_preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "channel_0",
+                  "channel_1",
+                  "channel_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  1.0702521642049154,
+                  0.9132653951644898,
+                  1.661111115415891
+                ],
+                "std": [
+                  0.6979154118610543,
+                  0.707492684544836,
+                  0.3848868100225456
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-1.txt",
+                      "size": 12000,
+                      "mtime_ns": 1794276870701511064
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test/machine-1-1.txt",
+                      "size": 8414,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test_label/machine-1-1.txt",
+                      "size": 224,
+                      "mtime_ns": 1794276870702511098
+                    }
+                  ]
+                }
+              },
+              "_run_contract": {
+                "framework": "ae",
+                "train_db_name": "smd",
+                "dataset_collection": "smd",
+                "fname": "machine-1-1.txt",
+                "wsz": 24,
+                "stride": 8,
+                "seed": 17,
+                "val_fraction": 0.25,
+                "criterion": "reconstruction",
+                "criterion_kwargs": {
+                  "beta": 0.0
+                },
+                "batch_size": 4,
+                "optimizer": "adamw",
+                "optimizer_kwargs": {
+                  "lr": 0.002,
+                  "weight_decay": 0.01
+                },
+                "score_mode": "l1",
+                "calibration_quantile": 0.99,
+                "scheduler": "constant",
+                "scheduler_kwargs": {},
+                "score_tau": 1.0,
+                "aggregate_output_strategy": "all"
+              },
+              "_feature_transfer": {}
+            },
+            "checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/checkpoint.pth.tar",
+            "metrics": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-1.txt/jepa/metrics.json",
+            "status": "completed",
+            "result": 565.6967163085938,
+            "pid": 2160534,
+            "elapsed_seconds": 0.829653263092041
+          },
+          {
+            "job_id": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+            "fname": "machine-1-2.txt",
+            "seed": 17,
+            "collection": "smd",
+            "resolved_config": {
+              "aggregate_output_strategy": "all",
+              "arm": "ae",
+              "backbone": "resnet",
+              "batch_size": 4,
+              "calibration_quantile": 0.99,
+              "cpu_threads": 1,
+              "criterion": "reconstruction",
+              "criterion_kwargs": {
+                "beta": 0.0
+              },
+              "device": "cpu",
+              "epochs": 1,
+              "eval_every": 1,
+              "eval_window_size": 4,
+              "feature_modules": {
+                "backbone": null,
+                "encoder": {
+                  "dropout": 0.0,
+                  "enc_channels": [
+                    4,
+                    6
+                  ],
+                  "enc_strides": [
+                    1,
+                    1
+                  ],
+                  "kernels": [
+                    3,
+                    3
+                  ],
+                  "name": "resnet",
+                  "norm": "none"
+                },
+                "freeze_encoder": false
+              },
+              "fname": "machine-1-2.txt",
+              "framework": "ae",
+              "model_kwargs": {
+                "dropout": 0.0,
+                "enc_channels": [
+                  4,
+                  6
+                ],
+                "enc_strides": [
+                  1,
+                  1
+                ],
+                "kernels": [
+                  3,
+                  3
+                ],
+                "norm": "none"
+              },
+              "num_workers": 0,
+              "optimizer": "adamw",
+              "optimizer_kwargs": {
+                "lr": 0.002,
+                "weight_decay": 0.01
+              },
+              "recon_kwargs": {
+                "dropout": 0.0,
+                "norm": "none"
+              },
+              "save_every": 1,
+              "scheduler": "constant",
+              "scheduler_kwargs": {},
+              "score_mode": "l1",
+              "score_tau": 1.0,
+              "seed": 17,
+              "setup": "jepa",
+              "stride": 8,
+              "synthetic_kwargs": {
+                "n_channels": 3,
+                "n_steps": 176,
+                "test_n_steps": 112
+              },
+              "train_db_name": "smd",
+              "val_db_name": "smd",
+              "val_fraction": 0.25,
+              "wsz": 24,
+              "dataset_collection": "smd",
+              "dataset_root": "/tmp/lewm-conditional-formats-bx4mapgt/smd",
+              "output_series": "machine-1-2.txt",
+              "pretext_tag": "",
+              "version": "parallel",
+              "root_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results",
+              "experiment_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+              "pretext_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/pretext",
+              "jepa_tag": "",
+              "jepa_dir": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa",
+              "jepa_checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/checkpoint.pth.tar",
+              "jepa_model": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/model.pth.tar",
+              "jepa_model_best": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/model_best_eval.pth.tar",
+              "calibration_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/calibration.json",
+              "scores_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/scores.npz",
+              "metrics_path": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/metrics.json",
+              "suite_manifest": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/suites/ae/default/parallel/5928f51fa32f.json",
+              "config_exp": "/tmp/lewm-conditional-formats-bx4mapgt/ae.yml",
+              "config_env": "/tmp/lewm-conditional-formats-bx4mapgt/env.yml",
+              "validation_available": true,
+              "_feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "_preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "channel_0",
+                  "channel_1",
+                  "channel_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  2.140504328409831,
+                  1.8265307903289796,
+                  3.322222230831782
+                ],
+                "std": [
+                  1.3958308237221086,
+                  1.414985369089672,
+                  0.7697736200450912
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/train/machine-1-2.txt",
+                      "size": 12000,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test/machine-1-2.txt",
+                      "size": 8414,
+                      "mtime_ns": 1794276870702511098
+                    },
+                    {
+                      "path": "/tmp/lewm-conditional-formats-bx4mapgt/smd/test_label/machine-1-2.txt",
+                      "size": 224,
+                      "mtime_ns": 1794276870702511098
+                    }
+                  ]
+                }
+              },
+              "_run_contract": {
+                "framework": "ae",
+                "train_db_name": "smd",
+                "dataset_collection": "smd",
+                "fname": "machine-1-2.txt",
+                "wsz": 24,
+                "stride": 8,
+                "seed": 17,
+                "val_fraction": 0.25,
+                "criterion": "reconstruction",
+                "criterion_kwargs": {
+                  "beta": 0.0
+                },
+                "batch_size": 4,
+                "optimizer": "adamw",
+                "optimizer_kwargs": {
+                  "lr": 0.002,
+                  "weight_decay": 0.01
+                },
+                "score_mode": "l1",
+                "calibration_quantile": 0.99,
+                "scheduler": "constant",
+                "scheduler_kwargs": {},
+                "score_tau": 1.0,
+                "aggregate_output_strategy": "all"
+              },
+              "_feature_transfer": {}
+            },
+            "checkpoint": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/checkpoint.pth.tar",
+            "metrics": "/tmp/lewm-conditional-formats-bx4mapgt/results/smd/ae/default/parallel/machine-1-2.txt/jepa/metrics.json",
+            "status": "completed",
+            "pid": 2160385,
+            "elapsed_seconds": 0.8388676643371582,
+            "result": 565.6967163085938,
+            "skipped_completed": true
+          }
+        ]
+      },
+      "worker_pids": [
+        2160385,
+        2160388
+      ],
+      "sequential_parallel_weights_equal": true
+    }
+  },
+  {
+    "case": "pooled and TSB execution",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-conditional-formats-ox0njib7",
+      "runs": {
+        "smd": {
+          "manifest": {
+            "version": 1,
+            "concurrency": 1,
+            "jobs": [
+              {
+                "job_id": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa",
+                "fname": "all-one",
+                "seed": 17,
+                "collection": "smd",
+                "resolved_config": {
+                  "aggregate_output_strategy": "all",
+                  "arm": "ae",
+                  "backbone": "resnet",
+                  "batch_size": 4,
+                  "calibration_quantile": 0.99,
+                  "cpu_threads": 1,
+                  "criterion": "reconstruction",
+                  "criterion_kwargs": {
+                    "beta": 0.0
+                  },
+                  "device": "cpu",
+                  "epochs": 1,
+                  "eval_every": 1,
+                  "eval_window_size": 4,
+                  "feature_modules": {
+                    "backbone": null,
+                    "encoder": {
+                      "dropout": 0.0,
+                      "enc_channels": [
+                        4,
+                        6
+                      ],
+                      "enc_strides": [
+                        1,
+                        1
+                      ],
+                      "kernels": [
+                        3,
+                        3
+                      ],
+                      "name": "resnet",
+                      "norm": "none"
+                    },
+                    "freeze_encoder": false
+                  },
+                  "fname": "all-one",
+                  "framework": "ae",
+                  "model_kwargs": {
+                    "dropout": 0.0,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "enc_strides": [
+                      1,
+                      1
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "norm": "none"
+                  },
+                  "num_workers": 0,
+                  "optimizer": "adamw",
+                  "optimizer_kwargs": {
+                    "lr": 0.002,
+                    "weight_decay": 0.01
+                  },
+                  "recon_kwargs": {
+                    "dropout": 0.0,
+                    "norm": "none"
+                  },
+                  "save_every": 1,
+                  "scheduler": "constant",
+                  "scheduler_kwargs": {},
+                  "score_mode": "l1",
+                  "score_tau": 1.0,
+                  "seed": 17,
+                  "setup": "jepa",
+                  "stride": 8,
+                  "synthetic_kwargs": {
+                    "n_channels": 3,
+                    "n_steps": 176,
+                    "test_n_steps": 112
+                  },
+                  "train_db_name": "smd",
+                  "val_db_name": "smd",
+                  "val_fraction": 0.25,
+                  "wsz": 24,
+                  "dataset_collection": "smd",
+                  "dataset_root": "/tmp/lewm-conditional-formats-ox0njib7/smd",
+                  "machine_files": [
+                    "machine-1-1.txt",
+                    "machine-1-2.txt"
+                  ],
+                  "output_series": "all-one",
+                  "pretext_tag": "",
+                  "version": "formats",
+                  "root_dir": "/tmp/lewm-conditional-formats-ox0njib7/results",
+                  "experiment_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa",
+                  "pretext_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/pretext",
+                  "jepa_tag": "",
+                  "jepa_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa",
+                  "jepa_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/checkpoint.pth.tar",
+                  "jepa_model": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/model.pth.tar",
+                  "jepa_model_best": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/model_best_eval.pth.tar",
+                  "calibration_path": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/calibration.json",
+                  "scores_path": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/scores.npz",
+                  "metrics_path": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/metrics.json",
+                  "suite_manifest": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/suites/ae/default/formats/86f664f03030.json",
+                  "config_exp": "/tmp/lewm-conditional-formats-ox0njib7/ae.yml",
+                  "config_env": "/tmp/lewm-conditional-formats-ox0njib7/env.yml",
+                  "validation_available": true,
+                  "_feature_schema": [
+                    "channel_0",
+                    "channel_1",
+                    "channel_2"
+                  ],
+                  "_preprocessing": {
+                    "contract": "pooled_per_machine_v1",
+                    "members": {
+                      "machine-1-1.txt": {
+                        "contract": "optimization_rows_standard_scaler_v1",
+                        "feature_schema": [
+                          "channel_0",
+                          "channel_1",
+                          "channel_2"
+                        ],
+                        "fit_rows": 120,
+                        "mean": [
+                          1.0702521642049154,
+                          0.9132653951644898,
+                          1.661111115415891
+                        ],
+                        "std": [
+                          0.6979154118610543,
+                          0.707492684544836,
+                          0.3848868100225456
+                        ],
+                        "source": {
+                          "files": [
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/train/machine-1-1.txt",
+                              "size": 12000,
+                              "mtime_ns": 1794276877044724691
+                            },
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test/machine-1-1.txt",
+                              "size": 8414,
+                              "mtime_ns": 1794276877044724691
+                            },
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test_label/machine-1-1.txt",
+                              "size": 224,
+                              "mtime_ns": 1794276877044724691
+                            }
+                          ]
+                        }
+                      },
+                      "machine-1-2.txt": {
+                        "contract": "optimization_rows_standard_scaler_v1",
+                        "feature_schema": [
+                          "channel_0",
+                          "channel_1",
+                          "channel_2"
+                        ],
+                        "fit_rows": 120,
+                        "mean": [
+                          2.140504328409831,
+                          1.8265307903289796,
+                          3.322222230831782
+                        ],
+                        "std": [
+                          1.3958308237221086,
+                          1.414985369089672,
+                          0.7697736200450912
+                        ],
+                        "source": {
+                          "files": [
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/train/machine-1-2.txt",
+                              "size": 12000,
+                              "mtime_ns": 1794276877044724691
+                            },
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test/machine-1-2.txt",
+                              "size": 8414,
+                              "mtime_ns": 1794276877045724725
+                            },
+                            {
+                              "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test_label/machine-1-2.txt",
+                              "size": 224,
+                              "mtime_ns": 1794276877045724725
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "feature_schema": [
+                      "channel_0",
+                      "channel_1",
+                      "channel_2"
+                    ]
+                  },
+                  "_run_contract": {
+                    "framework": "ae",
+                    "train_db_name": "smd",
+                    "dataset_collection": "smd",
+                    "fname": "all-one",
+                    "machine_files": [
+                      "machine-1-1.txt",
+                      "machine-1-2.txt"
+                    ],
+                    "wsz": 24,
+                    "stride": 8,
+                    "seed": 17,
+                    "val_fraction": 0.25,
+                    "criterion": "reconstruction",
+                    "criterion_kwargs": {
+                      "beta": 0.0
+                    },
+                    "batch_size": 4,
+                    "optimizer": "adamw",
+                    "optimizer_kwargs": {
+                      "lr": 0.002,
+                      "weight_decay": 0.01
+                    },
+                    "score_mode": "l1",
+                    "calibration_quantile": 0.99,
+                    "scheduler": "constant",
+                    "scheduler_kwargs": {},
+                    "score_tau": 1.0,
+                    "aggregate_output_strategy": "all"
+                  },
+                  "_feature_transfer": {}
+                },
+                "checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/checkpoint.pth.tar",
+                "metrics": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/metrics.json",
+                "status": "completed",
+                "result": 566.5770060221354,
+                "pid": 2160328,
+                "elapsed_seconds": 0.18704748153686523
+              }
+            ]
+          },
+          "reports": [
+            {
+              "framework": "ae",
+              "fname": "all-one",
+              "dataset": "smd",
+              "aggregation": "macro_per_machine",
+              "shared_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/model.pth.tar",
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "event_f1": 0.0,
+                    "event_f1_valid_members": 2,
+                    "f1": 0.0,
+                    "f1_valid_members": 2,
+                    "range_f1": 0.0,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 0.0,
+                    "affiliation_f1_valid_members": 2,
+                    "pa_f1": 0.0,
+                    "pa_f1_valid_members": 2
+                  },
+                  "oracle": {
+                    "event_f1": 1.0,
+                    "event_f1_valid_members": 2,
+                    "f1": 0.9473684210526315,
+                    "f1_valid_members": 2,
+                    "range_f1": 0.717948717948718,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 0.9979123173277662,
+                    "affiliation_f1_valid_members": 2,
+                    "clean_anomaly_fraction": 0.3333333333333333,
+                    "clean_anomaly_fraction_valid_members": 2,
+                    "pa_f1": 1.0,
+                    "pa_f1_valid_members": 2
+                  },
+                  "vus_pr": 0.9835634430249532,
+                  "vus_pr_valid_members": 2,
+                  "vus_roc": 0.9011383056640625,
+                  "vus_roc_valid_members": 2,
+                  "auc_pr": 0.9825757575757575,
+                  "auc_pr_valid_members": 2,
+                  "auc_roc": 0.9,
+                  "auc_roc_valid_members": 2
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "event_f1": 0.0,
+                    "event_f1_valid_members": 2,
+                    "f1": 0.0,
+                    "f1_valid_members": 2,
+                    "range_f1": 0.0,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 0.0,
+                    "affiliation_f1_valid_members": 2,
+                    "pa_f1": 0.0,
+                    "pa_f1_valid_members": 2
+                  },
+                  "oracle": {
+                    "event_f1": 1.0,
+                    "event_f1_valid_members": 2,
+                    "f1": 1.0,
+                    "f1_valid_members": 2,
+                    "range_f1": 1.0,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 1.0,
+                    "affiliation_f1_valid_members": 2,
+                    "clean_anomaly_fraction": 0.25,
+                    "clean_anomaly_fraction_valid_members": 2,
+                    "pa_f1": 1.0,
+                    "pa_f1_valid_members": 2
+                  },
+                  "vus_pr": 0.9787318706512451,
+                  "vus_pr_valid_members": 2,
+                  "vus_roc": 0.9871123631795248,
+                  "vus_roc_valid_members": 2,
+                  "auc_pr": 1.0,
+                  "auc_pr_valid_members": 2,
+                  "auc_roc": 1.0,
+                  "auc_roc_valid_members": 2
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "event_f1": 0.0,
+                    "event_f1_valid_members": 2,
+                    "f1": 0.0,
+                    "f1_valid_members": 2,
+                    "range_f1": 0.0,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 0.0,
+                    "affiliation_f1_valid_members": 2,
+                    "pa_f1": 0.0,
+                    "pa_f1_valid_members": 2
+                  },
+                  "oracle": {
+                    "event_f1": 0.8571428571428571,
+                    "event_f1_valid_members": 2,
+                    "f1": 0.8571428571428571,
+                    "f1_valid_members": 2,
+                    "range_f1": 0.8571428571428571,
+                    "range_f1_valid_members": 2,
+                    "affiliation_f1": 0.8771929824561403,
+                    "affiliation_f1_valid_members": 2,
+                    "clean_anomaly_fraction": 0.6666666666666666,
+                    "clean_anomaly_fraction_valid_members": 2,
+                    "pa_f1": 0.8571428571428571,
+                    "pa_f1_valid_members": 2
+                  },
+                  "vus_pr": 0.9262651205062866,
+                  "vus_pr_valid_members": 2,
+                  "vus_roc": 0.7327428062756857,
+                  "vus_roc_valid_members": 2,
+                  "auc_pr": 0.9027777777777777,
+                  "auc_pr_valid_members": 2,
+                  "auc_roc": 0.6666666666666666,
+                  "auc_roc_valid_members": 2
+                }
+              },
+              "machines": {
+                "machine-1-1.txt": {
+                  "framework": "ae",
+                  "experiment_name": "default",
+                  "run": "formats",
+                  "dataset": "smd",
+                  "collection": "smd",
+                  "fname": "machine-1-1.txt",
+                  "evaluation": {
+                    "window": {
+                      "calibrated": {
+                        "threshold": 22.490120506286623,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 0.9915784001350402,
+                        "event_f1": 1.0,
+                        "f1": 0.9473684210526315,
+                        "range_f1": 0.717948717948718,
+                        "affiliation_f1": 0.9979123173277662,
+                        "calibration_quantile": 0.6609975574595248,
+                        "calibration_threshold": 0.99157840013504,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.3333333333333333,
+                        "pa_f1": 1.0
+                      },
+                      "vus_pr": 0.9835634430249532,
+                      "vus_roc": 0.9011383056640625,
+                      "auc_pr": 0.9825757575757575,
+                      "auc_roc": 0.9
+                    },
+                    "timeseries": {
+                      "calibrated": {
+                        "threshold": 23.17637914657593,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 2.007059971491495,
+                        "event_f1": 1.0,
+                        "f1": 1.0,
+                        "range_f1": 1.0,
+                        "affiliation_f1": 1.0,
+                        "calibration_quantile": 0.7486371109914706,
+                        "calibration_threshold": 2.007059971491611,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.25,
+                        "pa_f1": 1.0
+                      },
+                      "vus_pr": 0.9787318706512451,
+                      "vus_roc": 0.9871123631795248,
+                      "auc_pr": 1.0,
+                      "auc_roc": 1.0
+                    },
+                    "non_overlap_window": {
+                      "calibrated": {
+                        "threshold": 20.98020552992821,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 0.826099932193756,
+                        "event_f1": 0.8571428571428571,
+                        "f1": 0.8571428571428571,
+                        "range_f1": 0.8571428571428571,
+                        "affiliation_f1": 0.8771929824561403,
+                        "calibration_quantile": 0.23848064344574613,
+                        "calibration_threshold": 0.826099932193756,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.6666666666666666,
+                        "pa_f1": 0.8571428571428571
+                      },
+                      "vus_pr": 0.9262651205062866,
+                      "vus_roc": 0.7327428062756857,
+                      "auc_pr": 0.9027777777777777,
+                      "auc_roc": 0.6666666666666666
+                    }
+                  },
+                  "calibration_source": "full clean training series",
+                  "evaluation_settings": {
+                    "wsz": 24,
+                    "stride": 8,
+                    "check_mask": null,
+                    "latency_offset": 0,
+                    "include_last_window": true
+                  },
+                  "coverage": {
+                    "scored_timesteps": 112,
+                    "total_timesteps": 112,
+                    "first_scored_timestep": 0,
+                    "input_window": 24,
+                    "output_window": 24,
+                    "series_start": 0,
+                    "non_overlap_window": {
+                      "stride": 24,
+                      "scored_timesteps": 96,
+                      "window_count": 4
+                    }
+                  },
+                  "feature_schema": [
+                    "channel_0",
+                    "channel_1",
+                    "channel_2"
+                  ],
+                  "preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "channel_0",
+                      "channel_1",
+                      "channel_2"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      1.0702521642049154,
+                      0.9132653951644898,
+                      1.661111115415891
+                    ],
+                    "std": [
+                      0.6979154118610543,
+                      0.707492684544836,
+                      0.3848868100225456
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/train/machine-1-1.txt",
+                          "size": 12000,
+                          "mtime_ns": 1794276877044724691
+                        },
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test/machine-1-1.txt",
+                          "size": 8414,
+                          "mtime_ns": 1794276877044724691
+                        },
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test_label/machine-1-1.txt",
+                          "size": 224,
+                          "mtime_ns": 1794276877044724691
+                        }
+                      ]
+                    }
+                  },
+                  "figures": {
+                    "window": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-1.txt/Test_window.html",
+                    "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-1.txt/Test_timeseries.html",
+                    "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-1.txt/Test_non_overlap.html"
+                  }
+                },
+                "machine-1-2.txt": {
+                  "framework": "ae",
+                  "experiment_name": "default",
+                  "run": "formats",
+                  "dataset": "smd",
+                  "collection": "smd",
+                  "fname": "machine-1-2.txt",
+                  "evaluation": {
+                    "window": {
+                      "calibrated": {
+                        "threshold": 22.490120506286623,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 0.9915784001350402,
+                        "event_f1": 1.0,
+                        "f1": 0.9473684210526315,
+                        "range_f1": 0.717948717948718,
+                        "affiliation_f1": 0.9979123173277662,
+                        "calibration_quantile": 0.6609975574595248,
+                        "calibration_threshold": 0.99157840013504,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.3333333333333333,
+                        "pa_f1": 1.0
+                      },
+                      "vus_pr": 0.9835634430249532,
+                      "vus_roc": 0.9011383056640625,
+                      "auc_pr": 0.9825757575757575,
+                      "auc_roc": 0.9
+                    },
+                    "timeseries": {
+                      "calibrated": {
+                        "threshold": 23.17637914657593,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 2.007059971491495,
+                        "event_f1": 1.0,
+                        "f1": 1.0,
+                        "range_f1": 1.0,
+                        "affiliation_f1": 1.0,
+                        "calibration_quantile": 0.7486371109914706,
+                        "calibration_threshold": 2.007059971491611,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.25,
+                        "pa_f1": 1.0
+                      },
+                      "vus_pr": 0.9787318706512451,
+                      "vus_roc": 0.9871123631795248,
+                      "auc_pr": 1.0,
+                      "auc_roc": 1.0
+                    },
+                    "non_overlap_window": {
+                      "calibrated": {
+                        "threshold": 20.98020552992821,
+                        "event_f1": 0.0,
+                        "f1": 0.0,
+                        "range_f1": 0.0,
+                        "affiliation_f1": 0.0,
+                        "calibration_quantile": 0.99,
+                        "pa_f1": 0.0
+                      },
+                      "oracle": {
+                        "threshold": 0.826099932193756,
+                        "event_f1": 0.8571428571428571,
+                        "f1": 0.8571428571428571,
+                        "range_f1": 0.8571428571428571,
+                        "affiliation_f1": 0.8771929824561403,
+                        "calibration_quantile": 0.23848064344574613,
+                        "calibration_threshold": 0.826099932193756,
+                        "calibration_threshold_in_range": true,
+                        "clean_anomaly_fraction": 0.6666666666666666,
+                        "pa_f1": 0.8571428571428571
+                      },
+                      "vus_pr": 0.9262651205062866,
+                      "vus_roc": 0.7327428062756857,
+                      "auc_pr": 0.9027777777777777,
+                      "auc_roc": 0.6666666666666666
+                    }
+                  },
+                  "calibration_source": "full clean training series",
+                  "evaluation_settings": {
+                    "wsz": 24,
+                    "stride": 8,
+                    "check_mask": null,
+                    "latency_offset": 0,
+                    "include_last_window": true
+                  },
+                  "coverage": {
+                    "scored_timesteps": 112,
+                    "total_timesteps": 112,
+                    "first_scored_timestep": 0,
+                    "input_window": 24,
+                    "output_window": 24,
+                    "series_start": 0,
+                    "non_overlap_window": {
+                      "stride": 24,
+                      "scored_timesteps": 96,
+                      "window_count": 4
+                    }
+                  },
+                  "feature_schema": [
+                    "channel_0",
+                    "channel_1",
+                    "channel_2"
+                  ],
+                  "preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "channel_0",
+                      "channel_1",
+                      "channel_2"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      2.140504328409831,
+                      1.8265307903289796,
+                      3.322222230831782
+                    ],
+                    "std": [
+                      1.3958308237221086,
+                      1.414985369089672,
+                      0.7697736200450912
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/train/machine-1-2.txt",
+                          "size": 12000,
+                          "mtime_ns": 1794276877044724691
+                        },
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test/machine-1-2.txt",
+                          "size": 8414,
+                          "mtime_ns": 1794276877045724725
+                        },
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/smd/test_label/machine-1-2.txt",
+                          "size": 224,
+                          "mtime_ns": 1794276877045724725
+                        }
+                      ]
+                    }
+                  },
+                  "figures": {
+                    "window": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-2.txt/Test_window.html",
+                    "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-2.txt/Test_timeseries.html",
+                    "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/machines/machine-1-2.txt/Test_non_overlap.html"
+                  }
+                }
+              },
+              "machine_count": 2,
+              "selection": {
+                "weights": "/tmp/lewm-conditional-formats-ox0njib7/results/smd/ae/default/formats/all-one/jepa/model.pth.tar",
+                "source": "validation",
+                "metric": "loss",
+                "value": 566.5770060221354
+              }
+            }
+          ]
+        },
+        "tsb-ad-u": {
+          "manifest": {
+            "version": 1,
+            "concurrency": 1,
+            "jobs": [
+              {
+                "job_id": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                "fname": "fixture_1_tr_160_1st_198.csv",
+                "seed": 17,
+                "collection": "tsb-ad-u",
+                "resolved_config": {
+                  "aggregate_output_strategy": "all",
+                  "arm": "ae",
+                  "backbone": "resnet",
+                  "batch_size": 4,
+                  "calibration_quantile": 0.99,
+                  "cpu_threads": 1,
+                  "criterion": "reconstruction",
+                  "criterion_kwargs": {
+                    "beta": 0.0
+                  },
+                  "device": "cpu",
+                  "epochs": 1,
+                  "eval_every": 1,
+                  "eval_window_size": 4,
+                  "feature_modules": {
+                    "backbone": null,
+                    "encoder": {
+                      "dropout": 0.0,
+                      "enc_channels": [
+                        4,
+                        6
+                      ],
+                      "enc_strides": [
+                        1,
+                        1
+                      ],
+                      "kernels": [
+                        3,
+                        3
+                      ],
+                      "name": "resnet",
+                      "norm": "none"
+                    },
+                    "freeze_encoder": false
+                  },
+                  "fname": "fixture_1_tr_160_1st_198.csv",
+                  "framework": "ae",
+                  "model_kwargs": {
+                    "dropout": 0.0,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "enc_strides": [
+                      1,
+                      1
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "norm": "none"
+                  },
+                  "num_workers": 0,
+                  "optimizer": "adamw",
+                  "optimizer_kwargs": {
+                    "lr": 0.002,
+                    "weight_decay": 0.01
+                  },
+                  "recon_kwargs": {
+                    "dropout": 0.0,
+                    "norm": "none"
+                  },
+                  "save_every": 1,
+                  "scheduler": "constant",
+                  "scheduler_kwargs": {},
+                  "score_mode": "l1",
+                  "score_tau": 1.0,
+                  "seed": 17,
+                  "setup": "jepa",
+                  "stride": 8,
+                  "synthetic_kwargs": {
+                    "n_channels": 3,
+                    "n_steps": 176,
+                    "test_n_steps": 112
+                  },
+                  "train_db_name": "tsb_ad",
+                  "val_db_name": "tsb_ad",
+                  "val_fraction": 0.25,
+                  "wsz": 24,
+                  "dataset_collection": "tsb-ad-u",
+                  "dataset_root": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u",
+                  "tsb_evaluation_scope": "test",
+                  "output_series": "fixture_1_tr_160_1st_198.csv",
+                  "pretext_tag": "",
+                  "version": "formats",
+                  "root_dir": "/tmp/lewm-conditional-formats-ox0njib7/results",
+                  "experiment_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                  "pretext_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/pretext",
+                  "jepa_tag": "",
+                  "jepa_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                  "jepa_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                  "jepa_model": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model.pth.tar",
+                  "jepa_model_best": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model_best_eval.pth.tar",
+                  "calibration_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/calibration.json",
+                  "scores_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/scores.npz",
+                  "metrics_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/metrics.json",
+                  "suite_manifest": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/suites/ae/default/formats/273816b84827.json",
+                  "config_exp": "/tmp/lewm-conditional-formats-ox0njib7/ae.yml",
+                  "config_env": "/tmp/lewm-conditional-formats-ox0njib7/env.yml",
+                  "validation_available": true,
+                  "_feature_schema": [
+                    "sensor_0"
+                  ],
+                  "_preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "sensor_0"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      0.07025216333083334
+                    ],
+                    "std": [
+                      0.6979154122745629
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u/fixture_1_tr_160_1st_198.csv",
+                          "size": 3462,
+                          "mtime_ns": 1794276877045724725
+                        }
+                      ],
+                      "train_end": 160,
+                      "collection": "tsb-ad-u"
+                    }
+                  },
+                  "_run_contract": {
+                    "framework": "ae",
+                    "train_db_name": "tsb_ad",
+                    "dataset_collection": "tsb-ad-u",
+                    "fname": "fixture_1_tr_160_1st_198.csv",
+                    "wsz": 24,
+                    "stride": 8,
+                    "seed": 17,
+                    "val_fraction": 0.25,
+                    "criterion": "reconstruction",
+                    "criterion_kwargs": {
+                      "beta": 0.0
+                    },
+                    "batch_size": 4,
+                    "optimizer": "adamw",
+                    "optimizer_kwargs": {
+                      "lr": 0.002,
+                      "weight_decay": 0.01
+                    },
+                    "score_mode": "l1",
+                    "calibration_quantile": 0.99,
+                    "scheduler": "constant",
+                    "scheduler_kwargs": {},
+                    "score_tau": 1.0,
+                    "aggregate_output_strategy": "all",
+                    "tsb_evaluation_scope": "test"
+                  },
+                  "_feature_transfer": {}
+                },
+                "checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                "metrics": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/metrics.json",
+                "status": "completed",
+                "result": 367.7257385253906,
+                "pid": 2160328,
+                "elapsed_seconds": 0.09728431701660156
+              },
+              {
+                "job_id": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                "fname": "fixture_2_tr_160_1st_198.csv",
+                "seed": 17,
+                "collection": "tsb-ad-u",
+                "resolved_config": {
+                  "aggregate_output_strategy": "all",
+                  "arm": "ae",
+                  "backbone": "resnet",
+                  "batch_size": 4,
+                  "calibration_quantile": 0.99,
+                  "cpu_threads": 1,
+                  "criterion": "reconstruction",
+                  "criterion_kwargs": {
+                    "beta": 0.0
+                  },
+                  "device": "cpu",
+                  "epochs": 1,
+                  "eval_every": 1,
+                  "eval_window_size": 4,
+                  "feature_modules": {
+                    "backbone": null,
+                    "encoder": {
+                      "dropout": 0.0,
+                      "enc_channels": [
+                        4,
+                        6
+                      ],
+                      "enc_strides": [
+                        1,
+                        1
+                      ],
+                      "kernels": [
+                        3,
+                        3
+                      ],
+                      "name": "resnet",
+                      "norm": "none"
+                    },
+                    "freeze_encoder": false
+                  },
+                  "fname": "fixture_2_tr_160_1st_198.csv",
+                  "framework": "ae",
+                  "model_kwargs": {
+                    "dropout": 0.0,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "enc_strides": [
+                      1,
+                      1
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "norm": "none"
+                  },
+                  "num_workers": 0,
+                  "optimizer": "adamw",
+                  "optimizer_kwargs": {
+                    "lr": 0.002,
+                    "weight_decay": 0.01
+                  },
+                  "recon_kwargs": {
+                    "dropout": 0.0,
+                    "norm": "none"
+                  },
+                  "save_every": 1,
+                  "scheduler": "constant",
+                  "scheduler_kwargs": {},
+                  "score_mode": "l1",
+                  "score_tau": 1.0,
+                  "seed": 17,
+                  "setup": "jepa",
+                  "stride": 8,
+                  "synthetic_kwargs": {
+                    "n_channels": 3,
+                    "n_steps": 176,
+                    "test_n_steps": 112
+                  },
+                  "train_db_name": "tsb_ad",
+                  "val_db_name": "tsb_ad",
+                  "val_fraction": 0.25,
+                  "wsz": 24,
+                  "dataset_collection": "tsb-ad-u",
+                  "dataset_root": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u",
+                  "tsb_evaluation_scope": "test",
+                  "output_series": "fixture_2_tr_160_1st_198.csv",
+                  "pretext_tag": "",
+                  "version": "formats",
+                  "root_dir": "/tmp/lewm-conditional-formats-ox0njib7/results",
+                  "experiment_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                  "pretext_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/pretext",
+                  "jepa_tag": "",
+                  "jepa_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                  "jepa_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                  "jepa_model": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model.pth.tar",
+                  "jepa_model_best": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model_best_eval.pth.tar",
+                  "calibration_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/calibration.json",
+                  "scores_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/scores.npz",
+                  "metrics_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/metrics.json",
+                  "suite_manifest": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/suites/ae/default/formats/273816b84827.json",
+                  "config_exp": "/tmp/lewm-conditional-formats-ox0njib7/ae.yml",
+                  "config_env": "/tmp/lewm-conditional-formats-ox0njib7/env.yml",
+                  "validation_available": true,
+                  "_feature_schema": [
+                    "sensor_0"
+                  ],
+                  "_preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "sensor_0"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      0.14050432716166664
+                    ],
+                    "std": [
+                      1.3958308211470867
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u/fixture_2_tr_160_1st_198.csv",
+                          "size": 3361,
+                          "mtime_ns": 1794276877046724758
+                        }
+                      ],
+                      "train_end": 160,
+                      "collection": "tsb-ad-u"
+                    }
+                  },
+                  "_run_contract": {
+                    "framework": "ae",
+                    "train_db_name": "tsb_ad",
+                    "dataset_collection": "tsb-ad-u",
+                    "fname": "fixture_2_tr_160_1st_198.csv",
+                    "wsz": 24,
+                    "stride": 8,
+                    "seed": 17,
+                    "val_fraction": 0.25,
+                    "criterion": "reconstruction",
+                    "criterion_kwargs": {
+                      "beta": 0.0
+                    },
+                    "batch_size": 4,
+                    "optimizer": "adamw",
+                    "optimizer_kwargs": {
+                      "lr": 0.002,
+                      "weight_decay": 0.01
+                    },
+                    "score_mode": "l1",
+                    "calibration_quantile": 0.99,
+                    "scheduler": "constant",
+                    "scheduler_kwargs": {},
+                    "score_tau": 1.0,
+                    "aggregate_output_strategy": "all",
+                    "tsb_evaluation_scope": "test"
+                  },
+                  "_feature_transfer": {}
+                },
+                "checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                "metrics": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/metrics.json",
+                "status": "completed",
+                "result": 367.7257385253906,
+                "pid": 2160328,
+                "elapsed_seconds": 0.09694552421569824
+              }
+            ]
+          },
+          "reports": [
+            {
+              "framework": "ae",
+              "experiment_name": "default",
+              "run": "formats",
+              "dataset": "tsb_ad",
+              "collection": "tsb-ad-u",
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 19.431719036102294,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.6593622565269469,
+                    "event_f1": 0.9523809523809523,
+                    "f1": 0.9523809523809523,
+                    "range_f1": 0.9523809523809523,
+                    "affiliation_f1": 0.9585798816568047,
+                    "calibration_quantile": 0.05882352941173916,
+                    "calibration_threshold": 0.6593622565269469,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.9444444444444444,
+                    "pa_f1": 0.9523809523809523
+                  },
+                  "vus_pr": 0.9846516450246176,
+                  "vus_roc": 0.9218786954879761,
+                  "auc_pr": 0.9798989898989899,
+                  "auc_roc": 0.9
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 20.60509442011515,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 1.7371401389439898,
+                    "event_f1": 0.9375,
+                    "f1": 0.6976744186046512,
+                    "range_f1": 0.5783132530120482,
+                    "affiliation_f1": 0.9439577724753412,
+                    "calibration_quantile": 0.7169811320754716,
+                    "calibration_threshold": 1.7371401389439898,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.2875,
+                    "pa_f1": 0.9629629629629629
+                  },
+                  "vus_pr": 0.7861786153581407,
+                  "vus_roc": 0.870645178688897,
+                  "auc_pr": 0.7743617252923038,
+                  "auc_roc": 0.8443649373881933
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 17.702275156974796,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 1.1251839399337766,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.5999999999999999,
+                    "calibration_threshold": 1.1251839399337766,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.5,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9987133741378784,
+                  "vus_roc": 0.9920388658841451,
+                  "auc_pr": 1.0,
+                  "auc_roc": 1.0
+                }
+              },
+              "calibration_source": "full clean training series",
+              "evaluation_settings": {
+                "wsz": 24,
+                "stride": 8,
+                "check_mask": null,
+                "latency_offset": 0,
+                "include_last_window": true
+              },
+              "coverage": {
+                "scored_timesteps": 112,
+                "total_timesteps": 112,
+                "first_scored_timestep": 0,
+                "input_window": 24,
+                "output_window": 24,
+                "series_start": 160,
+                "non_overlap_window": {
+                  "stride": 24,
+                  "scored_timesteps": 96,
+                  "window_count": 4
+                }
+              },
+              "feature_schema": [
+                "sensor_0"
+              ],
+              "preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "sensor_0"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  0.07025216333083334
+                ],
+                "std": [
+                  0.6979154122745629
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u/fixture_1_tr_160_1st_198.csv",
+                      "size": 3462,
+                      "mtime_ns": 1794276877045724725
+                    }
+                  ],
+                  "train_end": 160,
+                  "collection": "tsb-ad-u"
+                }
+              },
+              "figures": {
+                "window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_window.html",
+                "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_timeseries.html",
+                "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_non_overlap.html"
+              },
+              "selection": {
+                "weights": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model.pth.tar",
+                "source": "validation",
+                "metric": "loss",
+                "value": 367.7257385253906
+              }
+            },
+            {
+              "framework": "ae",
+              "experiment_name": "default",
+              "run": "formats",
+              "dataset": "tsb_ad",
+              "collection": "tsb-ad-u",
+              "fname": "fixture_2_tr_160_1st_198.csv",
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 19.431718711853026,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.6593622565269469,
+                    "event_f1": 0.9523809523809523,
+                    "f1": 0.9523809523809523,
+                    "range_f1": 0.9523809523809523,
+                    "affiliation_f1": 0.9585798816568047,
+                    "calibration_quantile": 0.05882352941173916,
+                    "calibration_threshold": 0.6593622565269469,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.9444444444444444,
+                    "pa_f1": 0.9523809523809523
+                  },
+                  "vus_pr": 0.9846516450246176,
+                  "vus_roc": 0.9218786954879761,
+                  "auc_pr": 0.9798989898989899,
+                  "auc_roc": 0.9
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 20.605096327463784,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 1.7371401389439898,
+                    "event_f1": 0.9375,
+                    "f1": 0.6976744186046512,
+                    "range_f1": 0.5783132530120482,
+                    "affiliation_f1": 0.9439577724753412,
+                    "calibration_quantile": 0.7169811320754716,
+                    "calibration_threshold": 1.7371401389439898,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.2875,
+                    "pa_f1": 0.9629629629629629
+                  },
+                  "vus_pr": 0.7861786153581407,
+                  "vus_roc": 0.870645178688897,
+                  "auc_pr": 0.7743617252923038,
+                  "auc_roc": 0.8443649373881933
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 17.702275156974796,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 1.1251839399337766,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.5999999999999999,
+                    "calibration_threshold": 1.1251839399337766,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.5,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9987133741378784,
+                  "vus_roc": 0.9920388658841451,
+                  "auc_pr": 1.0,
+                  "auc_roc": 1.0
+                }
+              },
+              "calibration_source": "full clean training series",
+              "evaluation_settings": {
+                "wsz": 24,
+                "stride": 8,
+                "check_mask": null,
+                "latency_offset": 0,
+                "include_last_window": true
+              },
+              "coverage": {
+                "scored_timesteps": 112,
+                "total_timesteps": 112,
+                "first_scored_timestep": 0,
+                "input_window": 24,
+                "output_window": 24,
+                "series_start": 160,
+                "non_overlap_window": {
+                  "stride": 24,
+                  "scored_timesteps": 96,
+                  "window_count": 4
+                }
+              },
+              "feature_schema": [
+                "sensor_0"
+              ],
+              "preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "sensor_0"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  0.14050432716166664
+                ],
+                "std": [
+                  1.3958308211470867
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-u/fixture_2_tr_160_1st_198.csv",
+                      "size": 3361,
+                      "mtime_ns": 1794276877046724758
+                    }
+                  ],
+                  "train_end": 160,
+                  "collection": "tsb-ad-u"
+                }
+              },
+              "figures": {
+                "window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_window.html",
+                "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_timeseries.html",
+                "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_non_overlap.html"
+              },
+              "selection": {
+                "weights": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-u/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model.pth.tar",
+                "source": "validation",
+                "metric": "loss",
+                "value": 367.7257385253906
+              }
+            }
+          ]
+        },
+        "tsb-ad-m": {
+          "manifest": {
+            "version": 1,
+            "concurrency": 1,
+            "jobs": [
+              {
+                "job_id": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                "fname": "fixture_1_tr_160_1st_198.csv",
+                "seed": 17,
+                "collection": "tsb-ad-m",
+                "resolved_config": {
+                  "aggregate_output_strategy": "all",
+                  "arm": "ae",
+                  "backbone": "resnet",
+                  "batch_size": 4,
+                  "calibration_quantile": 0.99,
+                  "cpu_threads": 1,
+                  "criterion": "reconstruction",
+                  "criterion_kwargs": {
+                    "beta": 0.0
+                  },
+                  "device": "cpu",
+                  "epochs": 1,
+                  "eval_every": 1,
+                  "eval_window_size": 4,
+                  "feature_modules": {
+                    "backbone": null,
+                    "encoder": {
+                      "dropout": 0.0,
+                      "enc_channels": [
+                        4,
+                        6
+                      ],
+                      "enc_strides": [
+                        1,
+                        1
+                      ],
+                      "kernels": [
+                        3,
+                        3
+                      ],
+                      "name": "resnet",
+                      "norm": "none"
+                    },
+                    "freeze_encoder": false
+                  },
+                  "fname": "fixture_1_tr_160_1st_198.csv",
+                  "framework": "ae",
+                  "model_kwargs": {
+                    "dropout": 0.0,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "enc_strides": [
+                      1,
+                      1
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "norm": "none"
+                  },
+                  "num_workers": 0,
+                  "optimizer": "adamw",
+                  "optimizer_kwargs": {
+                    "lr": 0.002,
+                    "weight_decay": 0.01
+                  },
+                  "recon_kwargs": {
+                    "dropout": 0.0,
+                    "norm": "none"
+                  },
+                  "save_every": 1,
+                  "scheduler": "constant",
+                  "scheduler_kwargs": {},
+                  "score_mode": "l1",
+                  "score_tau": 1.0,
+                  "seed": 17,
+                  "setup": "jepa",
+                  "stride": 8,
+                  "synthetic_kwargs": {
+                    "n_channels": 3,
+                    "n_steps": 176,
+                    "test_n_steps": 112
+                  },
+                  "train_db_name": "tsb_ad",
+                  "val_db_name": "tsb_ad",
+                  "val_fraction": 0.25,
+                  "wsz": 24,
+                  "dataset_collection": "tsb-ad-m",
+                  "dataset_root": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m",
+                  "tsb_evaluation_scope": "test",
+                  "output_series": "fixture_1_tr_160_1st_198.csv",
+                  "pretext_tag": "",
+                  "version": "formats",
+                  "root_dir": "/tmp/lewm-conditional-formats-ox0njib7/results",
+                  "experiment_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                  "pretext_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/pretext",
+                  "jepa_tag": "",
+                  "jepa_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa",
+                  "jepa_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                  "jepa_model": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model.pth.tar",
+                  "jepa_model_best": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model_best_eval.pth.tar",
+                  "calibration_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/calibration.json",
+                  "scores_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/scores.npz",
+                  "metrics_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/metrics.json",
+                  "suite_manifest": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/suites/ae/default/formats/6ef18cca8bd7.json",
+                  "config_exp": "/tmp/lewm-conditional-formats-ox0njib7/ae.yml",
+                  "config_env": "/tmp/lewm-conditional-formats-ox0njib7/env.yml",
+                  "validation_available": true,
+                  "_feature_schema": [
+                    "sensor_0",
+                    "sensor_1",
+                    "sensor_2"
+                  ],
+                  "_preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "sensor_0",
+                      "sensor_1",
+                      "sensor_2"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      0.07025216333083334,
+                      -0.08673459988333333,
+                      0.6611111132583335
+                    ],
+                    "std": [
+                      0.6979154122745629,
+                      0.7074926858124,
+                      0.38488681288020893
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m/fixture_1_tr_160_1st_198.csv",
+                          "size": 9086,
+                          "mtime_ns": 1794276877047724792
+                        }
+                      ],
+                      "train_end": 160,
+                      "collection": "tsb-ad-m"
+                    }
+                  },
+                  "_run_contract": {
+                    "framework": "ae",
+                    "train_db_name": "tsb_ad",
+                    "dataset_collection": "tsb-ad-m",
+                    "fname": "fixture_1_tr_160_1st_198.csv",
+                    "wsz": 24,
+                    "stride": 8,
+                    "seed": 17,
+                    "val_fraction": 0.25,
+                    "criterion": "reconstruction",
+                    "criterion_kwargs": {
+                      "beta": 0.0
+                    },
+                    "batch_size": 4,
+                    "optimizer": "adamw",
+                    "optimizer_kwargs": {
+                      "lr": 0.002,
+                      "weight_decay": 0.01
+                    },
+                    "score_mode": "l1",
+                    "calibration_quantile": 0.99,
+                    "scheduler": "constant",
+                    "scheduler_kwargs": {},
+                    "score_tau": 1.0,
+                    "aggregate_output_strategy": "all",
+                    "tsb_evaluation_scope": "test"
+                  },
+                  "_feature_transfer": {}
+                },
+                "checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                "metrics": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/metrics.json",
+                "status": "completed",
+                "result": 565.6967163085938,
+                "pid": 2160328,
+                "elapsed_seconds": 0.10354447364807129
+              },
+              {
+                "job_id": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                "fname": "fixture_2_tr_160_1st_198.csv",
+                "seed": 17,
+                "collection": "tsb-ad-m",
+                "resolved_config": {
+                  "aggregate_output_strategy": "all",
+                  "arm": "ae",
+                  "backbone": "resnet",
+                  "batch_size": 4,
+                  "calibration_quantile": 0.99,
+                  "cpu_threads": 1,
+                  "criterion": "reconstruction",
+                  "criterion_kwargs": {
+                    "beta": 0.0
+                  },
+                  "device": "cpu",
+                  "epochs": 1,
+                  "eval_every": 1,
+                  "eval_window_size": 4,
+                  "feature_modules": {
+                    "backbone": null,
+                    "encoder": {
+                      "dropout": 0.0,
+                      "enc_channels": [
+                        4,
+                        6
+                      ],
+                      "enc_strides": [
+                        1,
+                        1
+                      ],
+                      "kernels": [
+                        3,
+                        3
+                      ],
+                      "name": "resnet",
+                      "norm": "none"
+                    },
+                    "freeze_encoder": false
+                  },
+                  "fname": "fixture_2_tr_160_1st_198.csv",
+                  "framework": "ae",
+                  "model_kwargs": {
+                    "dropout": 0.0,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "enc_strides": [
+                      1,
+                      1
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "norm": "none"
+                  },
+                  "num_workers": 0,
+                  "optimizer": "adamw",
+                  "optimizer_kwargs": {
+                    "lr": 0.002,
+                    "weight_decay": 0.01
+                  },
+                  "recon_kwargs": {
+                    "dropout": 0.0,
+                    "norm": "none"
+                  },
+                  "save_every": 1,
+                  "scheduler": "constant",
+                  "scheduler_kwargs": {},
+                  "score_mode": "l1",
+                  "score_tau": 1.0,
+                  "seed": 17,
+                  "setup": "jepa",
+                  "stride": 8,
+                  "synthetic_kwargs": {
+                    "n_channels": 3,
+                    "n_steps": 176,
+                    "test_n_steps": 112
+                  },
+                  "train_db_name": "tsb_ad",
+                  "val_db_name": "tsb_ad",
+                  "val_fraction": 0.25,
+                  "wsz": 24,
+                  "dataset_collection": "tsb-ad-m",
+                  "dataset_root": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m",
+                  "tsb_evaluation_scope": "test",
+                  "output_series": "fixture_2_tr_160_1st_198.csv",
+                  "pretext_tag": "",
+                  "version": "formats",
+                  "root_dir": "/tmp/lewm-conditional-formats-ox0njib7/results",
+                  "experiment_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                  "pretext_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/pretext",
+                  "jepa_tag": "",
+                  "jepa_dir": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa",
+                  "jepa_checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                  "jepa_model": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model.pth.tar",
+                  "jepa_model_best": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model_best_eval.pth.tar",
+                  "calibration_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/calibration.json",
+                  "scores_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/scores.npz",
+                  "metrics_path": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/metrics.json",
+                  "suite_manifest": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/suites/ae/default/formats/6ef18cca8bd7.json",
+                  "config_exp": "/tmp/lewm-conditional-formats-ox0njib7/ae.yml",
+                  "config_env": "/tmp/lewm-conditional-formats-ox0njib7/env.yml",
+                  "validation_available": true,
+                  "_feature_schema": [
+                    "sensor_0",
+                    "sensor_1",
+                    "sensor_2"
+                  ],
+                  "_preprocessing": {
+                    "contract": "optimization_rows_standard_scaler_v1",
+                    "feature_schema": [
+                      "sensor_0",
+                      "sensor_1",
+                      "sensor_2"
+                    ],
+                    "fit_rows": 120,
+                    "mean": [
+                      0.14050432716166664,
+                      -0.17346920125833332,
+                      1.3222222310749998
+                    ],
+                    "std": [
+                      1.3958308211470867,
+                      1.4149853755721604,
+                      0.7697736295894654
+                    ],
+                    "source": {
+                      "files": [
+                        {
+                          "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m/fixture_2_tr_160_1st_198.csv",
+                          "size": 8812,
+                          "mtime_ns": 1794276877047724792
+                        }
+                      ],
+                      "train_end": 160,
+                      "collection": "tsb-ad-m"
+                    }
+                  },
+                  "_run_contract": {
+                    "framework": "ae",
+                    "train_db_name": "tsb_ad",
+                    "dataset_collection": "tsb-ad-m",
+                    "fname": "fixture_2_tr_160_1st_198.csv",
+                    "wsz": 24,
+                    "stride": 8,
+                    "seed": 17,
+                    "val_fraction": 0.25,
+                    "criterion": "reconstruction",
+                    "criterion_kwargs": {
+                      "beta": 0.0
+                    },
+                    "batch_size": 4,
+                    "optimizer": "adamw",
+                    "optimizer_kwargs": {
+                      "lr": 0.002,
+                      "weight_decay": 0.01
+                    },
+                    "score_mode": "l1",
+                    "calibration_quantile": 0.99,
+                    "scheduler": "constant",
+                    "scheduler_kwargs": {},
+                    "score_tau": 1.0,
+                    "aggregate_output_strategy": "all",
+                    "tsb_evaluation_scope": "test"
+                  },
+                  "_feature_transfer": {}
+                },
+                "checkpoint": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/checkpoint.pth.tar",
+                "metrics": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/metrics.json",
+                "status": "completed",
+                "result": 565.6966552734375,
+                "pid": 2160328,
+                "elapsed_seconds": 0.10099673271179199
+              }
+            ]
+          },
+          "reports": [
+            {
+              "framework": "ae",
+              "experiment_name": "default",
+              "run": "formats",
+              "dataset": "tsb_ad",
+              "collection": "tsb-ad-m",
+              "fname": "fixture_1_tr_160_1st_198.csv",
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 22.45814651489258,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9901540875434874,
+                    "event_f1": 1.0,
+                    "f1": 0.9473684210526315,
+                    "range_f1": 0.717948717948718,
+                    "affiliation_f1": 0.9979123173277662,
+                    "calibration_quantile": 0.6595694599911494,
+                    "calibration_threshold": 0.9901540875434875,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3333333333333333,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9835634430249532,
+                  "vus_roc": 0.9011383056640625,
+                  "auc_pr": 0.9825757575757575,
+                  "auc_roc": 0.9
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 23.140736532211303,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 2.0064609845479326,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.7486362322771061,
+                    "calibration_threshold": 2.006460984548253,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.25,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9785458776685927,
+                  "vus_roc": 0.986896448665195,
+                  "auc_pr": 1.0,
+                  "auc_roc": 1.0
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 20.94897140860558,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.8291216492652892,
+                    "event_f1": 0.8571428571428571,
+                    "f1": 0.8571428571428571,
+                    "range_f1": 0.8571428571428571,
+                    "affiliation_f1": 0.8771929824561403,
+                    "calibration_quantile": 0.24225405484151558,
+                    "calibration_threshold": 0.8291216492652892,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.6666666666666666,
+                    "pa_f1": 0.8571428571428571
+                  },
+                  "vus_pr": 0.9262651205062866,
+                  "vus_roc": 0.7327428062756857,
+                  "auc_pr": 0.9027777777777777,
+                  "auc_roc": 0.6666666666666666
+                }
+              },
+              "calibration_source": "full clean training series",
+              "evaluation_settings": {
+                "wsz": 24,
+                "stride": 8,
+                "check_mask": null,
+                "latency_offset": 0,
+                "include_last_window": true
+              },
+              "coverage": {
+                "scored_timesteps": 112,
+                "total_timesteps": 112,
+                "first_scored_timestep": 0,
+                "input_window": 24,
+                "output_window": 24,
+                "series_start": 160,
+                "non_overlap_window": {
+                  "stride": 24,
+                  "scored_timesteps": 96,
+                  "window_count": 4
+                }
+              },
+              "feature_schema": [
+                "sensor_0",
+                "sensor_1",
+                "sensor_2"
+              ],
+              "preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "sensor_0",
+                  "sensor_1",
+                  "sensor_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  0.07025216333083334,
+                  -0.08673459988333333,
+                  0.6611111132583335
+                ],
+                "std": [
+                  0.6979154122745629,
+                  0.7074926858124,
+                  0.38488681288020893
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m/fixture_1_tr_160_1st_198.csv",
+                      "size": 9086,
+                      "mtime_ns": 1794276877047724792
+                    }
+                  ],
+                  "train_end": 160,
+                  "collection": "tsb-ad-m"
+                }
+              },
+              "figures": {
+                "window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_window.html",
+                "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_timeseries.html",
+                "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/Test_non_overlap.html"
+              },
+              "selection": {
+                "weights": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_1_tr_160_1st_198.csv/jepa/model.pth.tar",
+                "source": "validation",
+                "metric": "loss",
+                "value": 565.6967163085938
+              }
+            },
+            {
+              "framework": "ae",
+              "experiment_name": "default",
+              "run": "formats",
+              "dataset": "tsb_ad",
+              "collection": "tsb-ad-m",
+              "fname": "fixture_2_tr_160_1st_198.csv",
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 22.45814651489258,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9901540875434874,
+                    "event_f1": 1.0,
+                    "f1": 0.9473684210526315,
+                    "range_f1": 0.717948717948718,
+                    "affiliation_f1": 0.9979123173277662,
+                    "calibration_quantile": 0.6595694599911494,
+                    "calibration_threshold": 0.9901540875434875,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3333333333333333,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9835634430249532,
+                  "vus_roc": 0.9011383056640625,
+                  "auc_pr": 0.9825757575757575,
+                  "auc_roc": 0.9
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 23.140734672546387,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 2.006461064020792,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.7486362323074899,
+                    "calibration_threshold": 2.006461064020765,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.25,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": 0.9785458776685927,
+                  "vus_roc": 0.986896448665195,
+                  "auc_pr": 1.0,
+                  "auc_roc": 1.0
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 20.94897140860558,
+                    "event_f1": 0.0,
+                    "f1": 0.0,
+                    "range_f1": 0.0,
+                    "affiliation_f1": 0.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.0
+                  },
+                  "oracle": {
+                    "threshold": 0.8291216492652892,
+                    "event_f1": 0.8571428571428571,
+                    "f1": 0.8571428571428571,
+                    "range_f1": 0.8571428571428571,
+                    "affiliation_f1": 0.8771929824561403,
+                    "calibration_quantile": 0.24225405484151558,
+                    "calibration_threshold": 0.8291216492652892,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.6666666666666666,
+                    "pa_f1": 0.8571428571428571
+                  },
+                  "vus_pr": 0.9262651205062866,
+                  "vus_roc": 0.7327428062756857,
+                  "auc_pr": 0.9027777777777777,
+                  "auc_roc": 0.6666666666666666
+                }
+              },
+              "calibration_source": "full clean training series",
+              "evaluation_settings": {
+                "wsz": 24,
+                "stride": 8,
+                "check_mask": null,
+                "latency_offset": 0,
+                "include_last_window": true
+              },
+              "coverage": {
+                "scored_timesteps": 112,
+                "total_timesteps": 112,
+                "first_scored_timestep": 0,
+                "input_window": 24,
+                "output_window": 24,
+                "series_start": 160,
+                "non_overlap_window": {
+                  "stride": 24,
+                  "scored_timesteps": 96,
+                  "window_count": 4
+                }
+              },
+              "feature_schema": [
+                "sensor_0",
+                "sensor_1",
+                "sensor_2"
+              ],
+              "preprocessing": {
+                "contract": "optimization_rows_standard_scaler_v1",
+                "feature_schema": [
+                  "sensor_0",
+                  "sensor_1",
+                  "sensor_2"
+                ],
+                "fit_rows": 120,
+                "mean": [
+                  0.14050432716166664,
+                  -0.17346920125833332,
+                  1.3222222310749998
+                ],
+                "std": [
+                  1.3958308211470867,
+                  1.4149853755721604,
+                  0.7697736295894654
+                ],
+                "source": {
+                  "files": [
+                    {
+                      "path": "/tmp/lewm-conditional-formats-ox0njib7/tsb-ad-m/fixture_2_tr_160_1st_198.csv",
+                      "size": 8812,
+                      "mtime_ns": 1794276877047724792
+                    }
+                  ],
+                  "train_end": 160,
+                  "collection": "tsb-ad-m"
+                }
+              },
+              "figures": {
+                "window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_window.html",
+                "timeseries": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_timeseries.html",
+                "non_overlap_window": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/Test_non_overlap.html"
+              },
+              "selection": {
+                "weights": "/tmp/lewm-conditional-formats-ox0njib7/results/tsb-ad-m/ae/default/formats/fixture_2_tr_160_1st_198.csv/jepa/model.pth.tar",
+                "source": "validation",
+                "metric": "loss",
+                "value": 565.6966552734375
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "case": "CLI train then score",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-conditional-formats-_xj2oeaz",
+      "command": [
+        "/home/manosbampis/Documents/EKETA/HyperAI/CARLA/venv/bin/python",
+        "/home/manosbampis/Documents/EKETA/HyperAI/CARLA/train.py",
+        "--config_exp",
+        "/tmp/lewm-conditional-formats-_xj2oeaz/ae.yml",
+        "--config_env",
+        "/tmp/lewm-conditional-formats-_xj2oeaz/env.yml",
+        "--dataset",
+        "psm",
+        "--dataset-root",
+        "/tmp/lewm-conditional-formats-_xj2oeaz/psm",
+        "--version",
+        "cli",
+        "--jobs",
+        "1"
+      ],
+      "score_report": {
+        "framework": "ae",
+        "experiment_name": "default",
+        "run": "cli",
+        "dataset": "psm",
+        "collection": "psm",
+        "fname": "psm",
+        "evaluation": {
+          "window": {
+            "calibrated": {
+              "threshold": 22.45814651489258,
+              "event_f1": 0.0,
+              "f1": 0.0,
+              "range_f1": 0.0,
+              "affiliation_f1": 0.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 0.0
+            },
+            "oracle": {
+              "threshold": 0.9901540875434874,
+              "event_f1": 1.0,
+              "f1": 0.9473684210526315,
+              "range_f1": 0.717948717948718,
+              "affiliation_f1": 0.9979123173277662,
+              "calibration_quantile": 0.6595694599911494,
+              "calibration_threshold": 0.9901540875434875,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.3333333333333333,
+              "pa_f1": 1.0
+            },
+            "vus_pr": 0.9835634430249532,
+            "vus_roc": 0.9011383056640625,
+            "auc_pr": 0.9825757575757575,
+            "auc_roc": 0.9
+          },
+          "timeseries": {
+            "calibrated": {
+              "threshold": 23.14073579788208,
+              "event_f1": 0.0,
+              "f1": 0.0,
+              "range_f1": 0.0,
+              "affiliation_f1": 0.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 0.0
+            },
+            "oracle": {
+              "threshold": 2.006461064020792,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.7486362323074899,
+              "calibration_threshold": 2.006461064020765,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.25,
+              "pa_f1": 1.0
+            },
+            "vus_pr": 0.9785458776685927,
+            "vus_roc": 0.986896448665195,
+            "auc_pr": 1.0,
+            "auc_roc": 1.0
+          },
+          "non_overlap_window": {
+            "calibrated": {
+              "threshold": 20.948967784643177,
+              "event_f1": 0.0,
+              "f1": 0.0,
+              "range_f1": 0.0,
+              "affiliation_f1": 0.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 0.0
+            },
+            "oracle": {
+              "threshold": 0.8291215896606444,
+              "event_f1": 0.8571428571428571,
+              "f1": 0.8571428571428571,
+              "range_f1": 0.8571428571428571,
+              "affiliation_f1": 0.8771929824561403,
+              "calibration_quantile": 0.24225397063318752,
+              "calibration_threshold": 0.8291215896606444,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.6666666666666666,
+              "pa_f1": 0.8571428571428571
+            },
+            "vus_pr": 0.9262651205062866,
+            "vus_roc": 0.7327428062756857,
+            "auc_pr": 0.9027777777777777,
+            "auc_roc": 0.6666666666666666
+          }
+        },
+        "calibration_source": "full clean training series",
+        "evaluation_settings": {
+          "wsz": 24,
+          "stride": 8,
+          "check_mask": null,
+          "latency_offset": 0,
+          "include_last_window": true
+        },
+        "coverage": {
+          "scored_timesteps": 112,
+          "total_timesteps": 112,
+          "first_scored_timestep": 0,
+          "input_window": 24,
+          "output_window": 24,
+          "series_start": 0,
+          "non_overlap_window": {
+            "stride": 24,
+            "scored_timesteps": 96,
+            "window_count": 4
+          }
+        },
+        "feature_schema": [
+          "sensor_a",
+          "sensor_b",
+          "sensor_c"
+        ],
+        "preprocessing": {
+          "contract": "optimization_rows_standard_scaler_v1",
+          "feature_schema": [
+            "sensor_a",
+            "sensor_b",
+            "sensor_c"
+          ],
+          "fit_rows": 120,
+          "mean": [
+            0.07025216373537356,
+            -0.08673460079201807,
+            0.6611111142905429
+          ],
+          "std": [
+            0.6979154132498434,
+            0.7074926870919078,
+            0.3848868129370858
+          ],
+          "source": {
+            "files": [
+              {
+                "path": "/tmp/lewm-conditional-formats-_xj2oeaz/psm/train.csv",
+                "size": 5557,
+                "mtime_ns": 1794276877680746111
+              },
+              {
+                "path": "/tmp/lewm-conditional-formats-_xj2oeaz/psm/test.csv",
+                "size": 3906,
+                "mtime_ns": 1794276877681746145
+              },
+              {
+                "path": "/tmp/lewm-conditional-formats-_xj2oeaz/psm/test_label.csv",
+                "size": 584,
+                "mtime_ns": 1794276877681746145
+              }
+            ]
+          }
+        },
+        "figures": {
+          "window": "/tmp/lewm-conditional-formats-_xj2oeaz/results/psm/ae/default/cli/jepa/Test_window.html",
+          "timeseries": "/tmp/lewm-conditional-formats-_xj2oeaz/results/psm/ae/default/cli/jepa/Test_timeseries.html",
+          "non_overlap_window": "/tmp/lewm-conditional-formats-_xj2oeaz/results/psm/ae/default/cli/jepa/Test_non_overlap.html"
+        },
+        "selection": {
+          "weights": "/tmp/lewm-conditional-formats-_xj2oeaz/results/psm/ae/default/cli/jepa/model.pth.tar",
+          "source": "validation",
+          "metric": "loss",
+          "value": 565.6966552734375
+        }
+      }
+    }
+  },
+  {
+    "case": "matched source selection",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-conditional-formats-5_sl3dpe",
+      "matched_validation_sources": [
+        "/tmp/lewm-conditional-formats-5_sl3dpe/results/smd/lewm/masked_frequency/source/machine-1-1.txt/jepa/best_validation_loss.pth.tar",
+        "/tmp/lewm-conditional-formats-5_sl3dpe/results/smd/lewm/masked_frequency/source/machine-1-2.txt/jepa/best_validation_loss.pth.tar"
+      ],
+      "short_training_fallback": "/tmp/lewm-conditional-formats-5_sl3dpe/results/smd/lewm/masked_frequency/source-short/machine-1-1.txt/jepa/best_train_loss.pth.tar"
+    }
+  }
+]

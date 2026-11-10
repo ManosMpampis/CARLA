@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Train and score the masked latent experiment correctly.
 
-**Status:** implemented
+**Status:** verified
 
 - [x] Unequal history/future token lengths work without pairing future keys with historical values.
 - [x] Default predictor contains a length-preserving transpose convolution and no default raw decoder.

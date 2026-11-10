@@ -1,0 +1,12 @@
+PASS shipped defaults
+PASS literal objective equations
+PASS independent score equations
+PASS spectral coordinate roundtrip
+PASS predicted mask and gradients
+PASS unrestricted latent
+PASS future Q historical KV
+PASS scalar score interpolation
+PASS optional raw weighted total
+PASS fixed batch optimization conditioning
+PASS CUDA AMP frequency
+PASS baseline objectives variable widths

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04: Train with honest validation and the requested checkpoint selections.
 
-**Status:** implemented
+**Status:** verified
 
 - [x] PSM needs no filename; SMD all fans out and all-one trains one boundary-safe corpus.
 - [x] Pooled SMD uses per-machine train normalization, calibration, evaluation and macro summaries with one model.

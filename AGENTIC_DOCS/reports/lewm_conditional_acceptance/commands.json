@@ -1,0 +1,46 @@
+[
+  {
+    "script": "tests/verify_conditional_models.py",
+    "command": [
+      "./venv/bin/python",
+      "tests/verify_conditional_models.py",
+      "--output",
+      "AGENTIC_DOCS/reports/lewm_conditional_acceptance/model_checks.json"
+    ],
+    "exit": 0,
+    "seconds": 3.22
+  },
+  {
+    "script": "tests/verify_conditional_runtime.py",
+    "command": [
+      "./venv/bin/python",
+      "tests/verify_conditional_runtime.py",
+      "--output",
+      "AGENTIC_DOCS/reports/lewm_conditional_acceptance/runtime_checks.json"
+    ],
+    "exit": 0,
+    "seconds": 6.13
+  },
+  {
+    "script": "tests/verify_conditional_transfer.py",
+    "command": [
+      "./venv/bin/python",
+      "tests/verify_conditional_transfer.py",
+      "--output",
+      "AGENTIC_DOCS/reports/lewm_conditional_acceptance/transfer_checks.json"
+    ],
+    "exit": 0,
+    "seconds": 6.13
+  },
+  {
+    "script": "tests/verify_conditional_suites.py",
+    "command": [
+      "./venv/bin/python",
+      "tests/verify_conditional_suites.py",
+      "--output",
+      "AGENTIC_DOCS/reports/lewm_conditional_acceptance/suite_checks.json"
+    ],
+    "exit": 0,
+    "seconds": 15.93
+  }
+]

@@ -4,6 +4,8 @@ Use `train.py` with `configs/training/ae.yml`, `vae.yml`, `lewm.yml`, or
 `guided_forecast.yml`; add `--score` for saved-weight evaluation. Model, data,
 training, objective and scoring belong to one YAML. Historical classes remain
 importable; deleted historical training entries are not current run commands.
+See the [runtime guide](../AGENTIC_DOCS/implementation/lewm-conditional/runtime.md)
+for dataset selections, concurrent jobs and checkpoint policies.
 
 ```bash
 ./venv/bin/python train.py --config_exp configs/training/lewm.yml --dataset psm

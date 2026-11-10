@@ -1,0 +1,470 @@
+[
+  {
+    "case": "trained transfer routes",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-transfer-acceptance-8swyssvw",
+      "routes": {
+        "ae-to-guided_forecast-backbone-frozen": {
+          "directory": "/tmp/lewm-transfer-acceptance-8swyssvw/ae-to-guided_forecast-backbone-frozen",
+          "source": "/tmp/lewm-transfer-acceptance-8swyssvw/source-ae/best_validation_loss.pth.tar",
+          "initial_feature_error": 0.0,
+          "source_changed_after_step": false,
+          "frozen": true,
+          "effective_stride": 2
+        },
+        "lewm-to-guided_forecast-backbone-frozen": {
+          "directory": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-guided_forecast-backbone-frozen",
+          "source": "/tmp/lewm-transfer-acceptance-8swyssvw/source-lewm/best_validation_loss.pth.tar",
+          "initial_feature_error": 0.0,
+          "source_changed_after_step": false,
+          "frozen": true,
+          "effective_stride": 2
+        },
+        "lewm-to-ae-backbone-frozen": {
+          "directory": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-ae-backbone-frozen",
+          "source": "/tmp/lewm-transfer-acceptance-8swyssvw/source-lewm/best_validation_loss.pth.tar",
+          "initial_feature_error": 0.0,
+          "source_changed_after_step": false,
+          "frozen": true,
+          "effective_stride": 2
+        },
+        "lewm-to-ae-encoder-trainable": {
+          "directory": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-ae-encoder-trainable",
+          "source": "/tmp/lewm-transfer-acceptance-8swyssvw/source-lewm/best_validation_loss.pth.tar",
+          "initial_feature_error": 0.0,
+          "source_changed_after_step": true,
+          "frozen": false,
+          "effective_stride": 2
+        },
+        "lewm-to-ae-encoder-frozen": {
+          "directory": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-ae-encoder-frozen",
+          "source": "/tmp/lewm-transfer-acceptance-8swyssvw/source-lewm/best_validation_loss.pth.tar",
+          "initial_feature_error": 0.0,
+          "source_changed_after_step": false,
+          "frozen": true,
+          "effective_stride": 2
+        }
+      },
+      "source_free_resume_epoch": 3,
+      "source_free_score_report": {
+        "framework": "lewm",
+        "experiment_name": "guided_forecast",
+        "run": "acceptance",
+        "dataset": "synthetic",
+        "collection": "synthetic",
+        "fname": "synthetic",
+        "evaluation": {
+          "window": {
+            "calibrated": {
+              "threshold": 3.386716251373291,
+              "event_f1": 1.0,
+              "f1": 0.2,
+              "range_f1": 0.4482758620689655,
+              "affiliation_f1": 0.8131868131868133,
+              "calibration_quantile": 0.99,
+              "pa_f1": 1.0
+            },
+            "oracle": {
+              "threshold": 1.4735047817230222,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.3432089278775833,
+              "calibration_threshold": 1.4735047817230222,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.6470588235294118,
+              "pa_f1": 1.0
+            },
+            "vus_pr": null,
+            "vus_roc": null,
+            "auc_pr": null,
+            "auc_roc": null
+          },
+          "timeseries": {
+            "calibrated": {
+              "threshold": 3.534802966117859,
+              "event_f1": 0.6,
+              "f1": 0.07407407407407407,
+              "range_f1": 0.326530612244898,
+              "affiliation_f1": 0.5769914606479002,
+              "calibration_quantile": 0.99,
+              "pa_f1": 0.9736842105263158
+            },
+            "oracle": {
+              "threshold": 1.472908020019531,
+              "event_f1": 0.961038961038961,
+              "f1": 0.961038961038961,
+              "range_f1": 0.961038961038961,
+              "affiliation_f1": 0.962554709029016,
+              "calibration_quantile": 0.40384667700573074,
+              "calibration_threshold": 1.472908020019531,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.5972222222222222,
+              "pa_f1": 0.961038961038961
+            },
+            "vus_pr": 0.8437075879838731,
+            "vus_roc": 0.21709872119956547,
+            "auc_pr": 0.8153237663039896,
+            "auc_roc": 0.11711711711711713
+          },
+          "non_overlap_window": {
+            "calibrated": {
+              "threshold": 3.3493915367126466,
+              "event_f1": 0.0,
+              "f1": 0.0,
+              "range_f1": 0.0,
+              "affiliation_f1": 0.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 0.0
+            },
+            "oracle": {
+              "threshold": 1.4735047817230222,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.5044637988578754,
+              "calibration_threshold": 1.4735047817230222,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.4444444444444444,
+              "pa_f1": 1.0
+            },
+            "vus_pr": null,
+            "vus_roc": null,
+            "auc_pr": null,
+            "auc_roc": null
+          }
+        },
+        "calibration_source": "full clean training series",
+        "evaluation_settings": {
+          "wsz": 48,
+          "stride": 8,
+          "check_mask": [
+            32,
+            48
+          ],
+          "latency_offset": 0,
+          "include_last_window": true
+        },
+        "coverage": {
+          "scored_timesteps": 80,
+          "total_timesteps": 112,
+          "first_scored_timestep": 32,
+          "input_window": 48,
+          "output_window": 16,
+          "series_start": 0,
+          "non_overlap_window": {
+            "stride": 16,
+            "scored_timesteps": 80,
+            "window_count": 5
+          }
+        },
+        "feature_schema": [
+          "channel_0",
+          "channel_1",
+          "channel_2"
+        ],
+        "preprocessing": {
+          "contract": "optimization_rows_standard_scaler_v1",
+          "feature_schema": [
+            "channel_0",
+            "channel_1",
+            "channel_2"
+          ],
+          "fit_rows": 123,
+          "mean": [
+            0.39814961647115105,
+            0.026419323467747953,
+            0.02088708745512536
+          ],
+          "std": [
+            1.550256263243206,
+            1.5785560748512126,
+            1.5292747240583933
+          ],
+          "source": {
+            "source": "synthetic",
+            "seed": 17,
+            "options": {
+              "n_steps": 176,
+              "test_n_steps": 112,
+              "n_channels": 3
+            }
+          }
+        },
+        "figures": {
+          "window": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-guided_forecast-backbone-frozen/Test_window.html",
+          "timeseries": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-guided_forecast-backbone-frozen/Test_timeseries.html",
+          "non_overlap_window": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-guided_forecast-backbone-frozen/Test_non_overlap.html"
+        },
+        "selection": {
+          "weights": "/tmp/lewm-transfer-acceptance-8swyssvw/lewm-to-guided_forecast-backbone-frozen/model.pth.tar",
+          "source": "validation",
+          "metric": "loss",
+          "value": 1.5106912851333618
+        }
+      }
+    }
+  },
+  {
+    "case": "metadata rejections",
+    "status": "passed",
+    "detail": {
+      "source": "/tmp/lewm-transfer-reject-3pk90est/source/best_validation_loss.pth.tar",
+      "rejections": [
+        "schema/order",
+        "stride",
+        "activation",
+        "task ratio"
+      ]
+    }
+  },
+  {
+    "case": "archived source feature equality",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-archived-source-mm1cju7_",
+      "baseline_training_log": "ae 1.0489829778671265\nlewm 1.127603530883789\n",
+      "sources": {
+        "ae": {
+          "checkpoint": "/tmp/lewm-archived-source-mm1cju7_/ae.pth.tar",
+          "feature_error": 0.0,
+          "provenance": {
+            "checkpoint": "/tmp/lewm-archived-source-mm1cju7_/ae.pth.tar",
+            "sha256": "5f9aed996320116d278b84a3f8cd961f019f0833ba65d8a27ba771ab599f944d",
+            "selection": {
+              "source": "validation",
+              "metric": "loss",
+              "value": 1.0489829778671265
+            },
+            "source_contract": {
+              "version": 2,
+              "source_format": "legacy_constructor_config",
+              "schema_validation": "saved_collection_series_width_with_destination_reader_order",
+              "framework": "ae",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "feature_architectures": {
+                "encoder": {
+                  "name": "resnet",
+                  "options": {
+                    "in_channels": 3,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "residual_kernel": 5,
+                    "act": "gelu",
+                    "norm": "none",
+                    "dropout": 0.0,
+                    "enc_strides": [
+                      2,
+                      1
+                    ],
+                    "output_act": null,
+                    "latent_output": "legacy"
+                  }
+                },
+                "effective": {
+                  "name": "resnet",
+                  "options": {
+                    "in_channels": 3,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "residual_kernel": 5,
+                    "act": "gelu",
+                    "norm": "none",
+                    "dropout": 0.0,
+                    "enc_strides": [
+                      2,
+                      1
+                    ],
+                    "output_act": null,
+                    "latent_output": "legacy"
+                  }
+                }
+              },
+              "task": {
+                "legacy_source_feature_function_only": true
+              }
+            },
+            "preprocessing": {
+              "normalization_mean": [
+                0.38003111796834593,
+                0.1746343719794161,
+                0.10083781034601005
+              ],
+              "normalization_std": [
+                1.5437134637203336,
+                1.6148577031576565,
+                1.4911303201366475
+              ]
+            },
+            "destination_preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "normalization_changed": true
+          }
+        },
+        "lewm": {
+          "checkpoint": "/tmp/lewm-archived-source-mm1cju7_/lewm.pth.tar",
+          "feature_error": 0.0,
+          "provenance": {
+            "checkpoint": "/tmp/lewm-archived-source-mm1cju7_/lewm.pth.tar",
+            "sha256": "238b00e48a51b6131cd751eaae21c80ea5009a364ab51f76e3ef3da227ad32c2",
+            "selection": {
+              "source": "validation",
+              "metric": "loss",
+              "value": 1.127603530883789
+            },
+            "source_contract": {
+              "version": 2,
+              "source_format": "legacy_constructor_config",
+              "schema_validation": "saved_collection_series_width_with_destination_reader_order",
+              "framework": "lewm",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "feature_architectures": {
+                "encoder": {
+                  "name": "resnet",
+                  "options": {
+                    "in_channels": 3,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "residual_kernel": 5,
+                    "act": "gelu",
+                    "norm": "none",
+                    "dropout": 0.0,
+                    "enc_strides": [
+                      2,
+                      1
+                    ],
+                    "output_act": "identity",
+                    "latent_output": "legacy"
+                  }
+                },
+                "effective": {
+                  "name": "resnet",
+                  "options": {
+                    "in_channels": 3,
+                    "enc_channels": [
+                      4,
+                      6
+                    ],
+                    "kernels": [
+                      3,
+                      3
+                    ],
+                    "residual_kernel": 5,
+                    "act": "gelu",
+                    "norm": "none",
+                    "dropout": 0.0,
+                    "enc_strides": [
+                      2,
+                      1
+                    ],
+                    "output_act": "identity",
+                    "latent_output": "legacy"
+                  }
+                }
+              },
+              "task": {
+                "legacy_source_feature_function_only": true
+              }
+            },
+            "preprocessing": {
+              "normalization_mean": [
+                0.38003111796834593,
+                0.1746343719794161,
+                0.10083781034601005
+              ],
+              "normalization_std": [
+                1.5437134637203336,
+                1.6148577031576565,
+                1.4911303201366475
+              ]
+            },
+            "destination_preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "normalization_changed": true
+          }
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,1859 @@
+[
+  {
+    "case": "data normalization and splits",
+    "status": "passed",
+    "detail": {
+      "fixtures": "/tmp/lewm-conditional-formats-z0ykac7t",
+      "formats": [
+        {
+          "collection": "psm",
+          "train_rows": 120,
+          "validation_rows": 40,
+          "test_rows": 112,
+          "features": 3
+        },
+        {
+          "collection": "smd",
+          "train_rows": 120,
+          "validation_rows": 40,
+          "test_rows": 112,
+          "features": 3
+        },
+        {
+          "collection": "tsb-ad-u",
+          "train_rows": 120,
+          "validation_rows": 40,
+          "test_rows": 112,
+          "features": 1
+        },
+        {
+          "collection": "tsb-ad-m",
+          "train_rows": 120,
+          "validation_rows": 40,
+          "test_rows": 112,
+          "features": 3
+        }
+      ],
+      "synthetic_shared_scaler": true
+    }
+  },
+  {
+    "case": "short and pooled data",
+    "status": "passed",
+    "detail": {
+      "short_validation_windows": 0,
+      "two_window_boundary": [
+        1,
+        1
+      ]
+    }
+  },
+  {
+    "case": "sample weighted summaries",
+    "status": "passed",
+    "detail": {
+      "expected_sample_mean": 5.290973981221517,
+      "incorrect_batch_mean": 7.749066352844238,
+      "train_mean": 5.290973981221517,
+      "validation_mean": 5.290973981221517
+    }
+  },
+  {
+    "case": "validation RNG and preflight",
+    "status": "passed",
+    "detail": {
+      "repeat_validation_loss": 2.1766760614183216,
+      "validation_parameters_and_buffers_unchanged": true
+    }
+  },
+  {
+    "case": "training and score reload",
+    "status": "passed",
+    "detail": {
+      "base": "/tmp/lewm-conditional-training-srr2_k21",
+      "runs": {
+        "ae": {
+          "best": 0.9319632649421692,
+          "directory": "/tmp/lewm-conditional-training-srr2_k21/ae",
+          "history": [
+            {
+              "epoch": 1,
+              "losses": {
+                "train": {
+                  "loss": 1.0371704697608948,
+                  "mse": 1.0371704697608948,
+                  "kl": 0.0,
+                  "pred_loss": 1.0371704697608948,
+                  "latent_var": 0.3617084205150604
+                },
+                "validation": {
+                  "loss": 0.9319632649421692,
+                  "mse": 0.9319632649421692,
+                  "kl": 0.0,
+                  "pred_loss": 0.9319632649421692,
+                  "latent_var": 0.05644172802567482
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 0.9714249062538147,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.028221011161804,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.9716137051582336,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 1.380552515387535,
+                    "event_f1": 1.0,
+                    "f1": 0.676923076923077,
+                    "range_f1": 0.4229828850855745,
+                    "affiliation_f1": 0.9848496825020421,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.6855913996696471,
+                    "event_f1": 0.9555555555555556,
+                    "f1": 0.9555555555555556,
+                    "range_f1": 0.6370370370370371,
+                    "affiliation_f1": 0.961838083029287,
+                    "calibration_quantile": 0.26480193568826355,
+                    "calibration_threshold": 0.685591399669647,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.7329545454545454,
+                    "pa_f1": 0.9555555555555556
+                  },
+                  "vus_pr": 0.9706303344832526,
+                  "vus_roc": 0.9107998609542847,
+                  "auc_pr": 0.9652374639457427,
+                  "auc_roc": 0.9007155635062611
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 0.9671038663387299,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.028221011161804,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.9693436622619629,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            },
+            {
+              "epoch": 2,
+              "losses": {
+                "train": {
+                  "loss": 1.028894579410553,
+                  "mse": 1.028894579410553,
+                  "kl": 0.0,
+                  "pred_loss": 1.028894579410553,
+                  "latent_var": 0.34234042316675184
+                },
+                "validation": {
+                  "loss": 0.9320700764656067,
+                  "mse": 0.9320700764656067,
+                  "kl": 0.0,
+                  "pred_loss": 0.9320700764656067,
+                  "latent_var": 0.05720457807183266
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 0.9671934223175049,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.0224089622497556,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.9674010276794434,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 1.3722518036762874,
+                    "event_f1": 1.0,
+                    "f1": 0.676923076923077,
+                    "range_f1": 0.4229828850855745,
+                    "affiliation_f1": 0.9848496825020421,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.6874587655067442,
+                    "event_f1": 0.9555555555555556,
+                    "f1": 0.9555555555555556,
+                    "range_f1": 0.6370370370370371,
+                    "affiliation_f1": 0.961838083029287,
+                    "calibration_quantile": 0.2667413492008197,
+                    "calibration_threshold": 0.6874587655067442,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.7329545454545454,
+                    "pa_f1": 0.9555555555555556
+                  },
+                  "vus_pr": 0.972126735581292,
+                  "vus_roc": 0.9138780434926351,
+                  "auc_pr": 0.967497876967691,
+                  "auc_roc": 0.9051878354203935
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 0.9616293048858643,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.0224089622497556,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.963798999786377,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            }
+          ],
+          "score_report": {
+            "framework": "ae",
+            "experiment_name": "default",
+            "run": "acceptance",
+            "dataset": "synthetic",
+            "collection": "synthetic",
+            "fname": "synthetic",
+            "evaluation": {
+              "window": {
+                "calibrated": {
+                  "threshold": 0.9714249062538147,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 1.028221011161804,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 1.0,
+                  "calibration_threshold": 0.9716137051582336,
+                  "calibration_threshold_in_range": false,
+                  "clean_anomaly_fraction": 0.0,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              },
+              "timeseries": {
+                "calibrated": {
+                  "threshold": 1.380552515387535,
+                  "event_f1": 1.0,
+                  "f1": 0.676923076923077,
+                  "range_f1": 0.4229828850855745,
+                  "affiliation_f1": 0.9848496825020421,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 0.6855913996696471,
+                  "event_f1": 0.9555555555555556,
+                  "f1": 0.9555555555555556,
+                  "range_f1": 0.6370370370370371,
+                  "affiliation_f1": 0.961838083029287,
+                  "calibration_quantile": 0.26480193568826355,
+                  "calibration_threshold": 0.685591399669647,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.7329545454545454,
+                  "pa_f1": 0.9555555555555556
+                },
+                "vus_pr": 0.9706303344832526,
+                "vus_roc": 0.9107998609542847,
+                "auc_pr": 0.9652374639457427,
+                "auc_roc": 0.9007155635062611
+              },
+              "non_overlap_window": {
+                "calibrated": {
+                  "threshold": 0.9671038663387299,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 1.028221011161804,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 1.0,
+                  "calibration_threshold": 0.9693436622619629,
+                  "calibration_threshold_in_range": false,
+                  "clean_anomaly_fraction": 0.0,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              }
+            },
+            "calibration_source": "full clean training series",
+            "evaluation_settings": {
+              "wsz": 48,
+              "stride": 8,
+              "check_mask": null,
+              "latency_offset": 0,
+              "include_last_window": true
+            },
+            "coverage": {
+              "scored_timesteps": 112,
+              "total_timesteps": 112,
+              "first_scored_timestep": 0,
+              "input_window": 48,
+              "output_window": 48,
+              "series_start": 0,
+              "non_overlap_window": {
+                "stride": 48,
+                "scored_timesteps": 96,
+                "window_count": 2
+              }
+            },
+            "feature_schema": [
+              "channel_0",
+              "channel_1",
+              "channel_2"
+            ],
+            "preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "figures": {
+              "window": "/tmp/lewm-conditional-training-srr2_k21/ae/Test_window.html",
+              "timeseries": "/tmp/lewm-conditional-training-srr2_k21/ae/Test_timeseries.html",
+              "non_overlap_window": "/tmp/lewm-conditional-training-srr2_k21/ae/Test_non_overlap.html"
+            },
+            "selection": {
+              "weights": "/tmp/lewm-conditional-training-srr2_k21/ae/model.pth.tar",
+              "source": "validation",
+              "metric": "loss",
+              "value": 0.9319632649421692
+            }
+          },
+          "calibration": {
+            "source": "full clean training series",
+            "quantile": 0.99,
+            "thresholds": {
+              "window": 0.9714249062538147,
+              "timeseries": 1.380552515387535,
+              "non_overlap_window": 0.9671038663387299
+            }
+          },
+          "architecture": "ReconstructionBaseline(\n  (encoder): ResNetEncoder(\n    (blocks): Sequential(\n      (0): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(3, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(4, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(3, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n      (1): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(4, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(6, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(4, 6, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n    )\n  )\n  (decoder): MirroredReconHead(\n    (blocks): Sequential(\n      (0): ReconUpsampleBlock(\n        (deconv): ConvTranspose1d(6, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n        (norm): Identity()\n        (act): GELU(approximate='none')\n        (drop): Identity()\n      )\n      (1): ReconUpsampleBlock(\n        (deconv): ConvTranspose1d(4, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n        (norm): Identity()\n        (act): GELU(approximate='none')\n        (drop): Identity()\n      )\n    )\n    (to_input): Conv1d(4, 3, kernel_size=(1,), stride=(1,))\n  )\n)"
+        },
+        "vae": {
+          "best": 0.9966402053833008,
+          "directory": "/tmp/lewm-conditional-training-srr2_k21/vae",
+          "history": [
+            {
+              "epoch": 1,
+              "losses": {
+                "train": {
+                  "loss": 1.120111060142517,
+                  "mse": 1.0745480060577393,
+                  "kl": 0.15187689065933227,
+                  "pred_loss": 1.0745480060577393,
+                  "latent_var": 0.07230999767780304
+                },
+                "validation": {
+                  "loss": 0.9980820417404175,
+                  "mse": 0.9804150462150574,
+                  "kl": 0.05889007821679115,
+                  "pred_loss": 0.9804150462150574,
+                  "latent_var": 0.012758678756654263
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 0.9886505818367004,
+                    "event_f1": 1.0,
+                    "f1": 0.9411764705882353,
+                    "range_f1": 0.9534883720930233,
+                    "affiliation_f1": 0.9953488372093023,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9777948856353759,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.9197216639671685,
+                    "calibration_threshold": 0.9777948856353759,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.11764705882352941,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 1.3762835264205933,
+                    "event_f1": 1.0,
+                    "f1": 0.676923076923077,
+                    "range_f1": 0.43976777939042094,
+                    "affiliation_f1": 0.9846891717395314,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.7654421806335449,
+                    "event_f1": 0.9550561797752808,
+                    "f1": 0.9497206703910615,
+                    "range_f1": 0.6179229429557884,
+                    "affiliation_f1": 0.9613879141491383,
+                    "calibration_quantile": 0.3813051228933212,
+                    "calibration_threshold": 0.7654421806335449,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.6193181818181818,
+                    "pa_f1": 0.9555555555555556
+                  },
+                  "vus_pr": 0.972673257191976,
+                  "vus_roc": 0.911811477608151,
+                  "auc_pr": 0.9690753779543112,
+                  "auc_roc": 0.9056350626118068
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 0.9423971426486969,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9777948856353759,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.9430587887763977,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            },
+            {
+              "epoch": 2,
+              "losses": {
+                "train": {
+                  "loss": 1.1182067155838014,
+                  "mse": 1.0739585399627685,
+                  "kl": 0.1474939316511154,
+                  "pred_loss": 1.0739585399627685,
+                  "latent_var": 0.07345623821020127
+                },
+                "validation": {
+                  "loss": 0.9966402053833008,
+                  "mse": 0.9791706800460815,
+                  "kl": 0.058231696486473083,
+                  "pred_loss": 0.9791706800460815,
+                  "latent_var": 0.012611827813088894
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 0.9872271609306336,
+                    "event_f1": 1.0,
+                    "f1": 0.9411764705882353,
+                    "range_f1": 0.9534883720930233,
+                    "affiliation_f1": 0.9953488372093023,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9780275225639342,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.9239169846122746,
+                    "calibration_threshold": 0.9780275225639342,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.11764705882352941,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 1.374697968363762,
+                    "event_f1": 1.0,
+                    "f1": 0.676923076923077,
+                    "range_f1": 0.43976777939042094,
+                    "affiliation_f1": 0.9846891717395314,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.7685729861259459,
+                    "event_f1": 0.9550561797752808,
+                    "f1": 0.9497206703910615,
+                    "range_f1": 0.6179229429557884,
+                    "affiliation_f1": 0.9613879141491383,
+                    "calibration_quantile": 0.3875516892644167,
+                    "calibration_threshold": 0.7685729861259459,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.6136363636363636,
+                    "pa_f1": 0.9555555555555556
+                  },
+                  "vus_pr": 0.9728201627731323,
+                  "vus_roc": 0.9122739566697015,
+                  "auc_pr": 0.9692223096845104,
+                  "auc_roc": 0.90608228980322
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 0.9418880307674408,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 0.9780275225639342,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 0.9425703883171082,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            }
+          ],
+          "score_report": {
+            "framework": "vae",
+            "experiment_name": "default",
+            "run": "acceptance",
+            "dataset": "synthetic",
+            "collection": "synthetic",
+            "fname": "synthetic",
+            "evaluation": {
+              "window": {
+                "calibrated": {
+                  "threshold": 0.9872271609306336,
+                  "event_f1": 1.0,
+                  "f1": 0.9411764705882353,
+                  "range_f1": 0.9534883720930233,
+                  "affiliation_f1": 0.9953488372093023,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 0.9780275225639342,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.9239169846122746,
+                  "calibration_threshold": 0.9780275225639342,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.11764705882352941,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              },
+              "timeseries": {
+                "calibrated": {
+                  "threshold": 1.374697968363762,
+                  "event_f1": 1.0,
+                  "f1": 0.676923076923077,
+                  "range_f1": 0.43976777939042094,
+                  "affiliation_f1": 0.9846891717395314,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 0.7685729861259459,
+                  "event_f1": 0.9550561797752808,
+                  "f1": 0.9497206703910615,
+                  "range_f1": 0.6179229429557884,
+                  "affiliation_f1": 0.9613879141491383,
+                  "calibration_quantile": 0.3875516892644167,
+                  "calibration_threshold": 0.7685729861259459,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.6136363636363636,
+                  "pa_f1": 0.9555555555555556
+                },
+                "vus_pr": 0.9728201627731323,
+                "vus_roc": 0.9122739566697015,
+                "auc_pr": 0.9692223096845104,
+                "auc_roc": 0.90608228980322
+              },
+              "non_overlap_window": {
+                "calibrated": {
+                  "threshold": 0.9418880307674408,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 0.9780275225639342,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 1.0,
+                  "calibration_threshold": 0.9425703883171082,
+                  "calibration_threshold_in_range": false,
+                  "clean_anomaly_fraction": 0.0,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              }
+            },
+            "calibration_source": "full clean training series",
+            "evaluation_settings": {
+              "wsz": 48,
+              "stride": 8,
+              "check_mask": null,
+              "latency_offset": 0,
+              "include_last_window": true
+            },
+            "coverage": {
+              "scored_timesteps": 112,
+              "total_timesteps": 112,
+              "first_scored_timestep": 0,
+              "input_window": 48,
+              "output_window": 48,
+              "series_start": 0,
+              "non_overlap_window": {
+                "stride": 48,
+                "scored_timesteps": 96,
+                "window_count": 2
+              }
+            },
+            "feature_schema": [
+              "channel_0",
+              "channel_1",
+              "channel_2"
+            ],
+            "preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "figures": {
+              "window": "/tmp/lewm-conditional-training-srr2_k21/vae/Test_window.html",
+              "timeseries": "/tmp/lewm-conditional-training-srr2_k21/vae/Test_timeseries.html",
+              "non_overlap_window": "/tmp/lewm-conditional-training-srr2_k21/vae/Test_non_overlap.html"
+            },
+            "selection": {
+              "weights": "/tmp/lewm-conditional-training-srr2_k21/vae/model.pth.tar",
+              "source": "validation",
+              "metric": "loss",
+              "value": 0.9966402053833008
+            }
+          },
+          "calibration": {
+            "source": "full clean training series",
+            "quantile": 0.99,
+            "thresholds": {
+              "window": 0.9872271609306336,
+              "timeseries": 1.374697968363762,
+              "non_overlap_window": 0.9418880307674408
+            }
+          },
+          "architecture": "ReconstructionBaseline(\n  (encoder): ResNetEncoder(\n    (blocks): Sequential(\n      (0): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(3, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(4, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(3, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n      (1): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(4, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(6, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(4, 6, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n    )\n  )\n  (decoder): MirroredReconHead(\n    (blocks): Sequential(\n      (0): ReconUpsampleBlock(\n        (deconv): ConvTranspose1d(6, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n        (norm): Identity()\n        (act): GELU(approximate='none')\n        (drop): Identity()\n      )\n      (1): ReconUpsampleBlock(\n        (deconv): ConvTranspose1d(4, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n        (norm): Identity()\n        (act): GELU(approximate='none')\n        (drop): Identity()\n      )\n    )\n    (to_input): Conv1d(4, 3, kernel_size=(1,), stride=(1,))\n  )\n  (mu): Conv1d(6, 6, kernel_size=(1,), stride=(1,))\n  (logvar): Conv1d(6, 6, kernel_size=(1,), stride=(1,))\n)"
+        },
+        "lewm": {
+          "best": 1.0487288236618042,
+          "directory": "/tmp/lewm-conditional-training-srr2_k21/lewm",
+          "history": [
+            {
+              "epoch": 1,
+              "losses": {
+                "train": {
+                  "loss": 1.7761990785598756,
+                  "pred_loss": 0.5998541355133057,
+                  "aux_loss": 0.7658683300018311,
+                  "sigreg": 2.1915764093399046,
+                  "sigreg_tgt": 1.9131893634796142,
+                  "latent_var": 1.1441315770149232
+                },
+                "validation": {
+                  "loss": 1.0524241924285889,
+                  "pred_loss": 0.20016229152679443,
+                  "aux_loss": 0.696049690246582,
+                  "sigreg": 0.7097380757331848,
+                  "sigreg_tgt": 0.8523834347724915,
+                  "latent_var": 0.3519696295261383
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 1.4940922927856446,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.97023868560791,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 1.5002188682556152,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 3.0653454661369324,
+                    "event_f1": 0.9333333333333333,
+                    "f1": 0.38181818181818183,
+                    "range_f1": 0.3743761255466941,
+                    "affiliation_f1": 0.896795804273869,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.9828571428571429
+                  },
+                  "oracle": {
+                    "threshold": 1.1018195052941637,
+                    "event_f1": 0.9297297297297298,
+                    "f1": 0.9297297297297298,
+                    "range_f1": 0.9297297297297298,
+                    "affiliation_f1": 0.9426657448685245,
+                    "calibration_quantile": 0.6885864217485397,
+                    "calibration_threshold": 1.1018195052941637,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3125,
+                    "pa_f1": 0.9297297297297298
+                  },
+                  "vus_pr": 0.9092627300156487,
+                  "vus_roc": 0.8288025392426385,
+                  "auc_pr": 0.8684354720523313,
+                  "auc_roc": 0.7714669051878353
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 1.4944815158843994,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.97023868560791,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 1.5002188682556152,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            },
+            {
+              "epoch": 2,
+              "losses": {
+                "train": {
+                  "loss": 1.6957733392715455,
+                  "pred_loss": 0.6301119089126587,
+                  "aux_loss": 0.7249857306480407,
+                  "sigreg": 1.8950911998748778,
+                  "sigreg_tgt": 1.5116655111312867,
+                  "latent_var": 1.2482617139816283
+                },
+                "validation": {
+                  "loss": 1.0487288236618042,
+                  "pred_loss": 0.1976868063211441,
+                  "aux_loss": 0.6962667107582092,
+                  "sigreg": 0.703443706035614,
+                  "sigreg_tgt": 0.8443091511726379,
+                  "latent_var": 0.3463786542415619
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 1.4352901840209962,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.9265369176864622,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 1.4412541389465332,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 2.9885347088178,
+                    "event_f1": 0.9268292682926829,
+                    "f1": 0.35185185185185186,
+                    "range_f1": 0.36908761953993285,
+                    "affiliation_f1": 0.8920484989831492,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.9828571428571429
+                  },
+                  "oracle": {
+                    "threshold": 1.0732084910074868,
+                    "event_f1": 0.9297297297297298,
+                    "f1": 0.9297297297297298,
+                    "range_f1": 0.9297297297297298,
+                    "affiliation_f1": 0.9426657448685245,
+                    "calibration_quantile": 0.6859793874718308,
+                    "calibration_threshold": 1.0732084910074868,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3125,
+                    "pa_f1": 0.9297297297297298
+                  },
+                  "vus_pr": 0.9081397718853421,
+                  "vus_roc": 0.830282966295878,
+                  "auc_pr": 0.8678601565665938,
+                  "auc_roc": 0.7745974955277282
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 1.4360345339775085,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 1.9265369176864622,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 1.0,
+                    "calibration_threshold": 1.4412541389465332,
+                    "calibration_threshold_in_range": false,
+                    "clean_anomaly_fraction": 0.0,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            }
+          ],
+          "score_report": {
+            "framework": "lewm",
+            "experiment_name": "masked_frequency",
+            "run": "acceptance",
+            "dataset": "synthetic",
+            "collection": "synthetic",
+            "fname": "synthetic",
+            "evaluation": {
+              "window": {
+                "calibrated": {
+                  "threshold": 1.4352901840209962,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 1.9265369176864622,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 1.0,
+                  "calibration_threshold": 1.4412541389465332,
+                  "calibration_threshold_in_range": false,
+                  "clean_anomaly_fraction": 0.0,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              },
+              "timeseries": {
+                "calibrated": {
+                  "threshold": 2.9885347088178,
+                  "event_f1": 0.9268292682926829,
+                  "f1": 0.35185185185185186,
+                  "range_f1": 0.36908761953993285,
+                  "affiliation_f1": 0.8920484989831492,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 0.9828571428571429
+                },
+                "oracle": {
+                  "threshold": 1.0732084910074868,
+                  "event_f1": 0.9297297297297298,
+                  "f1": 0.9297297297297298,
+                  "range_f1": 0.9297297297297298,
+                  "affiliation_f1": 0.9426657448685245,
+                  "calibration_quantile": 0.6859793874718308,
+                  "calibration_threshold": 1.0732084910074868,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.3125,
+                  "pa_f1": 0.9297297297297298
+                },
+                "vus_pr": 0.9081397718853421,
+                "vus_roc": 0.830282966295878,
+                "auc_pr": 0.8678601565665938,
+                "auc_roc": 0.7745974955277282
+              },
+              "non_overlap_window": {
+                "calibrated": {
+                  "threshold": 1.4360345339775085,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 1.9265369176864622,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 1.0,
+                  "calibration_threshold": 1.4412541389465332,
+                  "calibration_threshold_in_range": false,
+                  "clean_anomaly_fraction": 0.0,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              }
+            },
+            "calibration_source": "full clean training series",
+            "evaluation_settings": {
+              "wsz": 48,
+              "stride": 8,
+              "check_mask": null,
+              "latency_offset": 0,
+              "include_last_window": true
+            },
+            "coverage": {
+              "scored_timesteps": 112,
+              "total_timesteps": 112,
+              "first_scored_timestep": 0,
+              "input_window": 48,
+              "output_window": 48,
+              "series_start": 0,
+              "non_overlap_window": {
+                "stride": 48,
+                "scored_timesteps": 96,
+                "window_count": 2
+              }
+            },
+            "feature_schema": [
+              "channel_0",
+              "channel_1",
+              "channel_2"
+            ],
+            "preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "figures": {
+              "window": "/tmp/lewm-conditional-training-srr2_k21/lewm/Test_window.html",
+              "timeseries": "/tmp/lewm-conditional-training-srr2_k21/lewm/Test_timeseries.html",
+              "non_overlap_window": "/tmp/lewm-conditional-training-srr2_k21/lewm/Test_non_overlap.html"
+            },
+            "selection": {
+              "weights": "/tmp/lewm-conditional-training-srr2_k21/lewm/model.pth.tar",
+              "source": "validation",
+              "metric": "loss",
+              "value": 1.0487288236618042
+            }
+          },
+          "calibration": {
+            "source": "full clean training series",
+            "quantile": 0.99,
+            "thresholds": {
+              "window": 1.4352901840209962,
+              "timeseries": 2.9885347088178,
+              "non_overlap_window": 1.4360345339775085
+            }
+          },
+          "architecture": "LeWM(\n  (engine): MaskedEngine()\n  (encoder): ResNetEncoder(\n    (blocks): Sequential(\n      (0): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(3, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(4, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(3, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n      (1): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(4, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(6, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): Identity()\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(4, 6, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): Identity()\n          (drop): Identity()\n        )\n        (act): Identity()\n      )\n    )\n  )\n  (action): MaskedRepresentationAction(\n    (aux): TimeAuxiliary(\n      (convs): Sequential(\n        (0): Conv1dBlock(\n          (conv): Conv1d(3, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (1): Conv1dBlock(\n          (conv): Conv1d(4, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n      )\n      (mask_head): Conv1d(4, 1, kernel_size=(1,), stride=(1,))\n    )\n  )\n  (predictor): FreqPredictor(\n    (stem_conv): Conv1dBlock(\n      (conv): Conv1d(6, 4, kernel_size=(7,), stride=(1,), padding=(3,))\n      (norm): BatchNorm1d(4, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n      (act): GELU(approximate='none')\n      (drop): Identity()\n    )\n    (in_proj): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(8, 4, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(4, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (c0): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(4, 6, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n        (1): BatchNorm2d(6, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (c1): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(6, 8, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n        (1): BatchNorm2d(8, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (c2): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(8, 8, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(8, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (up2): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(14, 6, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(6, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (up1): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(10, 4, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(4, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (down_p0): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(4, 4, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))\n        (1): BatchNorm2d(4, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (pan1): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(10, 6, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(6, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (final): Conv2dBlock(\n      (net): Sequential(\n        (0): Conv2d(10, 4, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))\n        (1): BatchNorm2d(4, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)\n        (2): GELU(approximate='none')\n        (3): Identity()\n      )\n    )\n    (out_proj): Conv2d(4, 8, kernel_size=(1, 1), stride=(1, 1))\n    (to_latent): Conv1d(4, 6, kernel_size=(1,), stride=(1,))\n    (film0): TimeFiLM(\n      (to_gamma): Conv1d(4, 6, kernel_size=(1,), stride=(1,))\n      (to_beta): Conv1d(4, 6, kernel_size=(1,), stride=(1,))\n    )\n    (film1): TimeFiLM(\n      (to_gamma): Conv1d(4, 8, kernel_size=(1,), stride=(1,))\n      (to_beta): Conv1d(4, 8, kernel_size=(1,), stride=(1,))\n    )\n    (film2): TimeFiLM(\n      (to_gamma): Conv1d(4, 8, kernel_size=(1,), stride=(1,))\n      (to_beta): Conv1d(4, 8, kernel_size=(1,), stride=(1,))\n    )\n  )\n)"
+        },
+        "guided_forecast": {
+          "best": 0.688704788684845,
+          "directory": "/tmp/lewm-conditional-training-srr2_k21/guided_forecast",
+          "history": [
+            {
+              "epoch": 1,
+              "losses": {
+                "train": {
+                  "loss": 1.3633437395095824,
+                  "pred_loss": 1.0020866394042969,
+                  "aux_loss": 0.0,
+                  "sigreg": 1.7777596712112427,
+                  "sigreg_tgt": 1.834811234474182,
+                  "latent_var": 1.2467622220516206
+                },
+                "validation": {
+                  "loss": 0.7126259207725525,
+                  "pred_loss": 0.5705423355102539,
+                  "aux_loss": 0.0,
+                  "sigreg": 0.80254065990448,
+                  "sigreg_tgt": 0.6182953119277954,
+                  "latent_var": 0.1786159873008728
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 2.7758968925476073,
+                    "event_f1": 1.0,
+                    "f1": 0.7142857142857143,
+                    "range_f1": 0.59375,
+                    "affiliation_f1": 0.948051948051948,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 2.23688268661499,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.6587484874656307,
+                    "calibration_threshold": 2.2368826866149902,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.35294117647058826,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 3.129258997440338,
+                    "event_f1": 0.9333333333333333,
+                    "f1": 0.5283018867924528,
+                    "range_f1": 0.40608058608058606,
+                    "affiliation_f1": 0.888184027860318,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.9736842105263158
+                  },
+                  "oracle": {
+                    "threshold": 1.632369518280029,
+                    "event_f1": 0.9673202614379084,
+                    "f1": 0.9673202614379085,
+                    "range_f1": 0.9673202614379084,
+                    "affiliation_f1": 0.9687946155415051,
+                    "calibration_quantile": 0.4820464517089483,
+                    "calibration_threshold": 1.6323695182800293,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.5208333333333334,
+                    "pa_f1": 0.9673202614379085
+                  },
+                  "vus_pr": 0.9268771409988403,
+                  "vus_roc": 0.5566980242729187,
+                  "auc_pr": 0.8897108318455951,
+                  "auc_roc": 0.4414414414414415
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 2.7233351993560793,
+                    "event_f1": 1.0,
+                    "f1": 0.75,
+                    "range_f1": 0.6111111111111112,
+                    "affiliation_f1": 0.9583333333333333,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 2.23688268661499,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.6964969905967284,
+                    "calibration_threshold": 2.2368826866149902,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3333333333333333,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            },
+            {
+              "epoch": 2,
+              "losses": {
+                "train": {
+                  "loss": 1.318712019920349,
+                  "pred_loss": 0.9581441402435302,
+                  "aux_loss": 0.0,
+                  "sigreg": 1.516135311126709,
+                  "sigreg_tgt": 2.0895437240600585,
+                  "latent_var": 1.211290493607521
+                },
+                "validation": {
+                  "loss": 0.688704788684845,
+                  "pred_loss": 0.5467907190322876,
+                  "aux_loss": 0.0,
+                  "sigreg": 0.7966822385787964,
+                  "sigreg_tgt": 0.6224583387374878,
+                  "latent_var": 0.18038193881511688
+                }
+              },
+              "evaluation": {
+                "window": {
+                  "calibrated": {
+                    "threshold": 2.675305004119873,
+                    "event_f1": 1.0,
+                    "f1": 0.7142857142857143,
+                    "range_f1": 0.59375,
+                    "affiliation_f1": 0.948051948051948,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 2.189911603927612,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.6607410501922284,
+                    "calibration_threshold": 2.1899116039276114,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.35294117647058826,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                },
+                "timeseries": {
+                  "calibrated": {
+                    "threshold": 3.078222184181213,
+                    "event_f1": 0.9310344827586207,
+                    "f1": 0.5142857142857142,
+                    "range_f1": 0.4034495412844037,
+                    "affiliation_f1": 0.8861100671058406,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 0.9736842105263158
+                  },
+                  "oracle": {
+                    "threshold": 1.5619411468505857,
+                    "event_f1": 0.9673202614379084,
+                    "f1": 0.9673202614379085,
+                    "range_f1": 0.9673202614379084,
+                    "affiliation_f1": 0.9687946155415051,
+                    "calibration_quantile": 0.47391660565670934,
+                    "calibration_threshold": 1.561941146850586,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.5277777777777778,
+                    "pa_f1": 0.9673202614379085
+                  },
+                  "vus_pr": 0.922608044412401,
+                  "vus_roc": 0.5478036138746474,
+                  "auc_pr": 0.8842127993566351,
+                  "auc_roc": 0.4301801801801802
+                },
+                "non_overlap_window": {
+                  "calibrated": {
+                    "threshold": 2.624743633270264,
+                    "event_f1": 1.0,
+                    "f1": 0.75,
+                    "range_f1": 0.6111111111111112,
+                    "affiliation_f1": 0.9583333333333333,
+                    "calibration_quantile": 0.99,
+                    "pa_f1": 1.0
+                  },
+                  "oracle": {
+                    "threshold": 2.189911603927612,
+                    "event_f1": 1.0,
+                    "f1": 1.0,
+                    "range_f1": 1.0,
+                    "affiliation_f1": 1.0,
+                    "calibration_quantile": 0.6996944380746477,
+                    "calibration_threshold": 2.189911603927612,
+                    "calibration_threshold_in_range": true,
+                    "clean_anomaly_fraction": 0.3333333333333333,
+                    "pa_f1": 1.0
+                  },
+                  "vus_pr": null,
+                  "vus_roc": null,
+                  "auc_pr": null,
+                  "auc_roc": null
+                }
+              }
+            }
+          ],
+          "score_report": {
+            "framework": "lewm",
+            "experiment_name": "guided_forecast",
+            "run": "acceptance",
+            "dataset": "synthetic",
+            "collection": "synthetic",
+            "fname": "synthetic",
+            "evaluation": {
+              "window": {
+                "calibrated": {
+                  "threshold": 2.675305004119873,
+                  "event_f1": 1.0,
+                  "f1": 0.7142857142857143,
+                  "range_f1": 0.59375,
+                  "affiliation_f1": 0.948051948051948,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 2.189911603927612,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.6607410501922284,
+                  "calibration_threshold": 2.1899116039276114,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.35294117647058826,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              },
+              "timeseries": {
+                "calibrated": {
+                  "threshold": 3.078222184181213,
+                  "event_f1": 0.9310344827586207,
+                  "f1": 0.5142857142857142,
+                  "range_f1": 0.4034495412844037,
+                  "affiliation_f1": 0.8861100671058406,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 0.9736842105263158
+                },
+                "oracle": {
+                  "threshold": 1.5619411468505857,
+                  "event_f1": 0.9673202614379084,
+                  "f1": 0.9673202614379085,
+                  "range_f1": 0.9673202614379084,
+                  "affiliation_f1": 0.9687946155415051,
+                  "calibration_quantile": 0.47391660565670934,
+                  "calibration_threshold": 1.561941146850586,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.5277777777777778,
+                  "pa_f1": 0.9673202614379085
+                },
+                "vus_pr": 0.922608044412401,
+                "vus_roc": 0.5478036138746474,
+                "auc_pr": 0.8842127993566351,
+                "auc_roc": 0.4301801801801802
+              },
+              "non_overlap_window": {
+                "calibrated": {
+                  "threshold": 2.624743633270264,
+                  "event_f1": 1.0,
+                  "f1": 0.75,
+                  "range_f1": 0.6111111111111112,
+                  "affiliation_f1": 0.9583333333333333,
+                  "calibration_quantile": 0.99,
+                  "pa_f1": 1.0
+                },
+                "oracle": {
+                  "threshold": 2.189911603927612,
+                  "event_f1": 1.0,
+                  "f1": 1.0,
+                  "range_f1": 1.0,
+                  "affiliation_f1": 1.0,
+                  "calibration_quantile": 0.6996944380746477,
+                  "calibration_threshold": 2.189911603927612,
+                  "calibration_threshold_in_range": true,
+                  "clean_anomaly_fraction": 0.3333333333333333,
+                  "pa_f1": 1.0
+                },
+                "vus_pr": null,
+                "vus_roc": null,
+                "auc_pr": null,
+                "auc_roc": null
+              }
+            },
+            "calibration_source": "full clean training series",
+            "evaluation_settings": {
+              "wsz": 48,
+              "stride": 8,
+              "check_mask": [
+                32,
+                48
+              ],
+              "latency_offset": 0,
+              "include_last_window": true
+            },
+            "coverage": {
+              "scored_timesteps": 80,
+              "total_timesteps": 112,
+              "first_scored_timestep": 32,
+              "input_window": 48,
+              "output_window": 16,
+              "series_start": 0,
+              "non_overlap_window": {
+                "stride": 16,
+                "scored_timesteps": 80,
+                "window_count": 5
+              }
+            },
+            "feature_schema": [
+              "channel_0",
+              "channel_1",
+              "channel_2"
+            ],
+            "preprocessing": {
+              "contract": "optimization_rows_standard_scaler_v1",
+              "feature_schema": [
+                "channel_0",
+                "channel_1",
+                "channel_2"
+              ],
+              "fit_rows": 123,
+              "mean": [
+                0.39814961647115105,
+                0.026419323467747953,
+                0.02088708745512536
+              ],
+              "std": [
+                1.550256263243206,
+                1.5785560748512126,
+                1.5292747240583933
+              ],
+              "source": {
+                "source": "synthetic",
+                "seed": 17,
+                "options": {
+                  "n_steps": 176,
+                  "test_n_steps": 112,
+                  "n_channels": 3
+                }
+              }
+            },
+            "figures": {
+              "window": "/tmp/lewm-conditional-training-srr2_k21/guided_forecast/Test_window.html",
+              "timeseries": "/tmp/lewm-conditional-training-srr2_k21/guided_forecast/Test_timeseries.html",
+              "non_overlap_window": "/tmp/lewm-conditional-training-srr2_k21/guided_forecast/Test_non_overlap.html"
+            },
+            "selection": {
+              "weights": "/tmp/lewm-conditional-training-srr2_k21/guided_forecast/model.pth.tar",
+              "source": "validation",
+              "metric": "loss",
+              "value": 0.688704788684845
+            }
+          },
+          "calibration": {
+            "source": "full clean training series",
+            "quantile": 0.99,
+            "thresholds": {
+              "window": 2.675305004119873,
+              "timeseries": 3.078222184181213,
+              "non_overlap_window": 2.624743633270264
+            }
+          },
+          "architecture": "LeWM(\n  (engine): ForecastEngine()\n  (encoder): ResNetEncoder(\n    (blocks): Sequential(\n      (0): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(3, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(4, 4, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(3, 4, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): GELU(approximate='none')\n          (drop): Identity()\n        )\n        (act): GELU(approximate='none')\n      )\n      (1): ResNetBlock(\n        (main): Sequential(\n          (0): Conv1dBlock(\n            (conv): Conv1d(4, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): GELU(approximate='none')\n            (drop): Identity()\n          )\n          (1): Conv1dBlock(\n            (conv): Conv1d(6, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n            (norm): Identity()\n            (act): Identity()\n            (drop): Identity()\n          )\n        )\n        (residual): Conv1dBlock(\n          (conv): Conv1d(4, 6, kernel_size=(5,), stride=(1,), padding=(2,))\n          (norm): Identity()\n          (act): Identity()\n          (drop): Identity()\n        )\n        (act): Identity()\n      )\n    )\n  )\n  (action): EncoderAction(\n    (net): TCNEncoder(\n      (net): Sequential(\n        (0): CausalConv1dBlock(\n          (net): Sequential(\n            (0): CausalConv1d(6, 4, kernel_size=(3,), stride=(1,))\n            (1): Identity()\n            (2): GELU(approximate='none')\n            (3): Identity()\n          )\n        )\n        (1): CausalConv1dBlock(\n          (net): Sequential(\n            (0): CausalConv1d(4, 4, kernel_size=(3,), stride=(1,), dilation=(2,))\n            (1): Identity()\n            (2): GELU(approximate='none')\n            (3): Identity()\n          )\n        )\n        (2): Conv1d(4, 4, kernel_size=(1,), stride=(1,))\n      )\n    )\n  )\n  (predictor): GuidedCrossAttentionPredictor(\n    (key): Conv1d(6, 4, kernel_size=(1,), stride=(1,))\n    (value): Conv1d(6, 4, kernel_size=(1,), stride=(1,))\n    (to_latent): ConvTranspose1d(4, 6, kernel_size=(3,), stride=(1,), padding=(1,))\n    (attention): CrossAttention(\n      (head): Identity()\n      (input_projection): Identity()\n    )\n  )\n)"
+        }
+      }
+    }
+  },
+  {
+    "case": "short training checkpoint",
+    "status": "passed",
+    "detail": {
+      "directory": "/tmp/lewm-short-training-kzse03t3",
+      "best_training": 0.8986053466796875,
+      "score_report": {
+        "framework": "ae",
+        "experiment_name": "default",
+        "run": "acceptance",
+        "dataset": "synthetic",
+        "collection": "synthetic",
+        "fname": "synthetic",
+        "evaluation": {
+          "window": {
+            "calibrated": {
+              "threshold": 0.8534368658065796,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 1.0
+            },
+            "oracle": {
+              "threshold": 1.0527895689010618,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 1.0,
+              "calibration_threshold": 0.8557761311531067,
+              "calibration_threshold_in_range": false,
+              "clean_anomaly_fraction": 0.0,
+              "pa_f1": 1.0
+            },
+            "vus_pr": null,
+            "vus_roc": null,
+            "auc_pr": null,
+            "auc_roc": null
+          },
+          "timeseries": {
+            "calibrated": {
+              "threshold": 1.5197582352161405,
+              "event_f1": 1.0,
+              "f1": 0.6456692913385826,
+              "range_f1": 0.43294460641399424,
+              "affiliation_f1": 0.9797690922571762,
+              "calibration_quantile": 0.99,
+              "pa_f1": 1.0
+            },
+            "oracle": {
+              "threshold": 0.6364448815584182,
+              "event_f1": 0.9502762430939227,
+              "f1": 0.9502762430939227,
+              "range_f1": 0.6370370370370371,
+              "affiliation_f1": 0.9566837447601304,
+              "calibration_quantile": 0.456537075469655,
+              "calibration_threshold": 0.6364448815584182,
+              "calibration_threshold_in_range": true,
+              "clean_anomaly_fraction": 0.546875,
+              "pa_f1": 0.9502762430939227
+            },
+            "vus_pr": 0.9683172967698839,
+            "vus_roc": 0.9002958337465922,
+            "auc_pr": 0.9637400861605298,
+            "auc_roc": 0.8922182468694096
+          },
+          "non_overlap_window": {
+            "calibrated": {
+              "threshold": 0.6584914326667786,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.99,
+              "pa_f1": 1.0
+            },
+            "oracle": {
+              "threshold": 1.0527895689010618,
+              "event_f1": 1.0,
+              "f1": 1.0,
+              "range_f1": 1.0,
+              "affiliation_f1": 1.0,
+              "calibration_quantile": 0.0,
+              "calibration_threshold": 0.6584914326667786,
+              "calibration_threshold_in_range": false,
+              "clean_anomaly_fraction": 0.0,
+              "pa_f1": 1.0
+            },
+            "vus_pr": null,
+            "vus_roc": null,
+            "auc_pr": null,
+            "auc_roc": null
+          }
+        },
+        "calibration_source": "full clean training series",
+        "evaluation_settings": {
+          "wsz": 48,
+          "stride": 8,
+          "check_mask": null,
+          "latency_offset": 0,
+          "include_last_window": true
+        },
+        "coverage": {
+          "scored_timesteps": 112,
+          "total_timesteps": 112,
+          "first_scored_timestep": 0,
+          "input_window": 48,
+          "output_window": 48,
+          "series_start": 0,
+          "non_overlap_window": {
+            "stride": 48,
+            "scored_timesteps": 96,
+            "window_count": 2
+          }
+        },
+        "feature_schema": [
+          "channel_0",
+          "channel_1",
+          "channel_2"
+        ],
+        "preprocessing": {
+          "contract": "optimization_rows_standard_scaler_v1",
+          "feature_schema": [
+            "channel_0",
+            "channel_1",
+            "channel_2"
+          ],
+          "fit_rows": 64,
+          "mean": [
+            0.9022284439997748,
+            0.016113752353703603,
+            0.1168435950530693
+          ],
+          "std": [
+            1.3304197207570423,
+            1.5815931832559738,
+            1.508396482326951
+          ],
+          "source": {
+            "source": "synthetic",
+            "seed": 17,
+            "options": {
+              "n_steps": 64,
+              "test_n_steps": 112,
+              "n_channels": 3
+            }
+          }
+        },
+        "figures": {
+          "window": "/tmp/lewm-short-training-kzse03t3/Test_window.html",
+          "timeseries": "/tmp/lewm-short-training-kzse03t3/Test_timeseries.html",
+          "non_overlap_window": "/tmp/lewm-short-training-kzse03t3/Test_non_overlap.html"
+        },
+        "selection": {
+          "weights": "/tmp/lewm-short-training-kzse03t3/model.pth.tar",
+          "source": "train",
+          "metric": "loss",
+          "value": 0.8986053466796875
+        }
+      }
+    }
+  },
+  {
+    "case": "deterministic resume",
+    "status": "passed",
+    "detail": {
+      "vae": {
+        "full": "/tmp/lewm-deterministic-resume-mxrt6v_i/vae-full",
+        "resumed": "/tmp/lewm-deterministic-resume-mxrt6v_i/vae-interrupted",
+        "final_loss": {
+          "train": {
+            "loss": 1.1343459844589234,
+            "mse": 1.0913434028625488,
+            "kl": 0.14334193766117095,
+            "pred_loss": 1.0913434028625488,
+            "latent_var": 0.07198160737752915
+          },
+          "validation": {
+            "loss": 0.9954766035079956,
+            "mse": 0.9781763553619385,
+            "kl": 0.057667508721351624,
+            "pred_loss": 0.9781763553619385,
+            "latent_var": 0.012502460740506649
+          }
+        },
+        "bitwise_weights_equal": true
+      },
+      "lewm": {
+        "full": "/tmp/lewm-deterministic-resume-mxrt6v_i/lewm-full",
+        "resumed": "/tmp/lewm-deterministic-resume-mxrt6v_i/lewm-interrupted",
+        "final_loss": {
+          "train": {
+            "loss": 1.7257569313049317,
+            "pred_loss": 0.6204414129257202,
+            "aux_loss": 0.7160613417625428,
+            "sigreg": 2.113128638267517,
+            "sigreg_tgt": 1.779413676261902,
+            "latent_var": 1.2319591760635376
+          },
+          "validation": {
+            "loss": 1.0571924448013306,
+            "pred_loss": 0.19741307199001312,
+            "aux_loss": 0.6954570412635803,
+            "sigreg": 0.757132351398468,
+            "sigreg_tgt": 0.8860906958580017,
+            "latent_var": 0.34161391854286194
+          }
+        },
+        "bitwise_weights_equal": true
+      }
+    }
+  },
+  {
+    "case": "real data samples",
+    "status": "passed",
+    "detail": {
+      "psm": {
+        "available": true,
+        "root": "/home/manosbampis/Documents/EKETA/HyperAI/datasets/PSM",
+        "fname": "psm",
+        "feature_count": 25,
+        "train_windows": 11587,
+        "validation_windows": 4963,
+        "test_windows": 10975,
+        "sample_loss": 10.189043045043945,
+        "score_shape": [
+          1,
+          48
+        ]
+      },
+      "smd": {
+        "available": true,
+        "root": "/home/manosbampis/Documents/EKETA/HyperAI/datasets/SMD",
+        "fname": "machine-1-1.txt",
+        "feature_count": 38,
+        "train_windows": 2486,
+        "validation_windows": 1063,
+        "test_windows": 3554,
+        "sample_loss": 10.14948558807373,
+        "score_shape": [
+          1,
+          48
+        ]
+      },
+      "tsb-ad-u": {
+        "available": false,
+        "limitation": "real collection not installed; format fixture only"
+      },
+      "tsb-ad-m": {
+        "available": false,
+        "limitation": "real collection not installed; format fixture only"
+      }
+    }
+  },
+  {
+    "case": "normal entry CUDA AMP",
+    "status": "passed",
+    "detail": {
+      "available": true,
+      "directory": "/tmp/lewm-normal-amp-c8awrq61",
+      "best_validation": 1.053428292274475,
+      "scaler_saved": true
+    }
+  }
+]

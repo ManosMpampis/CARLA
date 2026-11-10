@@ -93,4 +93,5 @@ full destination resume does not require the source file. Semantic model,
 feature-schema, runtime and preprocessing changes are rejected on resume.
 
 Permanent acceptance checks are `tests/verify_conditional_models.py`,
-`tests/verify_conditional_runtime.py` and `tests/verify_conditional_suites.py`.
+`tests/verify_conditional_runtime.py`, `tests/verify_conditional_transfer.py`
+and `tests/verify_conditional_suites.py`.

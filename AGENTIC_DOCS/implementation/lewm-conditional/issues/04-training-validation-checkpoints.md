@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** implemented
+**Status:** verified
 
 - [x] Synthetic and real-format train/validation/test fixtures reuse the training-fitted normalization without test leakage.
 - [x] Disjoint validation is used when available; otherwise calibration uses all training rows and primary selection uses best training loss.

@@ -484,11 +484,17 @@ silently alter batch size or experiment settings.
 7. Record architecture/task/preprocessing metadata sufficient to reproduce
    score-only evaluation and transfer; update stale model/entry documentation.
 
-## 5. Acceptance experiment after design agreement and implementation
+## 5. Acceptance experiment and results
 
-The final smoke run is **not yet passed**. Initial probes establish execution
-and specific defects, not anomaly-detection quality. Do not treat low synthetic
-loss or a favorable tiny-test F1 as evidence of benchmark performance.
+The final smoke run **passed on 2026-11-10**: all 29 independent assertion groups
+across four scripts passed, including normal training/validation/test runs,
+encoder reuse, source-free resume, CUDA AMP, dataset selections and parallel
+jobs. See the [acceptance report](../reports/lewm_conditional_acceptance/REPORT.md)
+for commands, architecture shapes, loss components, metrics and limitations.
+Real PSM/SMD samples passed; real TSB collections were unavailable and were
+verified with generated format/list fixtures. These results establish numerical
+and workflow correctness, not benchmark-quality anomaly detection. The following
+paragraphs record the acceptance protocol used.
 
 Use deterministic multichannel periodic/AR signals for clean train and held-out
 validation, and a separate test with known spike, shift and frequency anomalies.
