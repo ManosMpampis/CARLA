@@ -94,7 +94,7 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
     return accuracy, precision, recall, f_score, f05_score, tp, fp, fn, tn
 
 def event_f1(labels, events_gt, preds):
-    tp = np.sum([preds[start:end+1].any() for start, end in events_gt])
+    tp = np.sum([preds[start:end+1].any() if end <= len(preds) else preds[start:end].any() for start, end in events_gt])
     fn = len(events_gt) - tp
     rec_e = tp / (tp + fn) if (tp + fn) > 0 else 0
     prec_t = precision_score(labels, preds, zero_division=0.0)

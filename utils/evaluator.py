@@ -13,34 +13,20 @@ from utils.evaluation_metrics import score_metrics, decision_metrics
 # For any aggrigator do:
 #   Apply aggrigator
 #   Find calibrated threshold
-#   Find oracle threshold
-#   Output non threshold metrics
 #   Output threshold metrics with calibrated th
+#   Find oracle threshold
 #   Output threshold metrics with oracle th
+#   Output non threshold metrics
 #
 #   Apply PA transformation to the test results
-#   Output non threshold metrics
+#   Find calibrated threshold
 #   Output threshold metrics with calibrated th
+#   Find oracle threshold
 #   Output threshold metrics with oracle th
+#   Output non threshold metrics
 
 # TODO: Make aggregator
 # TODO: Make prefix configurations for the aggregator
-
-class Evaluator:
-    def __init__(self, train_dataset, config, device, logger, options=None):
-        self.train_dataset = train_dataset
-        self.test_dataset = get_test_dataset(config, train_dataset)
-        self.train_dataloader = get_val_dataloader(config, self.train_dataset)
-        self.test_dataloader = get_val_dataloader(config, self.test_dataset)
-
-        self.device = device
-        self.logger = logger
-
-        self.calibratoin_quantile = float(config.get(
-                "calibration_quantile", config.get("calibration_kwargs", {}).get("quantile", 0.99)))
-        self.batch_size = int(config.get("score_batch_size", config["batch_size"])) #TODO: check for the batch size during config init
-        self.window_size = int(config.get("eval_window_size", config["wsz"])) #TODO: check for the window size during config init
-        self.stride = int(config.get("stride")) #TODO: check stride
 
 
 def evaluate_on_test(model, train_dataset, config, device, logger, epoch, *, options=None):

@@ -80,7 +80,7 @@ class TimeseriesAggregator:
         self.device = torch.device(device)
         self.reset()
 
-    def reset(self, *, series_length=None, labels=None):
+    def reset(self, series_length=None, labels=None):
         """Clear a stream; optional labels must be binary timestep labels."""
         self.labels = None if labels is None else np.asarray(labels).copy()
         if self.labels is not None:
@@ -108,11 +108,11 @@ class TimeseriesAggregator:
             actual = getattr(dataset, attribute, expected)
             if actual != expected:
                 raise ValueError(f"Dataset {attribute}={actual} differs from aggregator {expected}")
-        if not hasattr(dataset, "series"):
+        if not hasattr(dataset, "data"):
             raise ValueError("dataloader.dataset must expose its original series")
         if getattr(dataloader, "drop_last", False):
             raise ValueError("Aggregation requires drop_last=False")
-        self.reset(series_length=len(dataset.series), labels=getattr(dataset, "targets", None))
+        self.reset(series_length=len(dataset.data), labels=getattr(dataset, "targets", None))
         for batch in dataloader:
             self.update(batch)
         return self.result(finalize=True)
@@ -137,11 +137,8 @@ class TimeseriesAggregator:
         starts = np.asarray(batch["meta"]["start_idx"]).reshape(-1)
         if not np.issubdtype(starts.dtype, np.integer):
             raise ValueError("Input start indices must be integers")
-        starts = starts.astype(np.int32)
         if windows.ndim != 3 or windows.shape[1] != self.input_window or len(starts) != len(windows):
             raise ValueError("Batch must contain (B,input_window,C) inputs and B start indices")
-        if not len(starts):
-            raise ValueError("Cannot update with an empty batch")
         if np.any(starts < 0) or np.any(starts % self.stride):
             raise ValueError("Input starts must be nonnegative and on the stride grid")
         if len(set(starts.tolist())) != len(starts) or any(int(s) in self._seen for s in starts):
@@ -214,7 +211,7 @@ class TimeseriesAggregator:
             return max(0, (self.series_length - self.input_window) // self.stride + 1)
         return self.series_length
 
-    def result(self, *, finalize=False):
+    def result(self, finalize=False):
         """Return scores/labels/indices/counts and checked original intervals.
 
         Zero filling changes scores only; labels are never overwritten. Crop
