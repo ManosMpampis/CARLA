@@ -9,7 +9,8 @@ def combine_all_evaluation_scores(pred_scores, y_test, threshold, window_size: i
     """Threshold scores for decisions; retain continuous scores for AUC/VUS.
 
     PA adjusts only the locally created predictions. Score-based metrics are
-    unchanged by PA and are exposed under both ordinary and PA result keys.
+    unchanged by PA. Undefined single-class AUC/VUS and absent-event
+    affiliation metrics are returned as None.
     """
     pred_scores = np.asarray(pred_scores)
     pred_labels = (pred_scores >= threshold).astype(np.int32)
@@ -18,9 +19,12 @@ def combine_all_evaluation_scores(pred_scores, y_test, threshold, window_size: i
     events_gt = convert_vector_to_events(y_test)
     Trange = (0, len(y_test))
     f1_event = event_f1(y_test, events_gt, pred_labels)
-    affiliation = pr_from_events(events_pred, events_gt, Trange)
+    affiliation = (pr_from_events(events_pred, events_gt, Trange) if events_gt
+                   else {"precision": None, "recall": None})
     MCC_score = MCC(y_test, pred_labels)
-    vus_results = get_range_vus_roc(pred_scores, y_test, window_size)
+    vus_results = (get_range_vus_roc(pred_scores, y_test, window_size)
+                   if np.unique(y_test).size == 2 else
+                   dict.fromkeys(("R_AUC_ROC", "R_AUC_PR", "VUS_ROC", "VUS_PR")))
     accuracy, precision, recall, f_score, f05_score, tp, fp, fn, tn = get_accuracy_precision_recall_fscore(y_test, pred_labels)
     
     # change predictions to point adjasment and get metrics again
@@ -28,7 +32,8 @@ def combine_all_evaluation_scores(pred_scores, y_test, threshold, window_size: i
     events_pred = convert_vector_to_events(pred_labels) 
     events_gt = convert_vector_to_events(y_test)
     pa_f1_event = event_f1(y_test, events_gt, pred_labels)
-    pa_affiliation = pr_from_events(events_pred, events_gt, Trange)
+    pa_affiliation = (pr_from_events(events_pred, events_gt, Trange) if events_gt
+                      else {"precision": None, "recall": None})
     pa_MCC_score = MCC(y_test, pred_labels)
 
     score_list = {"Affiliation precision": affiliation['precision'], 

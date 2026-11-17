@@ -29,7 +29,8 @@ class TimeseriesAggregator:
 
     output_fn=None preserves scores and requires L == output_window. ``mean``
     and ``sum`` reduce the raw temporal output, then repeat to output_window.
-    Reduction occurs before check_mask cropping.
+    Reduction occurs before check_mask cropping. Window reductions exclude
+    scores placed outside series_length.
 
     On the timestep axis the processed output maps to
     input_start + time_offset + arange(output_window). On the window axis,
@@ -40,15 +41,18 @@ class TimeseriesAggregator:
     its score across 50 timesteps.
 
     __call__ starts fresh and reads a JEPADataset-compatible DataLoader.
-    update accumulates batches; reset(series_length=..., labels=...) initializes
+    update accumulates input batches; update_scores accepts precomputed (B,L)
+    score maps and input starts without running a model. It returns self without
+    materializing a snapshot. reset(series_length=..., labels=...) initializes
     an online stream. result returns snapshots, never internal mutable state.
     Streaming snapshots do not treat future, not-yet-received outputs as gaps;
     result(finalize=True) validates the complete expected axis.
     """
 
-    def __init__(self, input_window, stride, output_window, model, *,
+    def __init__(self, input_window, stride, output_window, model=None, *,
                  time_offset=0, check_mask=None, output_fn=None, data_fn=None,
-                 boundary_policy="zero", gap_policy="error", device=None):
+                 boundary_policy="zero", gap_policy="error", device=None,
+                 include_last_window=False):
         self.input_window = _integer("input_window", input_window, 1)
         self.stride = _integer("stride", stride, 1)
         self.output_window = _integer("output_window", output_window, 1)
@@ -73,6 +77,9 @@ class TimeseriesAggregator:
         self.data_fn = data_fn
         self.boundary_policy = boundary_policy
         self.gap_policy = gap_policy
+        if not isinstance(include_last_window, bool):
+            raise ValueError("include_last_window must be a boolean")
+        self.include_last_window = include_last_window
         if device is None:
             owner = getattr(model, "__self__", model)
             parameters = getattr(owner, "parameters", lambda: iter(()))()
@@ -130,21 +137,15 @@ class TimeseriesAggregator:
     def update(self, batch):
         """Accumulate {'ts': (B,W,C), 'meta': {'start_idx': (B,)}}.
 
-        Starts must follow the configured stride grid. Reordering batches is
-        allowed, but duplicate input windows are rejected rather than reweighted.
+        Reordering is allowed; duplicate windows are rejected. With
+        include_last_window=True, the final full off-grid window is allowed.
         """
         windows = torch.as_tensor(batch["ts"], dtype=batch["ts"].dtype, device=self.device)
-        starts = np.asarray(batch["meta"]["start_idx"]).reshape(-1)
-        if not np.issubdtype(starts.dtype, np.integer):
-            raise ValueError("Input start indices must be integers")
+        starts = self._validate_starts(batch["meta"]["start_idx"])
         if windows.ndim != 3 or windows.shape[1] != self.input_window or len(starts) != len(windows):
             raise ValueError("Batch must contain (B,input_window,C) inputs and B start indices")
-        if np.any(starts < 0) or np.any(starts % self.stride):
-            raise ValueError("Input starts must be nonnegative and on the stride grid")
-        if len(set(starts.tolist())) != len(starts) or any(int(s) in self._seen for s in starts):
-            raise ValueError("Duplicate input window start")
-        if self.series_length is not None and np.any(starts + self.input_window > self.series_length):
-            raise ValueError("Input window extends beyond series_length")
+        if self.model is None:
+            raise ValueError("update requires a model; use update_scores for score maps")
         owner = getattr(self.model, "__self__", self.model)
         training = getattr(owner, "training", None)
         if hasattr(owner, "eval"):
@@ -155,11 +156,34 @@ class TimeseriesAggregator:
         finally:
             if training is not None:
                 owner.train(training)
-        if isinstance(output, dict):
-            output = output["fused"]
-        if isinstance(output, torch.Tensor):
-            output = output.detach().cpu().numpy()
-        raw = np.asarray(output, dtype=np.float32)
+        self.update_scores(output, starts)
+        return self.result()
+
+    def _validate_starts(self, starts):
+        if isinstance(starts, torch.Tensor):
+            starts = starts.detach().cpu().numpy()
+        starts = np.asarray(starts)
+        if starts.ndim != 1 or not np.issubdtype(starts.dtype, np.integer):
+            raise ValueError("Input start indices must be a one-dimensional integer array")
+        on_grid = starts % self.stride == 0
+        if self.include_last_window and self.series_length is not None:
+            on_grid |= starts == self.series_length - self.input_window
+        if np.any(starts < 0) or not on_grid.all():
+            raise ValueError("Input starts must be nonnegative and on the stride grid or the allowed final window")
+        if len(set(starts.tolist())) != len(starts) or any(int(s) in self._seen for s in starts):
+            raise ValueError("Duplicate input window start")
+        if self.series_length is not None and np.any(starts + self.input_window > self.series_length):
+            raise ValueError("Input window extends beyond series_length")
+        return starts
+
+    def update_scores(self, scores, starts):
+        """Accumulate precomputed (B,L) scores at explicit input-window starts."""
+        starts = self._validate_starts(starts)
+        if isinstance(scores, dict):
+            scores = scores["fused"]
+        if isinstance(scores, torch.Tensor):
+            scores = scores.detach().float().cpu().numpy()
+        raw = np.asarray(scores, dtype=np.float32)
         if raw.ndim != 2 or raw.shape[0] != len(starts) or raw.shape[1] < 1:
             raise ValueError("Model scores must have shape (B,L), with L >= 1")
         if not np.isfinite(raw).all():
@@ -179,11 +203,11 @@ class TimeseriesAggregator:
         interval = self._checked_interval(length if self.data_fn == "window" else self.output_window)
         self._raw_length = length
         self._seen.update(int(s) for s in starts)
-        for row, start in zip(processed, starts):
+        for row, raw_row, start in zip(processed, raw, starts):
             start = int(start)
             if self.data_fn == "window":
                 for k, value in enumerate(row):
-                    position = start // self.stride + k
+                    position = self._window_index(start) + k
                     bounds = (start + k * self.stride + interval[0],
                               start + k * self.stride + interval[1])
                     # Window labels retain only the mapped, checked region.
@@ -191,6 +215,15 @@ class TimeseriesAggregator:
                         continue
                     if self.series_length is not None and position >= self._axis_length():
                         continue
+                    if self.output_fn is not None and self.series_length is not None:
+                        raw_start = start + k * self.stride + self.time_offset
+                        left = max(0, -raw_start)
+                        right = min(length, self.series_length - raw_start)
+                        # Clip the raw map before reducing at series limits.
+                        values = raw_row[left:right]
+                        if not len(values):
+                            continue
+                        value = values.mean() if self.output_fn == "mean" else values.sum()
                     self._add(position, value)
             else:
                 for offset in range(interval[0], interval[1]):
@@ -198,7 +231,17 @@ class TimeseriesAggregator:
                     if position < 0 or (self.series_length is not None and position >= self.series_length):
                         continue
                     self._add(position, row[offset - self.time_offset])
-        return self.result()
+        return self
+
+    def _window_index(self, start):
+        if start % self.stride:
+            return (self.series_length - self.input_window) // self.stride + 1
+        return start // self.stride
+
+    def _window_start(self, index):
+        if self.series_length is not None:
+            return min(index * self.stride, self.series_length - self.input_window)
+        return index * self.stride
 
     def _add(self, position, value):
         self._sums[position] = self._sums.get(position, 0.0) + float(value)
@@ -208,7 +251,9 @@ class TimeseriesAggregator:
         if self.series_length is None:
             return max(self._counts, default=-1) + 1
         if self.data_fn == "window":
-            return max(0, (self.series_length - self.input_window) // self.stride + 1)
+            last = self.series_length - self.input_window
+            return max(0, last // self.stride + 1 +
+                       int(self.include_last_window and last >= 0 and last % self.stride != 0))
         return self.series_length
 
     def result(self, finalize=False):
@@ -222,7 +267,7 @@ class TimeseriesAggregator:
         indices = np.arange(size, dtype=np.int32)
         counts = np.array([self._counts.get(int(i), 0) for i in indices], dtype=np.int32)
         sums = np.array([self._sums.get(int(i), 0.0) for i in indices], dtype=np.float32)
-        scores = np.divide(sums, counts, out=np.zeros(size), where=counts > 0)
+        scores = np.divide(sums, counts, out=np.zeros(size, dtype=np.float32), where=counts > 0)
         covered = counts > 0
         boundaries = np.zeros(size, dtype=bool)
         if covered.any():
@@ -247,11 +292,13 @@ class TimeseriesAggregator:
             bounds = []
             for i in indices:
                 if self._raw_length is None:
-                    bounds.append((int(i) * self.stride, int(i) * self.stride))
+                    bounds.append((self._window_start(int(i)), self._window_start(int(i))))
                 else:
                     a, b = self._checked_interval(self._raw_length)
-                    bounds.append((int(i) * self.stride + a, int(i) * self.stride + b))
+                    bounds.append((self._window_start(int(i)) + a, self._window_start(int(i)) + b))
             intervals = np.asarray(bounds, dtype=np.int32).reshape(-1, 2)
+            if self.series_length is not None:
+                intervals = np.clip(intervals, 0, self.series_length)
             if self.labels is not None:
                 labels = np.array([int(self.labels[max(a, 0):min(b, len(self.labels))].any())
                                    if b > 0 and a < len(self.labels) else 0 for a, b in intervals])

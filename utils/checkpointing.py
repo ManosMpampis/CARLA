@@ -8,7 +8,7 @@ import torch
 
 from utils.evaluation_logging import MODES
 
-
+# TODO: update to currect configuration
 def inference_metadata(config, dataset=None):
     result = {"arm": config.get("arm", config.get("criterion")),
               "model_kwargs": dict(config.get("model_kwargs", {})),

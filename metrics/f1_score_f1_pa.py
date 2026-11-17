@@ -30,7 +30,7 @@ def get_adjust_F1PA(pred, gt):
     for i in range(len(gt)):
         if gt[i] == 1 and pred[i] == 1 and not anomaly_state:
             anomaly_state = True
-            for j in range(i, 0, -1):
+            for j in range(i, -1, -1):
                 if gt[j] == 0:
                     break
                 else:
@@ -54,7 +54,7 @@ def get_adjust_F1PA(pred, gt):
     accuracy = accuracy_score(gt, pred)
     precision, recall, f_score, support = precision_recall_fscore_support(gt, pred,
                                                                           average='binary', zero_division=0.0)
-    return accuracy, precision, recall, f_score, latency/sum(gt)
+    return accuracy, precision, recall, f_score, latency/sum(gt) if np.any(gt) else 0.0
 
 
 # calculate the point-adjusted f-score
@@ -84,7 +84,7 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
     # precision, recall, f_score, _ = prf(y_true, y_pred, average='binary', warn_for=())
     precision = precision_score(y_true, y_pred, zero_division=0.0)
     recall = recall_score(y_true, y_pred, zero_division=0.0)
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     if (precision + recall) == 0:
         f05_score = 0
         f_score = 0
@@ -94,7 +94,7 @@ def get_accuracy_precision_recall_fscore(y_true: list, y_pred: list):
     return accuracy, precision, recall, f_score, f05_score, tp, fp, fn, tn
 
 def event_f1(labels, events_gt, preds):
-    tp = np.sum([preds[start:end+1].any() if end <= len(preds) else preds[start:end].any() for start, end in events_gt])
+    tp = np.sum([preds[start:end].any() for start, end in events_gt])
     fn = len(events_gt) - tp
     rec_e = tp / (tp + fn) if (tp + fn) > 0 else 0
     prec_t = precision_score(labels, preds, zero_division=0.0)

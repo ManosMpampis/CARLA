@@ -1,0 +1,78 @@
+# Inherit this file with `extends: .../evaluator.yml`, or override the evaluator
+# mapping in an experiment config. Evaluator also uses these presets by default.
+# Required experiment settings: wsz and stride. Existing evaluation.input_window,
+# evaluation.stride, check_mask, latency_offset and include_last_window still apply.
+evaluator:
+  # null inherits calibration_quantile/calibration_kwargs.quantile (default .99)
+  # and score_batch_size/batch_size (default 256), respectively.
+  calibration_quantile: null
+  batch_size: null
+  # Exact keys returned by metrics.metrics.combine_all_evaluation_scores.
+  # null retains all metrics. Thresholds are always included in results/logs.
+  metrics:
+    - Event F1
+    - f1_score
+    - Affiliation precision
+    - Affiliation recall
+    - MCC
+    - R_AUC_ROC
+    - R_AUC_PR
+    - VUS_ROC
+    - VUS_PR
+    - pa_Event F1
+    - pa_f1_score
+
+  # Supplying evaluator.aggregators directly selects exactly those named modes.
+  # When using YAML inheritance, disable inherited modes with enabled: false.
+  # Constructor parameters accept literal values or the following named values:
+  # input_window: resolved evaluation.input_window (fallback wsz)
+  # evaluation_stride: resolved evaluation.stride (fallback stride)
+  # output_length: observed model score-map length
+  # scored_span: evaluation.check_mask width, or input_window without a mask
+  # output_start: evaluation.check_mask start (or 0) + latency_offset
+  # evaluation_last_window: resolved evaluation.include_last_window
+  # Here check_mask is null because the evaluator mask specifies placement of
+  # already-cropped model outputs. Aggregator check_mask would crop them again.
+  aggregators:
+    window:
+      enabled: true
+      input_window: input_window
+      stride: evaluation_stride
+      output_window: 1
+      time_offset: output_start
+      check_mask: null
+      output_fn: mean
+      data_fn: window
+      include_last_window: evaluation_last_window
+      boundary_policy: crop
+      gap_policy: zero
+      # null uses eval_window_size / stride for window data (minimum 1).
+      metric_window_size: null
+    timeseries:
+      enabled: true
+      input_window: input_window
+      stride: evaluation_stride
+      output_window: output_length
+      time_offset: output_start
+      check_mask: null
+      output_fn: null
+      data_fn: null
+      include_last_window: evaluation_last_window
+      boundary_policy: crop
+      gap_policy: zero
+      # null uses eval_window_size directly for timestep data.
+      metric_window_size: null
+    non_overlap_window:
+      enabled: true
+      input_window: input_window
+      stride: scored_span
+      output_window: 1
+      time_offset: output_start
+      check_mask: null
+      output_fn: mean
+      data_fn: window
+      include_last_window: false
+      boundary_policy: crop
+      gap_policy: zero
+      require_non_overlap: true
+      metric_window_size: null

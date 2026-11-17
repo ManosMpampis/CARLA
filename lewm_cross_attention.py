@@ -35,7 +35,7 @@ def load_feature_extractor(source, model, logger=None):
 
 def scoring_options(p, model):
     """Place residuals on the second crop; never calibrate padded context zeros."""
-    from utils.scoring import evaluation_options
+    from utils.evaluator import evaluation_options
 
     options = evaluation_options(p)
     span = list(model.target_input_range(options["wsz"]))

@@ -34,45 +34,7 @@ def append_csv(path, row):
             writer.writeheader()
         writer.writerow(row)
 
-
-def log_evaluation(writer, evaluation, epoch):
-    for protocol, section in MODES.items():
-        if protocol not in evaluation:
-            continue
-        metrics = evaluation[protocol]
-        for name in SCORE_METRICS:
-            if metrics.get(name) is not None:
-                writer.add_scalar(f"{section}/{name}", metrics[name], epoch)
-        for source in ("calibrated", "oracle"):
-            values = metrics[source]
-            if values.get("threshold") is not None:
-                writer.add_scalar(f"{section}/{source}/threshold", values["threshold"], epoch)
-            if values.get("calibration_quantile") is not None:
-                writer.add_scalar(f"{section}/{source}/quantile", values["calibration_quantile"], epoch)
-            for name in DECISION_METRICS[:-1]:
-                value = metrics[source].get(name)
-                if value is not None:
-                    writer.add_scalar(f"{section}/{source}/{name}", value, epoch)
-        for source in ("calibrated", "oracle"):
-            if metrics[source].get("pa_f1") is not None:
-                writer.add_scalar(f"{section}/{source}/pa_f1", metrics[source]["pa_f1"], epoch)
-
-
-def record_evaluation(config, evaluation, epoch, log):
-    directory = Path(config["jepa_dir"])
-    with (directory / "test_evaluations.jsonl").open("a") as stream:
-        stream.write(json.dumps({"epoch": epoch, "evaluation": evaluation}) + "\n")
-    for protocol, section in MODES.items():
-        if protocol not in evaluation:
-            continue
-        row = evaluation_row(evaluation[protocol], epoch=epoch)
-        append_csv(directory / f"{section}.csv", row)
-        fields = ", ".join(f"{name}={value:.6f}" for name, value in row.items()
-                           if name != "epoch" and value is not None)
-        log(f"{section} epoch {epoch} | {fields}")
-
-
-def loss_metrics(losses, *, reconstruction_key="pred_loss"):
+def loss_metrics(losses, reconstruction_key="pred_loss"):
     """Retain components once, naming the prediction/reconstruction objective."""
     result = {}
     reconstruction = losses.get(reconstruction_key)

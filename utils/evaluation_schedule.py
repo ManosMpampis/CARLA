@@ -3,7 +3,7 @@
 
 def evaluation_interval(config):
     """Top-level setting wins; retain the reconstruction setting as a fallback."""
-    interval = int(config.get("eval_every", config.get("stage_c", {}).get("eval_every", 10)))
+    interval = int(config.get("eval_every", 10))
     if interval < 0:
         raise ValueError("eval_every must be nonnegative (0 disables test monitoring)")
     return interval

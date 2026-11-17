@@ -3,7 +3,9 @@ import numpy as np
 
 
 def MCC(y_test, pred_labels):
-    tn, fp, fn, tp = confusion_matrix(y_test, pred_labels).ravel()
+    # Explicit labels cover single-class inputs; floats avoid integer overflow
+    # in the four-factor denominator on long telemetry series.
+    tn, fp, fn, tp = confusion_matrix(y_test, pred_labels, labels=[0, 1]).ravel().astype(np.float64)
     if (tp + fp) == 0 or (tp + fn) == 0 or (tn + fp) == 0 or (tn + fn) == 0:
         return 0.0
     MCC_score = (tp*tn-fp*fn)/(((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**0.5)
