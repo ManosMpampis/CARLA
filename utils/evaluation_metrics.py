@@ -14,7 +14,7 @@ from metrics.vus.metrics import get_range_vus_roc
 from metrics.vus.utils.metrics import metricor
 
 
-def harmonic(precision, recall):
+def f1(precision, recall):
     return float(2 * precision * recall / (precision + recall)) if precision + recall > 0 else 0.0
 
 
@@ -30,14 +30,14 @@ def decision_metrics(scores, labels, threshold):
     if affiliation is not None:
         precision, recall = affiliation["precision"], affiliation["recall"]
         # Empty predictions give NaN affiliation precision in the frozen code.
-        affiliation_f1 = harmonic(precision, recall) if np.isfinite(precision) else 0.0
+        affiliation_f1 = f1(precision, recall) if np.isfinite(precision) else 0.0
     result = {
         "threshold": float(threshold),
-        "event_f1": harmonic(
+        "event_f1": f1(
             float(np.sum(pred * labels) / max(np.sum(pred), 1)),
             float(np.mean([pred[start:end].any() for start, end in events])) if events else 0.0),
         "f1": float(f1_score(labels, pred, zero_division=0)),
-        "range_f1": harmonic(range_precision, range_recall),
+        "range_f1": f1(range_precision, range_recall),
         "affiliation_f1": affiliation_f1,
     }
     # The frozen PA routine mutates its input. Keep all other metrics and

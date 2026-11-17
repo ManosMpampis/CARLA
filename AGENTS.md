@@ -3,14 +3,9 @@
 ## What this repo is
 
 Python/PyTorch research code for time-series anomaly detection built around a
-convolutional-pyramid JEPA: dense latent prediction learns how a machine's
+lewm: dense latent prediction learns how a machine's
 telemetry behaves; anomalies are latent-prediction surprise localized at
-sub-window granularity. The legacy contrastive pipeline was deleted at cutover
-(see `specs/jepa-tsad-rebuild.md` and `DESIGN_TSAD_JEPA.md`); its history lives
-on other branches, and `WORKFLOW_PRETEXT.md` is kept as a historical record of
-that deleted pipeline. `DESIGN_TSAD_DUALSTREAM.md` is a standalone (unimplemented)
-design doc for a dual-stream time×frequency architecture; `CONTEXT.md` is the
-project glossary.
+sub-window granularity. At the same time trained actions on how the timeseries change overtime can propose only in normal behaviour.
 
 ## Environment
 
@@ -30,47 +25,6 @@ project glossary.
 - SMD read from `datasets/SMD/{train,test,test_label}/machine-*.txt`
   (`data/jepa_dataset.py`; headerless CSV — reads use `header=None`).
 - `pretext_results/` preserves historical pretext summary CSVs.
-
-## Running
-
-```bash
-./venv/bin/python carla_jepa.py --config_env configs/env.yml \
-    --config_exp configs/jepa/<arm>.yml --fname machine-1-1.txt \
-    --version myrun        # omitting --version creates a timestamped run dir
-```
-
-- Stages dispatch on the YAML `stage:` key: `pretrain` (alias `pretext`),
-  `adapt`, `score`. Arms are pure YAML under `configs/jepa/`.
-- Runs resume automatically when `checkpoint.pth.tar` exists in the run dir;
-  use a fresh version to start over.
-- Adaptation requires `pretrained_from:` pointing at a stage-A checkpoint.
-- Seed default is 4 (`seed:` in config).
-
-## Verification
-
-Most have been deleted
-
-## Current design facts
-
-- Model wiring goes through registries only: `models.BACKBONE_REGISTRY`,
-  predictor registry (`tcn|gru`) and anti-collapse registry
-  (`none|sigreg|`) consumed via `utils/common_config.get_jepa_model`.
-- Loss: dense L1 between predicted and stop-gradient target latents over all
-  tokens/horizons (+ λ·SIGReg when enabled).
-- Scoring: per-position L1 error per pyramid level mapped to input timesteps,
-  mean-fused; overlapping windows aggregated cover-count-aware in
-  `utils/scoring.Scorer`; thresholds come ONLY from clean-train quantiles,
-  optionally with calibrated fusion weights from injected-probe separation
-  (`utils/scoring.Calibrator`). Test labels never enter tuning paths.
-- Metrics stack (`metrics/**`) is frozen: scorer emits
-  `(scores, start_idxs, end_idxs)`; `combine_all_evaluation_scores` returns the
-  documented dictionary; honest vs point-adjust sections grouped in
-  `metrics.json` and compared against `REFERENCE_NUMBERS.md`.
-- Known-bug note: `models/convolutions.Conv1dSamePadding` assumes stride 1;
-  strided blocks therefore live in `models/jepa_pyramid.StridedConvBlock`.
-  Legacy backbone (`models/resnet_ts.py`) is unaffected and kept importable.
-- AMP (`amp: true`) trains bf16-autocast on CUDA only; scoring always fp32;
-  validation statistics always computed in eval mode.
 
 ## Agents file paths
 

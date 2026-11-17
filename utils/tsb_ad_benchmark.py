@@ -72,7 +72,7 @@ def adapt_geometry(config, train_end, policy="shrink", *, runner=None):
                          f"window {window} must fit the full prefix, be divisible by {lattice}, and be >= {minimum}. "
                          "Adjust --window, --val-fraction, or the model configuration.")
     if runner == "cross_attention":
-        from models.cross_attention import CrossAttentionLeWM
+        from models.lw_guided_forecasting import CrossAttentionLeWM
 
         CrossAttentionLeWM.resolve_crop_ranges(
             window, step, crops.get("context_crop"), crops.get("target_crop"))

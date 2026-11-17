@@ -10,22 +10,18 @@ channel stays inside the shared temporal mask.
 import numpy as np
 import torch
 
+from data.augment import SubAnomaly
 
+# TODO: implement it in torch
 class SubAnomalyMaskCollator:
     """Sample one shared temporal span per window and inject SubAnomaly."""
 
     def __init__(self, min_ratio: float = 0.1, max_ratio: float = 0.9,
-                 portion_len=None):
-        self.min_ratio = float(min_ratio)
-        self.max_ratio = float(max_ratio)
-        self._sub = None
-
-    def _subanomaly(self):
-        if self._sub is None:
-            from data.augment import SubAnomaly
-
-            self._sub = SubAnomaly(portion_len=0.99)
-        return self._sub
+                 portion_len=0.99):
+        self.min_ratio = min_ratio
+        self.max_ratio = max_ratio
+        self.portion_len = portion_len
+        self._sub = SubAnomaly(self.portion_len)
 
     def _sample_span(self, window: int):
         lo = max(1, int(window * self.min_ratio))
@@ -36,34 +32,32 @@ class SubAnomalyMaskCollator:
         return length, start
 
     def _inject_channel(self, temp_win, length: int, start: int):
-        sub = self._subanomaly()
         anomaly_type = int(np.random.randint(0, 5))
         if anomaly_type == 0:
-            return sub.inject_frequency_anomaly(
+            return self.sub.inject_frequency_anomaly(
                 temp_win, scale_factor=1, trend_factor=0,
                 subsequence_length=length, start_index=start)
         if anomaly_type == 1:
-            return sub.inject_frequency_anomaly(
+            return self.sub.inject_frequency_anomaly(
                 temp_win, compression_factor=1, scale_factor=1,
                 trend_factor=None, subsequence_length=length,
                 start_index=start)
         if anomaly_type == 2:
-            return sub.inject_frequency_anomaly(
+            return self.sub.inject_frequency_anomaly(
                 temp_win, compression_factor=1, scale_factor=8,
                 trend_factor=0, subsequence_length=length,
                 start_index=start)
         if anomaly_type == 3:
-            return sub.inject_frequency_anomaly(
+            return self.sub.inject_frequency_anomaly(
                 temp_win, compression_factor=1, scale_factor=3,
                 trend_factor=0, subsequence_length=length,
                 start_index=start)
-        return sub.inject_frequency_anomaly(
+        return self.sub.inject_frequency_anomaly(
             temp_win, compression_factor=1, scale_factor=1, trend_factor=0,
             shapelet_factor=True, subsequence_length=length,
             start_index=start)
 
-    def __call__(self, batch_size: int, window: int, level_strides,
-                 ts=None) -> dict:
+    def __call__(self, batch_size: int, window: int, ts=None) -> dict:
         """Return {"input": (B, W) bool, "X_inj": (B, C, W) float}."""
         if ts is None:
             mask = np.zeros((batch_size, window), dtype=bool)

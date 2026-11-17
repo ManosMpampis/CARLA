@@ -1,0 +1,101 @@
+# LeWM phase one: frequency-domain predictor with time annotation steering.
+setup: jepa
+stage: pretrain
+
+experiment_name: frequency_aux
+experiment_description: "LeWM phase one: frequency-domain predictor with time annotation steering"
+tag: frequency_predictor_time_annotation_steering
+tag_phase1: frequency_predictor_time_annotation_steering
+# Prediction domain: frequency; time annotation steering: true.
+# Model — single-scale ResNet encoder + time annotation auxiliary + frequency predictor
+
+framework:
+  name: lewm_reconstruction
+  engine:
+    min_ratio: 0.1
+    max_ratio: 0.9
+    portion_len: 0.99
+  encoder:
+    name: resnet
+    in_channels: 38
+    out_ch: [32, 64]
+    kernels: [7, 5, 4]
+    residual_kernel: 5
+    norm: batch
+    act: gelu
+    dropout: 0.1
+    strides: 1
+  freeze_encoder: False
+  aux:
+    enable: True
+    channels: [128, 128, 128]
+    kernels: [7, 5, 3]
+    norm: batch
+    act: gelu
+    dropout: 0.1
+    strides: 1
+  predictor:
+    domain: frequency
+    stem_channels: 32
+    neck_widths: [128, 128, 128]
+    act: gelu
+    norm: batch
+    dropout: 0.1
+    n_fft: 64
+    hop_length: 16
+    win_length: 64
+    time_steering: True
+  score_mode: l1
+
+criterion: 
+  name: lewm
+  loss: kl
+  w_pred: 1.0
+  w_aux: 3.0
+  lambda_sigreg: 0.1
+  lambda_sigreg_tgt: 0.1
+  tau: 1.0
+  sigreg_kwargs:
+    num_slices: 16
+    freq_nodes: 17
+    freq_min: 0.0
+    freq_max: 3.0
+    # seed: 4
+
+# Data — single-machine corpus
+data:
+  name: smd
+  fname: machine-1-1.txt    # Only for smd and tsb
+  wsz: 512
+  stride: 10
+  val_fraction: 0.1
+  # train_end: None         # Only for tsb
+  # evaluation_scope="test" # Only for tsb
+
+# Training
+seed: 4
+device: cuda
+batch_size: 32
+num_workers: 0
+amp:
+  enabled: False
+  dtype: torch.bfloat16
+
+epochs: 150
+optimizer:
+  name: adamw
+  optimizer_kwargs:
+    lr: 0.002
+    weight_decay: 0.01
+scheduler:
+  name: constant
+  scheduler_kwargs:
+    lr_eta_min: 0.0
+
+score_batch_size: 256
+calibration_kwargs:
+  quantile: 0.995
+probe_kwargs:
+  num_probe_windows: 200
+  portion: 0.99
+eval_window_size: 100

@@ -18,6 +18,7 @@ class ReconstructionBaseline(nn.Module):
 
             encoder = get_backbone("lewm_resnet", **model_kwargs)["model"]
         self.encoder = encoder
+        
         self.decoder = build_mirrored_head(
             self.encoder,
             norm=recon_kwargs.get("norm", model_kwargs.get("norm", "batch")),

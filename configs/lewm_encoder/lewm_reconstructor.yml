@@ -1,0 +1,16 @@
+# LeWM phase one: frequency-domain predictor with time annotation steering.
+setup: jepa
+
+experiment_name: ae_pretrain_enc_lewm
+experiment_description: "Autoencoder with pretrained encoder from LeWM: frequency-domain predictor with time annotation steering"
+tag: frequency_aux_action
+
+phases:
+  one:
+    setup: lewm_ae.yml
+    # you can specify changes to the setup config
+  two:
+    setup: ae.yml
+    framework:
+      pretrained_encoder: True
+      freeze_encoder: True

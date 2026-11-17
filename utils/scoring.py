@@ -69,8 +69,6 @@ def aggregate_score_maps(series: np.ndarray, wsz: int, stride: int,
         chunk = starts[begin:begin + batch_size]
         windows = np.stack([series[s:s + wsz] for s in chunk])
         maps = score_batch(windows)
-        if "fused" not in maps:
-            raise ValueError("score_batch must return a fused score map")
         if names is None:
             names = set(maps)
         elif set(maps) != names:

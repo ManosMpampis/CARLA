@@ -7,13 +7,13 @@ from pathlib import Path
 import numpy as np
 
 from utils.evaluation_logging import MODES, evaluation_row
+from utils.decision_trace import save_decision_trace_html
 
 
 def write_score_html(path, scores, labels, threshold, title, *, timestep_indices=None,
                      series_labels=None, window_starts=None, window_ends=None,
                      input_starts=None, input_ends=None):
     """Keep every score once; render a pixel-bounded view and real checking windows."""
-    from utils.decision_trace import save_decision_trace_html
 
     scores, labels = np.asarray(scores), np.asarray(labels)
     timeline_labels = np.asarray(labels if series_labels is None else series_labels)
@@ -54,7 +54,6 @@ def write_score_html(path, scores, labels, threshold, title, *, timestep_indices
         "updates": [{"indices": [], "scores": []}],
     }
     save_decision_trace_html(trace, path)
-
 
 def write_final_artifacts(directory, evaluation, test, labels, non_overlap):
     directory = Path(directory)

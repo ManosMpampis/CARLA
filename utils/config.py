@@ -50,30 +50,9 @@ def load_experiment_config(path, _parents=()):
         resolved = merge_config(resolved, load_experiment_config(path.parent / parent, (*_parents, path)))
     return merge_config(resolved, config)
 
-
-def phase1_config(config):
-    """Name the shared encoder independently of its phase-two child."""
-    name = validate_experiment_name(config["phase1_experiment"], "phase1_experiment")
-    return {**config, "framework": "lewm_encoder", "experiment_name": name}
-
-
 def model_path(root_dir, config, fname, version):
-    tag = config.get("tag_jepa")
-    return os.path.join(experiment_base_dir(root_dir, config, fname, version),
-                        f"jepa_{tag}" if tag else "jepa", "model.pth.tar")
-
-
-def entry_overrides(args, updates=None):
-    """CLI scoring selects an action without changing the experiment config."""
-    overrides = dict(updates or {})
-    for key in ("stage", "pretrained_from", "score_checkpoint", "phase1_version"):
-        value = getattr(args, key, None)
-        if value is not None:
-            overrides[key] = value
-    if getattr(args, "score", False):
-        overrides["stage"] = "score"
-    return overrides
-
+    tag = config.get("tag", "")
+    return os.path.join(experiment_base_dir(root_dir, config, fname, version), f"{tag}", "model.pth.tar")
 
 def dataset_output_dir(root_dir, config):
     """Optional experiment group directly below the dataset output directory."""
@@ -82,7 +61,6 @@ def dataset_output_dir(root_dir, config):
     if group is not None:
         base = os.path.join(base, validate_experiment_name(group, "experiment_version"))
     return base
-
 
 def experiment_base_dir(root_dir, config, fname, version):
     """Tags identify stable paths; explicit named versions add a run directory."""
@@ -131,80 +109,30 @@ def create_config(config_file_env, config_file_exp, fname, version=None, update_
 
     for k, v in (update_dictionary or {}).items():
         cfg[k] = v
+
+    cfg["framework"]["amp"] = cfg.get("amp")
     fname = fname or cfg.get("fname") or cfg["train_db_name"]
     
     # Set paths for pretext task (These directories are needed in every stage)
     version = DEFAULT_VERSION if version is None else version
     base_dir = str(output_dir) if output_dir is not None else experiment_base_dir(root_dir, cfg, fname, version)
-    if cfg.get("phase1_experiment") and cfg.get("framework") in (
-            "reconstruction", "lewm_reconstruction", "cross_attention", "lewm_cross_attention"):
-        cfg["phase1_version"] = cfg.get("phase1_version") or version
-        # The inherited phase-one tag is independent of each child's tag.
-        source_config = phase1_config(cfg)
-        source_config["tag_jepa"] = cfg.get("tag_phase1", cfg.get("tag_jepa"))
-        cfg["phase1_checkpoint"] = model_path(root_dir, source_config, fname,
-                                             cfg["phase1_version"])
-        if not cfg.get("pretrained_from"):
-            cfg["pretrained_from"] = cfg["phase1_checkpoint"]
     
-    pretext_tag = cfg.get('tag_pretext', None)
-    cfg['pretext_tag'] = ("_"+pretext_tag) if pretext_tag else ""
-    pretext_dir = os.path.join(base_dir, f'pretext{cfg['pretext_tag']}')
     mkdir(base_dir)
     cfg['version'] = version
     cfg['experiment_dir'] = base_dir
-    cfg['pretext_dir'] = pretext_dir
     cfg['fname'] = fname
 
-    if cfg['setup'] == 'jepa':
-        jepa_tag = cfg.get('tag_jepa', None)
-        cfg['jepa_tag'] = ("_"+jepa_tag) if jepa_tag else ""
-        jepa_dir = base_dir if output_dir is not None else os.path.join(base_dir, f'jepa{cfg['jepa_tag']}')
-        mkdir(base_dir)
-        mkdir(jepa_dir)
-        cfg['jepa_dir'] = jepa_dir
-        cfg['jepa_checkpoint'] = os.path.join(jepa_dir, 'checkpoint.pth.tar')
-        cfg['jepa_model'] = os.path.join(jepa_dir, 'model.pth.tar')
-        cfg['jepa_model_best'] = os.path.join(jepa_dir, "model_best_eval.pth.tar")
-        cfg['calibration_path'] = os.path.join(jepa_dir, 'calibration.json')
-        cfg['scores_path'] = os.path.join(jepa_dir, 'scores.npz')
-        cfg['metrics_path'] = os.path.join(jepa_dir, 'metrics.json')
-
-    if cfg['setup'] in ['classification', 'classification_e2e']:
-        classification_tag = cfg.get('tag_class', None)
-        cfg['classification_tag'] = ("_"+classification_tag) if classification_tag else ""
-        classification_dir = os.path.join(base_dir, f'classification{cfg['classification_tag']}')
-        mkdir(base_dir)
-        mkdir(classification_dir)
-        cfg['classification_dir'] = classification_dir
-        cfg['classification_checkpoint'] = os.path.join(classification_dir, 'checkpoint.pth.tar')
-        cfg['classification_checkpoint_last'] = os.path.join(classification_dir, 'checkpoint_last.pth.tar')
-        cfg['classification_model'] = os.path.join(classification_dir, 'model.pth.tar')
-        cfg['classification_trainfeatures'] = os.path.join(classification_dir, 'classification_traintfeatures.csv')
-        cfg['classification_trainprobs'] = os.path.join(classification_dir, 'classification_trainprobs.csv')
-        cfg['classification_testfeatures'] = os.path.join(classification_dir, 'classification_testtfeatures.csv')
-        cfg['classification_testprobs'] = os.path.join(classification_dir, 'classification_testprobs.csv')
-        # Evaluation paths
-        mkdir(os.path.join(classification_dir, 'best'))
-        cfg['eval_train_csl'] = os.path.join(classification_dir, 'best', 'eval_train_cls.csv')
-        cfg['eval_train_best'] = os.path.join(classification_dir, 'best', 'eval_train_best.csv')
-        cfg['eval_test_cls'] = os.path.join(classification_dir, 'best', 'eval_test_cls.csv')
-        cfg['eval_test_best'] = os.path.join(classification_dir, 'best', 'eval_test_best.csv')
-        cfg['eval_test_train_th'] = os.path.join(classification_dir, 'best', 'eval_test_train_th.csv')
-        cfg['eval_tstest_cls'] = os.path.join(classification_dir, 'best', 'eval_timeseries_cls.csv')
-        cfg['eval_tstest_best'] = os.path.join(classification_dir, 'best', 'eval_timeseries_best.csv')
-        cfg['eval_tstest_trainth'] = os.path.join(classification_dir, 'best', 'eval_timeseries_train_th.csv')
-        mkdir(os.path.join(classification_dir, 'cls'))
-        cfg['clseval_train_csl'] = os.path.join(classification_dir, 'cls', 'eval_train_cls.csv')
-        cfg['clseval_train_best'] = os.path.join(classification_dir, 'cls', 'eval_train_best.csv')
-        cfg['clseval_test_cls'] = os.path.join(classification_dir, 'cls', 'eval_test_cls.csv')
-        cfg['clseval_test_best'] = os.path.join(classification_dir, 'cls', 'eval_test_best.csv')
-        cfg['clseval_test_train_th'] = os.path.join(classification_dir, 'cls', 'eval_test_train_th.csv')
-        cfg['clseval_tstest_cls'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_cls.csv')
-        cfg['clseval_tstest_best'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_best.csv')
-        cfg['clseval_tstest_trainth'] = os.path.join(classification_dir, 'cls', 'eval_timeseries_train_th.csv')
+    tag = cfg.get('tag_jepa', None)
+    cfg['tag'] = ("_"+tag) if tag else ""
+    tag_dir = base_dir if output_dir is not None else os.path.join(base_dir, cfg['tag'])
+    mkdir(tag_dir)
+    cfg['tag_dir'] = tag_dir
+    cfg['checkpoint'] = os.path.join(cfg['tag_dir'], 'checkpoint.pth.tar')
+    cfg['model'] = os.path.join(cfg['tag_dir'], 'model.pth.tar')
+    cfg['model_best'] = os.path.join(cfg['tag_dir'], "model_best_eval.pth.tar")
+    cfg['calibration_path'] = os.path.join(cfg['tag_dir'], 'calibration.json')
+    cfg['scores_path'] = os.path.join(cfg['tag_dir'], 'scores.npz')
+    cfg['metrics_path'] = os.path.join(cfg['tag_dir'], 'metrics.json')
         
-
-    if "res_kwargs" in cfg:
-        cfg["res_kwargs"]["window_size"] = cfg["wsz"]
+    cfg["framework"]["ecoder"]["window_size"] = cfg["wsz"]
     return cfg

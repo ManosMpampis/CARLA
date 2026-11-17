@@ -3,28 +3,52 @@ import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 
 from utils.collate import collate_custom
+from losses import RecCALoss, ReconL1Loss, LeWMLoss
+from data import PSM, SMD, TSB
 
 
 CRITERION_BUILDERS = {
-    "lewm_rec_ca": "losses.lewm_rec_ca:RecCALoss",
-    "recon_l1": "losses.reconstruction:ReconL1Loss",
-    "lewm": "losses.lewm:LeWMLoss",
-    "lewm_cross_attention": "losses.lewm_cross_attention:CrossAttentionLeWMLoss",
+    "lewm_rec_ca": RecCALoss,
+    "recon_l1": ReconL1Loss,
+    "lewm": LeWMLoss,
 }
 
+DATASET_BUILDER = {
+    "smd": SMD,
+    "psm": PSM,
+    "tsb": TSB,
+}
 
 def get_criterion(p):
     """Build a criterion selected by the steering or reconstruction config."""
-    import importlib
 
     name = p["criterion"]
     if name not in CRITERION_BUILDERS:
         raise ValueError("Invalid criterion {}".format(name))
-    module_name, class_name = CRITERION_BUILDERS[name].split(":")
-    cls = getattr(importlib.import_module(module_name), class_name)
-    return cls(**p["criterion_kwargs"])
+    return CRITERION_BUILDERS[name](**p)
 
+def get_dataset(p):
+    joint = p.get("fname", None) == "all"
+    train_dataset: object
+    val_dataset: object
+    db_name = p.pop("name").lower()
+    val_fraction = p.pop("val_fraction", 0.1)
+    if db_name in ("smd", "tsb") and joint:
+        train_dataset = ...
+        val_dataset = ...
+    else:
+        train_dataset = DATASET_BUILDER[db_name](**p)
+        val_dataset = DATASET_BUILDER[db_name].validation_split(train_dataset, val_fraction)
+    return train_dataset, val_dataset
 
+def get_test_dataset(p, train_dataset):
+    joint = p.get("fname", None) == "all"
+    db_name = p.pop("name").lower()
+    if db_name in ("smd", "tsb") and joint:
+        return ...
+    else:
+        return DATASET_BUILDER[db_name].test_split(train_dataset)
+        
 def get_jepa_datasets(p):
     """Train/validation datasets for JEPA stages.
 
@@ -72,52 +96,43 @@ def get_val_dataloader(p, dataset):
     )
 
 
-def get_optimizer(p, model, cluster_head_only=False):
-    if cluster_head_only:  # Only weights in the cluster head will be updated
-        for name, param in model.named_parameters():
-            if "cluster_head" in name:
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
-        params = list(filter(lambda p: p.requires_grad, model.parameters()))
-    else:
-        params = model.parameters()
-
+def get_optimizer(p, model):
     if p["optimizer"].lower() == "sgd":
-        optimizer = torch.optim.SGD(params, **p["optimizer_kwargs"])
+        optimizer = torch.optim.SGD(model.parameters(), **p["optimizer_kwargs"])
 
     elif p["optimizer"].lower() == "adam":
-        optimizer = torch.optim.Adam(params, **p["optimizer_kwargs"])
+        optimizer = torch.optim.Adam(model.parameters(), **p["optimizer_kwargs"])
     elif p["optimizer"].lower() == "adamw":
-        optimizer = torch.optim.AdamW(params, **p["optimizer_kwargs"])
+        optimizer = torch.optim.AdamW(model.parameters(), **p["optimizer_kwargs"])
     else:
         raise ValueError("Invalid optimizer {}".format(p["optimizer"]))
 
     return optimizer
 
 
-def get_scheduler(p, optimizer):
-    end_epoch = p["epochs"]
-    warmup_epochs = p["scheduler_kwargs"].get("lr_warmup_epochs", 0)
-    warmup_start_factor = p["scheduler_kwargs"].get("warmupa_start_factor", 0.1)
-    warmup_end_factor = p["scheduler_kwargs"].get("warmupa_end_factor", 1)
+def get_scheduler(p, optimizer, epoch):
+    scheduler_name = p.pop("name")
+    end_epoch = epoch
+    warmup_epochs = p.get("lr_warmup_epochs", 0)
+    warmup_start_factor = p.get("warmupa_start_factor", 0.1)
+    warmup_end_factor = p.get("warmupa_end_factor", 1)
     warmup = LinearLR(optimizer, start_factor=warmup_start_factor, end_factor=warmup_end_factor, total_iters=warmup_epochs)
 
     end_epoch -= warmup_epochs
-    if p["scheduler"] == "cosine":
-        eta_min = p["scheduler_kwargs"]["lr_eta_min"]
+    if scheduler_name == "cosine":
+        eta_min = p["lr_eta_min"]
         scheduler = CosineAnnealingLR(optimizer, T_max=end_epoch, eta_min=eta_min)
-    elif p["scheduler"] == "cosine_restart":
-        eta_min = p["scheduler_kwargs"]["lr_eta_min"]
-        cycle_period = p["scheduler_kwargs"]["T_period"]
-        cycle_period_mul = p["scheduler_kwargs"].get("T_mul", 1)
+    elif scheduler_name == "cosine_restart":
+        eta_min = p["lr_eta_min"]
+        cycle_period = p["T_period"]
+        cycle_period_mul = p.get("T_mul", 1)
         scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=cycle_period, T_mult=cycle_period_mul, eta_min=eta_min)
-    elif p["scheduler"] == "step":
-        scheduler = MultiStepLR(optimizer, milestones=p["scheduler_kwargs"]["lr_decay_epochs"], gamma=p["scheduler_kwargs"]["lr_decay_rate"])
-    elif p["scheduler"] == "constant":
+    elif scheduler_name == "step":
+        scheduler = MultiStepLR(optimizer, milestones=p["lr_decay_epochs"], gamma=p["lr_decay_rate"])
+    elif scheduler_name == "constant":
         scheduler = ConstantLR(optimizer, factor=1, total_iters=end_epoch)
-    elif p["scheduler"] == "linear":
+    elif scheduler_name == "linear":
         scheduler = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=end_epoch)
     else:
-        raise ValueError("Invalid learning rate schedule {}".format(p["scheduler"]))
+        raise ValueError("Invalid learning rate schedule {}".format(scheduler_name))
     return SequentialLR(optimizer, [warmup, scheduler], milestones=[warmup_epochs])

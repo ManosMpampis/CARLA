@@ -14,7 +14,7 @@ class Trainer:
     """Stage runner for JEPA pretraining/adaptation.
 
     - Mixed precision behind the ``amp`` config flag: bf16 autocast +
-      GradScaler on CUDA; silently fp32 elsewhere (scoring is always fp32).
+      GradScaler.
     - Checkpoints follow the repo's existing resume format
       (model/optimizer/scheduler/epoch/next_epoch + best-metric fields),
       extended minimally with stage metadata.
@@ -22,8 +22,7 @@ class Trainer:
       must not inflate the selection signal (LeWorldModel-repro lesson).
     """
 
-    def __init__(self, p, model, criterion, optimizer, scheduler, device, logger,
-                 collator=None, amp: bool = False, val_collator=None):
+    def __init__(self, p, model, criterion, optimizer, scheduler, device, logger, amp: bool = False):
         self.p = p
         self.model = model
         self.criterion = criterion
@@ -31,9 +30,7 @@ class Trainer:
         self.scheduler = scheduler
         self.device = device
         self.logger = logger
-        self.collator = collator
         self.amp = bool(amp)
-        self.val_collator = val_collator
         self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
 
     # ------------------------------------------------------------------ #
@@ -47,23 +44,12 @@ class Trainer:
             ts = ts.transpose(1, 2)
         return ts.contiguous()
 
-    def _make_mask(self, collator, batch_size: int, window: int,
-                     level_strides, ts=None):
-        if collator is None:
-            return None
-        try:
-            mask = collator(batch_size, window, list(level_strides), ts)
-        except TypeError:
-            mask = collator(batch_size, window, list(level_strides))
-        return {k: v.to(self.device) for k, v in mask.items()}
-
     def _forward_loss(self, batch):
+        # TODO: check how the input engine will be used, maybe run self.model.train
         ts = self._to_model_input(batch["ts"], self.device)
-        mask = self._make_mask(self.collator, ts.size(0), ts.size(-1),
-                               self.model.level_strides, ts)
         with torch.autocast(device_type=self.device.type, dtype=torch.bfloat16,
                             enabled=self.amp):
-            outputs = self.model(ts, mask=mask)
+            outputs = self.model(ts)
             losses = self.criterion(outputs)
         return losses, {"latents": outputs["latents"], "ts": ts}
 
@@ -103,12 +89,10 @@ class Trainer:
         totals, count = {}, 0
         for batch in loader:
             ts = self._to_model_input(batch["ts"], self.device)
-            mask = self._make_mask(self.val_collator, ts.size(0), ts.size(-1),
-                                   self.model.level_strides, ts)
-            outputs = self.model(ts, mask=mask)
-            losses = self.criterion(outputs)
+            losses, extras = self._forward_loss(batch)
+            
             values = loss_metrics(losses)
-            values["latent_var"] = latent_variance(outputs["latents"])
+            values["latent_var"] = latent_variance(extras["latents"])
             for key, value in values.items():
                 scalar = float(value.detach()) if torch.is_tensor(value) else float(value)
                 totals[key] = totals.get(key, 0.0) + scalar * ts.size(0)

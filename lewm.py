@@ -13,23 +13,35 @@ import random
 import numpy as np
 import torch
 
-from models.builders import get_lewm_model
+from models.builders import get_model
 
 from utils.common_config import (
     get_criterion,
-    get_jepa_datasets,
+    get_dataset,
     get_optimizer,
     get_scheduler,
     get_train_dataloader,
     get_val_dataloader,
 )
-from utils.config import create_config, entry_overrides
+from utils.config import create_config
 from utils.evaluation_schedule import evaluation_interval
 from utils.reconstruction_baselines import evaluate_on_test
-from utils.masking_steered import SubAnomalyMaskCollator
 from utils.trainer import Trainer
 from utils.utils import Logger
 
+def load_feature_extractor(source, model, logger=None):
+    """Strict encoder-only transfer from either saved weights or a Trainer checkpoint."""
+    if not source or not os.path.isfile(source):
+        raise FileNotFoundError(f"phase2 requires pretrained_from LEWM weights; got {source}")
+    payload = torch.load(source, map_location="cpu", weights_only=False)
+    state = payload["model"] if "model" in payload else payload
+    encoder_state = {key.removeprefix("encoder."): value
+                     for key, value in state.items() if key.startswith("encoder.")}
+    if not encoder_state:
+        raise ValueError(f"no encoder weights in LEWM checkpoint {source}")
+    model.encoder.load_state_dict(encoder_state, strict=True)
+    if model.encoder_frozen:
+        model.encoder.eval()
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -60,61 +72,39 @@ def _make_logger(p):
     return logger
 
 
-def _masking_collator(p):
-    masking = p.get("stage_a", {}).get("masking", {})
-    mode = str(masking.get("mode", "none")).lower()
-    if mode in ("subanomaly", "sub_anomaly", "injected"):
-        kwargs = {k: v for k, v in masking.items() if k != "mode"}
-        return SubAnomalyMaskCollator(**kwargs)
-    return None
-
-
-class _GraphWrapper(torch.nn.Module):
-    """Flattens LeWM outputs for TensorBoard graph logging only."""
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, x):
-        out = self.model(x)
-        graph = {"latent": out["latents"],
-                 "predicted": out["predicted"]}
-        if out["mask_logits"] is not None:
-            graph["mask_logits"] = out["mask_logits"]
-        return graph
-
-
 def _build_run(p, device):
-    model = get_lewm_model(p)
-    criterion = get_criterion(p).to(device)
-    optimizer = get_optimizer(p, model)
-    scheduler = get_scheduler(p, optimizer)
+    model = get_model(p.get("framework"))
+    criterion = get_criterion(p.get("criterion")).to(device)
+    optimizer = get_optimizer(p.get("optimizer"), model)
+    scheduler = get_scheduler(p.get("scheduler"), optimizer, p["epochs"])
     return model, criterion, optimizer, scheduler
 
 
-def run_pretrain(p, device):
+def run_train(p, device):
     logger = _make_logger(p)
+
+    train_dataset, val_dataset = get_dataset(p.get("data"))
+    if train_dataset.features != p["framework"]["encoder"]["in_channels"]:
+        raise UserWarning(f"Dataset has different number of feature than the input of the model"
+                          f" Data:{train_dataset.features}/Model:{p["framework"]["encoder"]["in_channels"]}." 
+                          f" We change the configureation of the model")
+    p["framework"]["encoder"]["in_channels"] = train_dataset.features
+
     model, criterion, optimizer, scheduler = _build_run(p, device)
 
-    in_channels = p["model_kwargs"]["in_channels"]
+    in_channels = p["framework"]["encoder"]["in_channels"]
     try:
-        graph_model = _GraphWrapper(model).to(device)
-        logger.add_graph(graph_model,
-                         torch.rand((1, in_channels, p["wsz"]), device=device))
+        logger.add_graph(model, torch.rand((1, in_channels, p["wsz"]), device=device))
     except Exception as exc:
         logger.warn(f"TensorBoard graph logging skipped: {exc}")
     model = model.to(device)
 
-    train_dataset, val_dataset = get_jepa_datasets(p)
     train_loader = get_train_dataloader(p, train_dataset)
     val_loader = get_val_dataloader(p, val_dataset)
     logger.log(f"Dataset contains {len(train_dataset)}/{len(val_dataset)} "
                f"train/val samples")
 
-    trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger,
-                      collator=_masking_collator(p), amp=p.get("amp", False),
-                      val_collator=_masking_collator(p))
+    trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger, amp=p.get("amp", {"enabled": False, "dtype": torch.float32}))
     start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
     interval = evaluation_interval(p)
     best_val_loss = trainer.fit(
@@ -127,49 +117,6 @@ def run_pretrain(p, device):
     logger.finalize()
 
 
-def run_adapt(p, device):
-    logger = _make_logger(p)
-    model, criterion, optimizer, scheduler = _build_run(p, device)
-
-    source = p.get("pretrained_from")
-    if not source or not os.path.exists(source):
-        raise FileNotFoundError(
-            f"adaptation requires 'pretrained_from' checkpoint; got {source}"
-        )
-    Trainer.load_weights(source, model, logger, strict=True)
-
-    mode = p.get("stage_b", {}).get("mode", "frozen")
-    if mode == "frozen":
-        for param in model.encoder.parameters():
-            param.requires_grad = False
-        model.encoder_frozen = True
-        logger.log("Adaptation mode 'frozen': encoder frozen (aux+predictor train)")
-    elif mode == "finetune":
-        logger.log("Adaptation mode 'finetune': all parameters update")
-    else:
-        raise ValueError(f"Invalid stage_b.mode {mode}")
-
-    model = model.to(device)
-    optimizer = get_optimizer(p, model)
-    scheduler = get_scheduler(p, optimizer)
-
-    train_dataset, val_dataset = get_jepa_datasets(p)
-    train_loader = get_train_dataloader(p, train_dataset)
-    val_loader = get_val_dataloader(p, val_dataset)
-    trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger,
-                      collator=None, amp=p.get("amp", False))
-    start_epoch, best_val_loss = Trainer.resume(p, model, optimizer, scheduler, logger)
-    interval = evaluation_interval(p)
-    best_val_loss = trainer.fit(
-        train_loader, val_loader, start_epoch, best_val_loss,
-        eval_every=interval,
-        eval_fn=(lambda step: evaluate_on_test(
-            model, p, device, logger, step, input_resolution=True))
-        if interval > 0 else None)
-    logger.log(f"Adaptation finished; best val loss {best_val_loss:.6f}")
-    logger.finalize()
-
-
 @torch.no_grad()
 def run_score(p, device):
     """Export the same three-mode report as every experiment runner."""
@@ -178,16 +125,14 @@ def run_score(p, device):
 
 
 STAGES = {
-    "pretrain": run_pretrain,
-    "pretext": run_pretrain,
-    "adapt": run_adapt,
+    "pretrain": run_train,
     "score": run_score,
 }
 
 
 def main(args, update_dictionary=None):
     p = create_config(args.config_env, args.config_exp, args.fname, args.version,
-                      update_dictionary=entry_overrides(args, update_dictionary))
+                      update_dictionary=update_dictionary)
     set_seed(int(p.get("seed", 4)))
     stage = str(p.get("stage", "pretrain")).lower()
     if stage not in STAGES:

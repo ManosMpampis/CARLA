@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -227,3 +229,67 @@ class ResnetConvBlock(nn.Module):
     def forward(self, x):
         """Run the stacked convolutions in order."""
         return self.act(self.main(x) + self.residual(x))
+
+
+class CrossAttention(nn.Module):
+    """Scaled cross attention and reconstruction, without a Query residual bypass."""
+
+    def __init__(self, num_heads=1,
+                 dropout=0.1, position_encoding="none",
+                 position_on="all", position_scale=1.0):
+        super().__init__()
+        if not 0 <= dropout < 1:
+            raise ValueError("attention dropout must be in [0, 1)")
+        if position_encoding not in ("none", "sinusoidal"):
+            raise ValueError("position_encoding must be none or sinusoidal")
+        if position_on not in ("query", "key", "value", "qk", "qv", "kv", "all"):
+            raise ValueError("position_on must be query, key, value, qk, qv, kv, or all")
+        if (isinstance(position_scale, bool) or not isinstance(position_scale, (int, float))
+                or not math.isfinite(position_scale) or position_scale < 0):
+            raise ValueError("position_scale must be finite and nonnegative")
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.position_encoding = position_encoding
+        self.position_on = position_on
+        self.position_scale = float(position_scale)
+
+        self.q_enc = nn.Identity()
+        self.k_enc = nn.Identity()
+        self.v_enc = nn.Identity()
+        if position_encoding == "sinusoidal":
+            if position_on in ("query", "qk", "qv", "all"):
+                self.q_enc = self._with_position
+            if position_on in ("key", "qk", "kv", "all"):
+                self.k_enc = self._with_position
+            if position_on in ("value", "qv", "kv", "all"):
+                self.v_enc = self._with_position
+        
+    def _with_position(self, z):
+        """Add fixed sinusoids in feature-token units, supporting any length/width."""
+        channels, length = z.shape[1:]
+        positions = torch.arange(0, length, device=z.device, dtype=z.dtype)
+        frequencies = torch.exp(torch.arange(0, channels, 2, device=z.device,
+                                            dtype=z.dtype) * (-math.log(10000.0) / channels))
+        angles = frequencies[:, None] * positions[None, :]
+        encoding = torch.empty(channels, length, device=z.device, dtype=z.dtype)
+        encoding[0::2] = angles.sin()
+        encoding[1::2] = angles[:channels // 2].cos()
+        return z + self.position_scale * encoding.to(z.dtype).unsqueeze(0)
+
+    def forward(self, kv, q):
+        # Enrich attention addressing only. Keep content Q/K/V unchanged for
+        # SIGReg and the clean Query reconstruction target.
+        query = self.q_enc(kv["query"])
+        key = self.k_enc(q)
+        value = self.v_enc(kv["value"])
+
+        def heads(z):
+            b, c, t = z.shape
+            return z.reshape(b, self.num_heads, c // self.num_heads, t).transpose(-1, -2)
+
+        attended = F.scaled_dot_product_attention( heads(query), heads(key), heads(value),
+            dropout_p=self.dropout if self.training else 0.0)
+        
+        b, _, t, _ = attended.shape
+        attended = attended.transpose(-1, -2).reshape(b, -1, t)
+        return attended

@@ -7,14 +7,15 @@ import torch
 
 from models.builders import get_cross_attention_model
 
-from lewm import _device, run_pretrain, run_score as run_encoder_score, set_seed
+from lewm import _device, run_train, run_score as run_encoder_score, set_seed
 from utils.common_config import (get_criterion, get_jepa_datasets, get_optimizer,
                                  get_scheduler, get_train_dataloader,
                                  get_val_dataloader)
-from utils.config import create_config, entry_overrides
-from utils.masking_steered import SubAnomalyMaskCollator
+from utils.config import create_config
 from utils.trainer import Trainer
 from utils.utils import Logger
+from utils.evaluation_schedule import evaluation_interval
+from utils.reconstruction_baselines import evaluate_on_test
 
 
 def load_feature_extractor(source, model, logger=None):
@@ -30,9 +31,6 @@ def load_feature_extractor(source, model, logger=None):
     model.encoder.load_state_dict(encoder_state, strict=True)
     if model.encoder_frozen:
         model.encoder.eval()
-    if logger is not None:
-        logger.log(f"Feature extractor loaded strictly from {source} "
-                   f"(frozen={model.encoder_frozen}); Q/K/V and head are new")
 
 
 def scoring_options(p, model):
@@ -56,16 +54,6 @@ def _logger(p):
     return logger
 
 
-def _collator(p):
-    masking = dict(p.get("stage_b", {}).get("masking", {}))
-    mode = masking.pop("mode", "none")
-    if mode == "none":
-        return None
-    if mode != "subanomaly":
-        raise ValueError("stage_b.masking.mode must be none or subanomaly")
-    return SubAnomalyMaskCollator(**masking)
-
-
 def run_phase2(p, device):
     if p["criterion"] not in ("lewm_cross_attention", "lewm_rec_ca"):
         raise ValueError("phase2 requires criterion=lewm_cross_attention or lewm_rec_ca")
@@ -87,12 +75,9 @@ def run_phase2(p, device):
             raise ValueError("empty train/validation loader; reduce window or batch size")
         logger.log(f"Dataset contains {len(train_dataset)}/{len(val_dataset)} train/val windows")
         trainer = Trainer(p, model, criterion, optimizer, scheduler, device, logger,
-                          collator=_collator(p),
-                          amp=bool(p.get("amp", False)) and device.type == "cuda",
-                          val_collator=_collator(p))
+                          amp=bool(p.get("amp", False)) and device.type == "cuda")
         epoch, best = Trainer.resume(p, model, optimizer, scheduler, logger)
-        from utils.evaluation_schedule import evaluation_interval
-        from utils.reconstruction_baselines import evaluate_on_test
+
 
         interval = evaluation_interval(p)
         best = trainer.fit(
@@ -112,14 +97,13 @@ def run_score(p, device):
     return score_config(p, "cross_attention")
 
 
-STAGES = {"pretrain": run_pretrain, "pretext": run_pretrain, "phase1": run_pretrain,
+STAGES = {"pretrain": run_train, "pretext": run_train, "phase1": run_train,
           "phase2": run_phase2, "adapt": run_phase2, "score": run_score}
 
 
 def main(args, update_dictionary=None):
-    overrides = entry_overrides(args, update_dictionary)
     p = create_config(args.config_env, args.config_exp, args.fname, args.version,
-                      update_dictionary=overrides)
+                      update_dictionary=update_dictionary)
     set_seed(int(p.get("seed", 4)))
     stage = str(p.get("stage", "pretrain")).lower()
     if stage not in STAGES:

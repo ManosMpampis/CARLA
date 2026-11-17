@@ -14,7 +14,7 @@ import yaml
 from utils.config import (DEFAULT_VERSION, create_config, dataset_output_dir, experiment_base_dir,
                           load_experiment_config, merge_config,
                           validate_experiment_name)
-
+from utils.evaluation_artifacts import write_final_artifacts
 
 @dataclass
 class Experiment:
@@ -375,14 +375,7 @@ def score_config(p, exp):
 
     scorer_model = InputResolutionScores()
     batch_size = int(p.get("score_batch_size", p["batch_size"]))
-    benchmark = p.get("inference_benchmark", False)
     inference_speed = None
-    if benchmark is not False and benchmark is not None:
-        from utils.inference_benchmark import benchmark_inference
-
-        inference_speed = benchmark_inference(
-            scorer_model, test_dataset.series, window, batch_size, device,
-            {} if benchmark is True else benchmark)
     clean = score_both(scorer_model, train_dataset.full_train_series, window, stride,
                        batch_size, device, **options)
     test = score_both(scorer_model, test_dataset.series, window, stride,
@@ -433,7 +426,6 @@ def score_config(p, exp):
         report["inference_speed"] = inference_speed
     if exp.runner == "recon":
         report["evaluation_settings"]["score_aux_crop"] = False
-    from utils.evaluation_artifacts import write_final_artifacts
     report["figures"] = write_final_artifacts(
         p["jepa_dir"], evaluation, test, test_dataset.targets, non_overlap_test)
     # Replay is an explicit debugging artifact; regular evaluation uses

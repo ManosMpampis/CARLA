@@ -1,16 +1,6 @@
 import numpy as np
 
-class NoiseTransformation(object):
-    def __init__(self, sigma):
-        self.sigma = sigma
-
-    def __call__(self, X):
-        """
-        Adding random Gaussian noise with mean 0
-        """
-        noise = np.random.normal(loc=0, scale=self.sigma, size=X.shape).astype(np.float32)  # NumPy operation
-        return X + noise
-    
+# TODO: Implemented in torch
 class SubAnomaly(object):
     def __init__(self, portion_len):
         self.portion_len = portion_len

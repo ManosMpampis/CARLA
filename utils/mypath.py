@@ -5,7 +5,7 @@ import os
 class MyPath(object):
     @staticmethod
     def db_root_dir(database=''):
-        db_names = {'msl', 'smap', 'smd', 'new_smd', 'psm', 'power', 'yahoo', 'kpi', 'swat', 'wadi', 'gecco', 'swan', 'ucr'}
+        db_names = {'msl', 'smap', 'smd', 'new_smd', 'psm', 'power', 'yahoo', 'kpi', 'swat', 'wadi', 'gecco', 'swan', 'ucr', 'tsb_ad_m', 'tsb_ad_u'}
         assert(database in db_names)
 
         if database == 'msl' or database == 'smap':
@@ -30,6 +30,9 @@ class MyPath(object):
             return 'datasets/Swan'
         elif database == 'gecco':
             return 'datasets/GECCO'
-        
+        elif database == 'tsb_ad_m':
+            return 'datasets/TSB-AD-M'
+        elif database == 'tsb_ad_m':
+            return 'datasets/TSB-AD-U'
         else:
             raise NotImplementedError

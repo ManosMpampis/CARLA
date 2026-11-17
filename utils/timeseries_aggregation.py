@@ -268,20 +268,3 @@ class TimeseriesAggregator:
                     intervals=intervals[keep], axis="window" if self.data_fn else "timestep",
                     uncovered_indices=indices[~covered], finalized=finalize)
 
-
-def reconstruction_aggregator(model, *, input_window, stride, mode="timeseries", **kwargs):
-    """Convenience geometry; all modes still use the same aggregator class.
-
-    For per-timestep non-overlap use mode='non_overlap_timeseries'.
-    'non_overlap_window' and 'window' produce one sample per checked region.
-    """
-    if mode not in {"timeseries", "non_overlap_timeseries", "non_overlap_window", "window"}:
-        raise ValueError(f"Unknown reconstruction mode: {mode}")
-    window_axis = mode in {"non_overlap_window", "window"}
-    if mode.startswith("non_overlap"):
-        stride = input_window
-    return TimeseriesAggregator(
-        input_window=input_window, stride=stride,
-        output_window=1 if window_axis else input_window,
-        model=model, output_fn="mean" if window_axis else None,
-        data_fn="window" if window_axis else None, **kwargs)

@@ -18,15 +18,15 @@ from losses.sigreg import SIGReg
 class LeWMLoss(nn.Module):
     """LeWM loss with optional auxiliary supervision and selectable geometry."""
 
-    def __init__(self, loss2_kind: str = "kl", w_pred: float = 1.0,
+    def __init__(self, loss: str = "kl", w_pred: float = 1.0,
                  w_aux: float = 1.0, lambda_sigreg: float = 0.1,
                  lambda_sigreg_tgt: float = 0.1, tau: float = 1.0,
                  sigreg_kwargs: dict | None = None):
         super().__init__()
-        kind = str(loss2_kind).lower()
+        kind = str(loss).lower()
         if kind not in ("kl", "mse", "l1"):
-            raise ValueError(f"Invalid loss2_kind {loss2_kind}")
-        self.loss2_kind = kind
+            raise ValueError(f"Invalid loss {loss}")
+        self.loss = kind
         self.w_pred = float(w_pred)
         self.w_aux = float(w_aux)
         self.lambda_sigreg = float(lambda_sigreg)
@@ -35,9 +35,9 @@ class LeWMLoss(nn.Module):
         self.sigreg = SIGReg(**(sigreg_kwargs or {}))
 
     def _latent_loss(self, pred: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
-        if self.loss2_kind == "mse":
+        if self.loss == "mse":
             return ((pred - tgt) ** 2).mean()
-        if self.loss2_kind == "l1":
+        if self.loss == "l1":
             return (pred - tgt).abs().mean()
         tau = max(self.tau, 1e-3)
         log_p = F.log_softmax(pred / tau, dim=1)
@@ -51,25 +51,25 @@ class LeWMLoss(nn.Module):
     def forward(self, outputs: dict) -> dict:
         """Compute total loss from LeWM model outputs."""
         tgt = outputs["targets"]
-        cont = outputs["context"]
+        recon_tgt = tgt.get("reconstruction")
+        act_tgt = tgt.get("aux", None)
+
+        cont = outputs["known_latents"]
         pred = outputs["predicted"]
+
         if pred.dim() == 4 and pred.size(1) == 1:
             pred = pred[:, 0]
-        pred_loss = self._latent_loss(pred, tgt)
-        logits = outputs["mask_logits"]
-        m = outputs.get("mask_target")
-        if m is None and isinstance(outputs.get("mask"), dict):
-            m = outputs["mask"].get("input")
-        if logits is None:
-            aux_loss = pred.new_zeros(())
-        elif m is None:
-            aux_loss = logits.new_zeros(())
-        else:
-            aux_loss = F.mse_loss(torch.sigmoid(logits),
-                                  m.to(logits.dtype))
+        
+        pred_loss = self._latent_loss(pred, recon_tgt)
         sig = self.sigreg(cont)
         sig_tgt = self.sigreg(tgt)
-        loss = self.w_pred * pred_loss + self.w_aux * aux_loss \
-            + self.lambda_sigreg * sig + self.lambda_sigreg_tgt * sig_tgt
-        return {"loss": loss, "pred_loss": pred_loss, "aux_loss": aux_loss,
-                "sigreg": sig, "sigreg_tgt": sig_tgt}
+        
+        loss = self.w_pred * pred_loss + self.lambda_sigreg * sig + self.lambda_sigreg_tgt * sig_tgt
+        out = {"loss": loss, "pred_loss": pred_loss, "sigreg": sig, "sigreg_tgt": sig_tgt}
+        if act_tgt is not None:
+            logits = outputs["mask_logits"]
+            aux_loss = F.mse_loss(torch.sigmoid(logits), act_tgt.to(logits.dtype))
+            loss += self.w_aux * aux_loss
+            out.update(loss=loss, aux_loss=aux_loss)
+
+        return out

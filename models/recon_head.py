@@ -1,21 +1,9 @@
 """Mirrored reconstruction head for the steered ResNet encoder (Phase 2).
-
-Grilled contract (Q8/Q8a/Q8b):
-- N ConvTranspose1d layers mirroring the N ResNet blocks in reverse, with
-  the same stride/dilation rate per block, then a single 1x1 conv to the
-  input channel count C. Default 2-block encoder -> 3 convs total.
-- Fully convolutional (no Linear, no fixed pooling): any input length W
-  with ``W % S == 0`` reconstructs exactly to (B, C, W) with no crop/pad
-  logic in the model. Odd lengths are a caller error (asserted).
-- Channels mirror the encoder ladder: encoder [C0, D1, ..., DN] ->
-  transposes [DN -> D_{N-1} -> ... -> D1 -> D1] then 1x1 D1 -> C0.
 """
 
 import torch.nn as nn
 
-from models.blocks import make_norm
-from models.convolutions import _init_weights
-
+from models.blocks import make_norm, _init_weights
 
 class ReconUpsampleBlock(nn.Module):
     """One ConvTranspose1d + norm + GELU + dropout (mirror of a strided block)."""
