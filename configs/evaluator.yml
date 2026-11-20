@@ -7,6 +7,17 @@ evaluator:
   # and score_batch_size/batch_size (default 256), respectively.
   calibration_quantile: null
   batch_size: null
+  artifacts:
+    # Automatic export is opt-in. Passing output_dir to evaluate() also exports.
+    enabled: false
+    # null uses <tag_dir or jepa_dir>/evaluation. Automatic exports are stored
+    # under epoch_000000/<mode>/ (using the supplied epoch).
+    output_dir: null
+    csv: true
+    html: true
+    # Files per mode: scores.csv, metrics.csv, report.html. Reports use the
+    # aggregated axis: window indices or original timesteps. Uncovered outputs
+    # are omitted, exactly as in metric computation. No model rerun is needed.
   # Exact keys returned by metrics.metrics.combine_all_evaluation_scores.
   # null retains all metrics. Thresholds are always included in results/logs.
   metrics:
@@ -27,7 +38,7 @@ evaluator:
   # Constructor parameters accept literal values or the following named values:
   # input_window: resolved evaluation.input_window (fallback wsz)
   # evaluation_stride: resolved evaluation.stride (fallback stride)
-  # output_length: observed model score-map length
+  # output_length: inferred from the first score batch of each run
   # scored_span: evaluation.check_mask width, or input_window without a mask
   # output_start: evaluation.check_mask start (or 0) + latency_offset
   # evaluation_last_window: resolved evaluation.include_last_window

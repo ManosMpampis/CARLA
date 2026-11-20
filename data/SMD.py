@@ -2,10 +2,10 @@ import os
 import numpy as np
 import pandas as pd
 from utils.mypath import MyPath
-from .original_dataset import Original_dataset
+from .original_dataset import OriginalDataset
 
 
-class SMD(Original_dataset):
+class SMD(OriginalDataset):
     base_folder = ""
 
     def __init__(
@@ -15,8 +15,6 @@ class SMD(Original_dataset):
         std_data=None,
         root=MyPath.db_root_dir("smd"),
         train=True,
-        transform=None,
-        sanomaly=None,
         wsz=200,
         stride=5,
     ):
@@ -24,8 +22,6 @@ class SMD(Original_dataset):
         super().__init__(
             root=root,
             train=train,
-            transform=transform,
-            sanomaly=sanomaly,
             wsz=wsz,
             stride=stride
         )

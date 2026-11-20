@@ -5,14 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.blocks import Conv1dSamePadding, Conv2dSamePadding, ConvBlock1d, ConvBlock2d
-from utils.masking_steered import SubAnomalyMaskCollator
+from utils.masking_steered import TorchSubAnomalyMaskCollator
 from utils.reconstruction_scores import normalize_score_mode, reconstruction_score_map
 
 
 class MaskEngine(nn.Module):
     def __init__(self, masking):
         super().__init__()
-        self.engine = SubAnomalyMaskCollator(**masking)
+        self.engine = TorchSubAnomalyMaskCollator(**masking)
 
     @staticmethod
     def _zero_mask_input(x, input_mask):

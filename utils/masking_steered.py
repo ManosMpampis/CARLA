@@ -10,7 +10,7 @@ channel stays inside the shared temporal mask.
 import numpy as np
 import torch
 
-from data.augment import SubAnomaly
+from data.augment import SubAnomaly, TorchSubAnomaly
 
 # TODO: implement it in torch
 class SubAnomalyMaskCollator:
@@ -21,7 +21,7 @@ class SubAnomalyMaskCollator:
         self.min_ratio = min_ratio
         self.max_ratio = max_ratio
         self.portion_len = portion_len
-        self._sub = SubAnomaly(self.portion_len)
+        self.sub = SubAnomaly(self.portion_len)
 
     def _sample_span(self, window: int):
         lo = max(1, int(window * self.min_ratio))
@@ -103,3 +103,71 @@ class SubAnomalyMaskCollator:
             inj[b] = out_wc.transpose(1, 0)
         return {"input": torch.from_numpy(mask),
                 "X_inj": torch.from_numpy(inj.astype(np.float32))}
+
+
+class TorchSubAnomalyMaskCollator:
+    """Tensor-only counterpart of :class:`SubAnomalyMaskCollator`.
+
+    Accepts floating-point tensors in (B, C, W) layout and
+    returns {"input": (B, W) bool, "X_inj": (B, C, W)} on the input device.
+    The injected tensor preserves the input dtype and gradients; the input is
+    never mutated. Batch size and window length are inferred from ``ts``.
+    Use ``torch.manual_seed`` for reproducible sampling.
+    """
+
+    def __init__(self, min_ratio: float = 0.1, max_ratio: float = 0.9,
+                 portion_len=0.99):
+        if not 0 <= min_ratio <= max_ratio <= 1:
+            raise ValueError("expected 0 <= min_ratio <= max_ratio <= 1")
+        self.min_ratio = min_ratio
+        self.max_ratio = max_ratio
+        self.portion_len = portion_len
+        self.sub = TorchSubAnomaly(self.portion_len)
+
+    @staticmethod
+    def _randint(low, high, device):
+        return int(torch.randint(low, high, (), device=device).item())
+
+    def _sample_span(self, window: int, device=None):
+        lo = max(1, int(window * self.min_ratio))
+        hi = max(lo + 1, int(window * self.max_ratio))
+        length = min(self._randint(lo, hi, device), window)
+        start = self._randint(0, window - length + 1, device)
+        return length, start
+
+    def _inject_channel(self, temp_win, length: int, start: int):
+        anomaly_type = self._randint(0, 5, temp_win.device)
+        kwargs = dict(subsequence_length=length, start_index=start,
+                      scale_factor=1, trend_factor=0)
+        if anomaly_type == 1:
+            kwargs.update(compression_factor=1, trend_factor=None)
+        elif anomaly_type == 2:
+            kwargs.update(compression_factor=1, scale_factor=8)
+        elif anomaly_type == 3:
+            kwargs.update(compression_factor=1, scale_factor=3)
+        elif anomaly_type == 4:
+            kwargs.update(compression_factor=1, shapelet_factor=True)
+        # All anomaly types use the full sampled span, including spikes. Never
+        # enable trend_end: values outside the shared mask must stay unchanged.
+        return self.sub.inject_frequency_anomaly(temp_win, **kwargs)
+
+    def __call__(self, ts: torch.Tensor) -> dict:
+        """Sample masks and inject anomalies into a (batch, channels, time) tensor."""
+        if ts.ndim != 3:
+            raise ValueError(f"expected batched windows, got {ts.shape}")
+        batch_size, n_channels, window = ts.shape
+        mask = torch.zeros((batch_size, window), dtype=torch.bool, device=ts.device)
+        inj = ts.clone()
+        low = max(1, n_channels // 10)
+        high = min(max(low + 1, n_channels // 2 + 1), n_channels + 1)
+        for b in range(batch_size):
+            length, start = self._sample_span(window, ts.device)
+            mask[b, start:start + length] = True
+            num_dims = self._randint(low, high, ts.device)
+            for _ in range(num_dims):
+                channel = self._randint(0, n_channels, ts.device)
+                # Channels are sampled with replacement. Clone each view so
+                # later updates preserve values already retained by autograd.
+                temp = inj[b, channel].reshape(window, 1).clone()
+                inj[b, channel] = self._inject_channel(temp, length, start).reshape(window)
+        return {"input": mask, "X_inj": inj}

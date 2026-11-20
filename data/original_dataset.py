@@ -16,23 +16,19 @@ def training_split_bounds(length, window, val_fraction):
     return cut, cut
 
 
-class Original_dataset(Dataset):
+class OriginalDataset(Dataset):
     base_folder = ""
 
     def __init__(
         self,
         root="",
         train=True,
-        transform=None,
-        sanomaly=None,
         wsz=200,
         stride=5,
     ):
 
         super().__init__()
         self.root = root
-        self.transform = transform
-        self.sanomaly = sanomaly
         self.train = train  # training set or test set
         self.classes = ["Normal", "Anomaly"]
         self.wsz = wsz

@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from utils.mypath import MyPath
-from .original_dataset import Original_dataset
+from .original_dataset import OriginalDataset
 from data.original_dataset import training_split_bounds
 
 
@@ -90,7 +90,7 @@ def read_tsb_series(path, train_end=None) -> TSBSeries:
     return TSBSeries(path, data, labels.astype(np.int32), train_end, features)
 
 
-class TSB(Original_dataset):
+class TSB(OriginalDataset):
     base_folder = ""
 
     def __init__(
@@ -100,8 +100,6 @@ class TSB(Original_dataset):
         std_data=None,
         root=MyPath.db_root_dir("tsb_ad_m"),
         train=True,
-        transform=None,
-        sanomaly=None,
         wsz=200,
         stride=5,
         train_end=None,
@@ -111,8 +109,6 @@ class TSB(Original_dataset):
         super().__init__(
             root=root,
             train=train,
-            transform=transform,
-            sanomaly=sanomaly,
             wsz=wsz,
             stride=stride
         )

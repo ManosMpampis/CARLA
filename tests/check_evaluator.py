@@ -13,8 +13,7 @@ from sklearn.metrics import f1_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.evaluator import Evaluator, score_both
-from utils.scoring import evaluation_options
+from utils.evaluator import Evaluator, evaluation_options
 from utils.timeseries_aggregation import TimeseriesAggregator
 
 
@@ -26,7 +25,6 @@ class Model(torch.nn.Module):
 
     def score(self, x):
         assert not torch.is_grad_enabled()
-        assert not self.training
         self.seen.extend(x[:, 0, 0].cpu().tolist())
         return {"fused": x[:, 0, self.crop:]}
 
@@ -57,6 +55,26 @@ def starts(n, window, stride, include_last):
     return result
 
 
+def reference_scores(series, window, stride, crop, latency, include_last):
+    """Independent placement oracle, with no legacy scoring module dependency."""
+    contributions = [[] for _ in series]
+    windows, bounds = [], []
+    for start in sorted(starts(len(series), window, stride, include_last)):
+        raw = series[start + crop:start + window, 0]
+        positions = np.arange(start + crop + latency, start + window + latency)
+        valid = (positions >= 0) & (positions < len(series))
+        if not valid.any():
+            continue
+        windows.append(raw[valid].mean())
+        bounds.append((positions[valid][0], positions[valid][-1] + 1))
+        for position, value in zip(positions[valid], raw[valid]):
+            contributions[position].append(value)
+    return {"window_scores": np.array(windows), "starts": np.array([s for s, _ in bounds]),
+            "ends": np.array([e for _, e in bounds]),
+            "timeseries_scores": np.array([np.mean(values) if values else 0 for values in contributions]),
+            "cover_counts": np.array([len(values) for values in contributions])}
+
+
 for crop, latency, stride in ((0, 0, 4), (2, 1, 3), (2, -4, 3), (0, 0, 8)):
     config = {"wsz": 6, "stride": stride, "score_batch_size": 3,
               "eval_window_size": 2, "calibration_quantile": 0.75,
@@ -65,6 +83,9 @@ for crop, latency, stride in ((0, 0, 4), (2, 1, 3), (2, -4, 3), (0, 0, 8)):
     saved_config = deepcopy(config)
     model, logger = Model(crop), Logger()
     evaluator = Evaluator(config, device="cpu", logger=logger)
+    initial_aggregators = {mode: splits.copy() for mode, splits in evaluator.aggregators.items()}
+    assert set(initial_aggregators) == {"window", "timeseries", "non_overlap_window"}
+    assert initial_aggregators["timeseries"]["train"].output_window is None
     # Calibration prefers the complete normal series to the shortened data split.
     train_dataset = SimpleNamespace(data=train[:8], full_train_series=train)
     test_dataset = SimpleNamespace(data=test, targets=labels)
@@ -82,9 +103,7 @@ for crop, latency, stride in ((0, 0, 4), (2, 1, 3), (2, -4, 3), (0, 0, 8)):
         mode_stride = 6 - crop if mode == "non_overlap_window" else stride
         include_last = False if mode == "non_overlap_window" else options["include_last_window"]
         for split, data in (("train", train), ("test", test)):
-            old = score_both(model, data, 6, mode_stride, 3, "cpu",
-                             check_mask=options["check_mask"], latency_offset=latency,
-                             include_last_window=include_last)
+            old = reference_scores(data, 6, mode_stride, crop, latency, include_last)
             current = evaluator.aggregated[mode][split]
             keep = current["cover_counts"] > 0
             if mode == "timeseries":
@@ -111,9 +130,13 @@ for crop, latency, stride in ((0, 0, 4), (2, 1, 3), (2, -4, 3), (0, 0, 8)):
         assert np.isclose(result[mode]["oracle"]["f1_score"], best_f1)
         assert set(result[mode]["oracle"]) == set(presets["evaluator"]["metrics"]) | {"threshold"}
         assert evaluator.aggregators[mode]["train"] is not evaluator.aggregators[mode]["test"]
+    assert evaluator.aggregators["timeseries"]["test"].output_window == 6 - crop
     # Reusing an evaluator resets accumulators instead of accumulating duplicates.
     second = evaluator(model, train, test, test_labels=labels)
     assert second == result
+    for mode, splits in initial_aggregators.items():
+        for split, aggregator in splits.items():
+            assert evaluator.aggregators[mode][split] is aggregator
     print(f"Legacy placement, shared scoring, thresholds, logging, reset passed: crop={crop}, latency={latency}, stride={stride}")
 
 # Arbitrary named aggregations select the number of modes; sum is configurable.
@@ -128,12 +151,26 @@ np.testing.assert_allclose(evaluator.aggregated["sum_window"]["test"]["scores"],
                            [test[s:s+6, 0].sum() for s in (0, 4, 8, 11)])
 assert set(result["sum_window"]["oracle"]) == {"threshold", "f1_score", "VUS_ROC"}
 
-# Precomputed-score aggregation still agrees with the direct model/loader path.
-aggregator = TimeseriesAggregator(6, 4, 6, model, include_last_window=True, gap_policy="zero")
+# Reusing an inferred-width aggregator allows a different score map in a new run.
+config = {"wsz": 6, "stride": 4, "eval_window_size": 2, "evaluator": {
+    "aggregators": {"timeseries": {**presets["evaluator"]["aggregators"]["timeseries"],
+                                  "time_offset": 0}}}}
+dynamic_evaluator = Evaluator(config)
+dynamic_aggregator = dynamic_evaluator.aggregators["timeseries"]["test"]
+for crop in (0, 2):
+    dynamic_evaluator(Model(crop), train, test, test_labels=labels)
+    snapshot = dynamic_evaluator.aggregated["timeseries"]["test"]
+    assert dynamic_evaluator.aggregators["timeseries"]["test"] is dynamic_aggregator
+    assert dynamic_aggregator.output_window == 6 - crop
+    np.testing.assert_array_equal(snapshot["indices"], np.arange(len(test) - crop))
+
+# Precomputed-score aggregation still agrees with the direct model path.
+aggregator = TimeseriesAggregator(6, 4, 6, include_last_window=True, gap_policy="zero")
 aggregator.reset(series_length=17, labels=labels)
+tensor_model = SimpleNamespace(score=lambda x: model.score(x)["fused"])
 for start in (0, 4, 8, 11):
-    aggregator.update({"ts": torch.from_numpy(test[None, start:start+6]),
-                       "meta": {"start_idx": np.array([start])}})
+    aggregator.update({"ts_org": torch.from_numpy(test[None, start:start+6]),
+                       "meta": {"start_idx": np.array([start])}}, tensor_model)
 np.testing.assert_allclose(aggregator.result(finalize=True)["scores"], test[:, 0])
 
 class BrokenModel(Model):

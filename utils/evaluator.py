@@ -1,5 +1,8 @@
 import torch
 import numpy as np
+import base64
+import csv
+import json
 from copy import deepcopy
 from pathlib import Path
 import yaml
@@ -7,7 +10,8 @@ from sklearn.metrics import precision_recall_curve
 
 from metrics.metrics import combine_all_evaluation_scores
 from utils.timeseries_aggregation import TimeseriesAggregator
-
+from utils.common_config import get_val_dataloader
+from data.mapping_dataset import MappingDataset
 
 def evaluation_options(config: dict) -> dict:
     """Resolve evaluation-only YAML options without changing training windows."""
@@ -25,6 +29,56 @@ def evaluation_options(config: dict) -> dict:
         "include_last_window": options.get("include_last_window", stride < window),
     }
 
+
+class Evaluator:
+    def __init__(self, device, logger, config: dict):
+        self.vus_window_size = ...
+        self.plans = {name: self._plan(plan) for name, plan in config.items()}
+        self.threshold = {plan: np.zeros[0] for plan in config.keys()}
+        pass
+
+    def _plan(self, config):
+        # Changes the data
+        data_config = {
+            "stride": config.pop("stride", None),
+            
+            "latency": config.pop("latency", 0),
+            "true_target_policy": config.pop("true_target_policy", "count"),
+            "true_target_window": config.pop("true_target_window", None),
+            "true_target_value": config.pop("true_target_value", 1),
+        }
+
+        plan = {"aggregator": TimeseriesAggregator(**config["aggregator"]),
+                "data_transform": MappingDataset() ,
+            }
+        return plan
+
+    def calibrate(self, model, dataset, quantile):
+        for name, plan in self.plans.items():
+            calib_dataset = plan.data_transform(dataset)
+            dataloader = get_val_dataloader(calib_dataset)
+            scores = plan.aggregator.evaluate_ts(model, dataloader)
+            self.threshold[name] = float(np.quantile(scores, quantile))
+
+    def __call__(self, model, dataset):
+        evaluation_metrics = {}
+        for name, plan in self.plans.items():
+            check_dataset = plan.data_transform(dataset)
+            dataloader = get_val_dataloader(check_dataset)
+            scores = plan.aggregator.evaluate_ts(model, dataloader)
+            targets = check_dataset.targets()
+            evaluation_metrics[name] = combine_all_evaluation_scores(scores, targets, self.threshold[name], self.vus_window_size)
+        return evaluation_metrics
+
+    def running_evaluator(self, model, dataset):
+        for name, plan in self.plans.items():
+            check_dataset = plan.data_transform(dataset)
+            dataloader = get_val_dataloader(check_dataset)
+            for batch in dataloader:
+                score = plan.aggregator(model, batch)
+                target = batch["target"]
+                evaluation_metrics = combine_all_evaluation_scores(score, target, self.threshold[name], self.vus_window_size) #TODO: keep a running metrics evaluation and or scores for "live" view
+
 class Evaluator:
     """Score train/test windows once and evaluate configurable aggregations.
 
@@ -40,9 +94,12 @@ class Evaluator:
     when available. Corpus datasets must be evaluated one series at a time.
 
     Results are mode -> calibrated/oracle -> threshold and selected metrics.
-    ``aggregators`` and ``aggregated`` expose independent train/test state and
-    score/label/coverage snapshots. Optional logging uses the repo's Logger.
-    Legacy function entry points below retain their existing reporting format.
+    ``aggregators`` contains separate train/test aggregators from construction.
+    Each evaluation resets them and stores score/label/coverage snapshots in
+    ``aggregated``. Optional logging uses the repo's Logger.
+    Enable ``evaluator.artifacts`` or pass ``output_dir`` when evaluating to
+    export CSV/HTML per mode and epoch. ``write_artifacts(directory)`` exports
+    the latest results without inference. Exported paths live in ``artifacts``.
     """
 
     def __init__(self, config, device=None, logger=None):
@@ -53,6 +110,16 @@ class Evaluator:
         if not isinstance(settings, dict):
             raise ValueError("evaluator must be a mapping")
         settings = {**defaults, **settings}
+        artifact_settings = settings["artifacts"]
+        if not isinstance(artifact_settings, dict):
+            raise ValueError("evaluator.artifacts must be a mapping")
+        self.artifact_options = {**defaults["artifacts"], **artifact_settings}
+        unknown = self.artifact_options.keys() - defaults["artifacts"].keys()
+        if unknown:
+            raise ValueError(f"unknown artifact settings: {sorted(unknown)}")
+        for key in ("enabled", "csv", "html"):
+            if not isinstance(self.artifact_options[key], bool):
+                raise ValueError(f"evaluator.artifacts.{key} must be a boolean")
         self.options = evaluation_options(self.config)
         self.device = device if device is not None else self.config.get("device")
         self.logger = logger
@@ -76,6 +143,7 @@ class Evaluator:
         if not isinstance(specs, dict) or not specs:
             raise ValueError("evaluator.aggregators must be a nonempty mapping")
         self.plans = {}
+        self.aggregators = {}
         for name, spec in specs.items():
             if not isinstance(name, str) or not name or not isinstance(spec, dict):
                 raise ValueError("each aggregator needs a nonempty name and a parameter mapping")
@@ -84,12 +152,23 @@ class Evaluator:
             if not isinstance(enabled, bool):
                 raise ValueError("aggregator.enabled must be a boolean")
             if enabled:
-                self.plans[name] = self._plan(spec)
+                plan = self._plan(spec)
+                params = plan["params"]
+                train_aggregator = TimeseriesAggregator(**params)
+                if plan["metric_window_size"] is None:
+                    metric_window = int(self.config.get("eval_window_size", 100))
+                    if train_aggregator.data_fn == "window":
+                        metric_window = max(1, metric_window // train_aggregator.stride)
+                    if metric_window < 1:
+                        raise ValueError("metric_window_size must be a positive integer")
+                    plan["metric_window_size"] = metric_window
+                self.plans[name] = plan
+                self.aggregators[name] = {"train": train_aggregator, "test": TimeseriesAggregator(**params)}
         if not self.plans:
             raise ValueError("at least one evaluation aggregator must be enabled")
-        self.aggregators = {}
         self.aggregated = {}
         self.results = {}
+        self.artifacts = {}
 
     def _plan(self, spec):
         params = dict(spec)
@@ -117,18 +196,12 @@ class Evaluator:
                     raise ValueError(f"unknown evaluator value {value!r} for {key}")
                 value = values[value]
             params[key] = value
-        params.setdefault("output_window", "output_length")
+        if params.get("output_window", "output_length") == "output_length":
+            params["output_window"] = None
         params.setdefault("boundary_policy", "crop")
         params.setdefault("gap_policy", "zero")
-        # Validate constructor values before running any inference.
-        validated = {**params, "output_window": 1 if params["output_window"] == "output_length"
-                     else params["output_window"]}
-        TimeseriesAggregator(**validated)
-        if metric_window is None:
-            metric_window = int(self.config.get("eval_window_size", 100))
-            if params.get("data_fn") == "window":
-                metric_window = max(1, metric_window // params["stride"])
-        if isinstance(metric_window, bool) or not isinstance(metric_window, int) or metric_window < 1:
+        if metric_window is not None and (isinstance(metric_window, bool) or
+                                          not isinstance(metric_window, int) or metric_window < 1):
             raise ValueError("metric_window_size must be a positive integer")
         if not isinstance(non_overlap, bool):
             raise ValueError("require_non_overlap must be a boolean")
@@ -139,7 +212,7 @@ class Evaluator:
                 "expected_length": values["scored_span"] if spec.get("time_offset", "output_start") == "output_start" else None}
 
     @staticmethod
-    def _series(dataset, *, train=False):
+    def _series(dataset, train=False):
         if getattr(dataset, "_corpus", None) is not None:
             raise ValueError("Evaluate each series separately, not a multi-series corpus")
         if isinstance(dataset, torch.Tensor):
@@ -156,7 +229,10 @@ class Evaluator:
         return series
 
     @torch.no_grad()
-    def evaluate(self, model, train_dataset, test_dataset, *, test_labels=None, epoch=0):
+    def evaluate(self, model, train_dataset, test_dataset, *, test_labels=None, epoch=0,
+                 output_dir=None):
+        export = self.artifact_options["enabled"] or output_dir is not None
+        export_root = self._artifact_root(output_dir, epoch) if export else None
         train = self._series(train_dataset, train=True)
         test = self._series(test_dataset)
         if train.shape[1] != test.shape[1]:
@@ -166,24 +242,19 @@ class Evaluator:
         labels = np.asarray(test_labels)
         if labels.ndim != 1 or len(labels) != len(test) or not np.isin(labels, [0, 1]).all():
             raise ValueError("test_labels must be binary timestep labels matching test data")
-        self.aggregators = {name: {} for name in self.plans}
+        for aggregators in self.aggregators.values():
+            aggregators["train"].reset(series_length=len(train))
+            aggregators["test"].reset(series_length=len(test), labels=labels)
         self.aggregated = {name: {} for name in self.plans}
         self.results = {}
+        self.artifacts = {}
         self._score_lengths = {}
         device = self.device
         if device is None:
             device = next(iter(getattr(model, "parameters", lambda: iter(()))()), torch.empty(0)).device
-        training = getattr(model, "training", None)
-        if hasattr(model, "to"):
-            model.to(device)
-        if hasattr(model, "eval"):
-            model.eval()
-        try:
-            self._score_split(model, train, None, "train", device)
-            self._score_split(model, test, labels, "test", device)
-        finally:
-            if training is not None:
-                model.train(training)
+
+        self._score_split(model, train, "train", device)
+        self._score_split(model, test, "test", device)
         for name, plan in self.plans.items():
             clean = self._covered(self.aggregated[name]["train"])
             target = self._covered(self.aggregated[name]["test"])
@@ -205,11 +276,113 @@ class Evaluator:
             self.results[name] = results
         if self.logger is not None:
             self._log(epoch)
+        if export:
+            self.write_artifacts(export_root)
         return deepcopy(self.results)
 
     __call__ = evaluate
 
-    def _score_split(self, model, series, labels, split, device):
+    def _artifact_root(self, directory, epoch):
+        for name in self.plans:
+            if name in (".", "..") or Path(name).name != name or "\\" in name or "\0" in name:
+                raise ValueError("artifact mode names must be single directory names")
+        if directory is None:
+            directory = self.artifact_options["output_dir"]
+        if directory is None:
+            root = self.config.get("tag_dir") or self.config.get("jepa_dir")
+            if root is None:
+                raise ValueError("set evaluator.artifacts.output_dir or pass output_dir to export artifacts")
+            directory = Path(root) / "evaluation"
+        directory = Path(directory).expanduser().resolve()
+        if epoch is not None:
+            if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+                raise ValueError("artifact epoch must be a nonnegative integer or None")
+            directory /= f"epoch_{epoch:06d}"
+        return directory
+
+    def write_artifacts(self, output_dir=None, *, epoch=None):
+        """Export the latest evaluation, with no model calls or metric recomputation.
+
+        Each mode directory contains scores.csv (covered test outputs, original
+        half-open intervals, counts and both >= predictions), metrics.csv (one
+        row per threshold source), and report.html. CSV/HTML can be disabled
+        independently in evaluator.artifacts. Passing epoch adds an epoch
+        directory; automatic exports use the evaluate() epoch.
+        """
+        if not self.results or self.results.keys() != self.plans.keys():
+            raise ValueError("complete an evaluation before exporting artifacts")
+        root = self._artifact_root(output_dir, epoch)
+        paths = {}
+        for name, metrics in self.results.items():
+            result = self.aggregated[name]["test"]
+            keep = result["cover_counts"] > 0
+            values = {key: result[key][keep] for key in
+                      ("scores", "labels", "indices", "intervals", "cover_counts")}
+            predictions = {source: (values["scores"] >= values_["threshold"]).astype(np.uint8)
+                           for source, values_ in metrics.items()}
+            directory = root / name
+            files = {}
+            if self.artifact_options["csv"] or self.artifact_options["html"]:
+                directory.mkdir(parents=True, exist_ok=True)
+            if self.artifact_options["csv"]:
+                path = directory / "scores.csv"
+                with path.open("w", newline="", encoding="utf-8") as stream:
+                    writer = csv.writer(stream)
+                    writer.writerow(("axis", "index", "start", "end", "score", "label", "cover_count",
+                                     "calibrated_prediction", "oracle_prediction"))
+                    for i, score in enumerate(values["scores"]):
+                        start, end = values["intervals"][i]
+                        writer.writerow((result["axis"], int(values["indices"][i]), int(start), int(end),
+                                         float(score), int(values["labels"][i]), int(values["cover_counts"][i]),
+                                         int(predictions["calibrated"][i]), int(predictions["oracle"][i])))
+                files["scores_csv"] = str(path)
+                path = directory / "metrics.csv"
+                fields = list(dict.fromkeys(key for row in metrics.values() for key in row))
+                with path.open("w", newline="", encoding="utf-8") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=["threshold_source", *fields])
+                    writer.writeheader()
+                    writer.writerows({"threshold_source": source, **row} for source, row in metrics.items())
+                files["metrics_csv"] = str(path)
+            if self.artifact_options["html"]:
+                path = directory / "report.html"
+                self._write_report(path, name, result["axis"], values, predictions, metrics)
+                files["html"] = str(path)
+            paths[name] = files
+        self.artifacts = paths
+        return deepcopy(paths)
+
+    @staticmethod
+    def _write_report(path, name, axis, values, predictions, metrics):
+        def packed(array, dtype):
+            return base64.b64encode(np.asarray(array, dtype=dtype).tobytes()).decode("ascii")
+
+        def json_value(value):
+            if isinstance(value, dict):
+                return {key: json_value(item) for key, item in value.items()}
+            if isinstance(value, np.generic):
+                value = value.item()
+            if isinstance(value, float) and not np.isfinite(value):
+                # Preserve infinite thresholds; undefined metrics are null.
+                return None if np.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+            return value
+
+        payload = {
+            "name": name, "axis": axis, "prediction_operator": ">=",
+            "metrics": json_value(metrics),
+            "arrays": {
+                "indices": packed(values["indices"], "<f8"),
+                "scores": packed(values["scores"], "<f4"),
+                "labels": packed(values["labels"], "u1"),
+                "intervals": packed(values["intervals"], "<f8"),
+                "counts": packed(values["cover_counts"], "<u4"),
+                **{source: packed(prediction, "u1") for source, prediction in predictions.items()},
+            },
+        }
+        encoded = base64.b64encode(json.dumps(payload, allow_nan=False).encode("utf-8")).decode("ascii")
+        template = Path(__file__).with_name("evaluation_report.html").read_text(encoding="utf-8")
+        path.write_text(template.replace("__EVALUATION_DATA__", encoded), encoding="utf-8")
+
+    def _score_split(self, model, series, split, device):
         groups = {}
         for name, plan in self.plans.items():
             groups.setdefault(plan["params"]["input_window"], []).append(name)
@@ -246,13 +419,6 @@ class Evaluator:
                     expected = plan["expected_length"]
                     if expected is not None and scores.shape[1] != expected:
                         raise ValueError(f"{name}: score length {scores.shape[1]} differs from placed span {expected}")
-                    if split not in self.aggregators[name]:
-                        params = dict(plan["params"])
-                        if params["output_window"] == "output_length":
-                            params["output_window"] = scores.shape[1]
-                        aggregator = TimeseriesAggregator(**params)
-                        aggregator.reset(series_length=len(series), labels=labels)
-                        self.aggregators[name][split] = aggregator
                     aggregator = self.aggregators[name][split]
                     aggregator.update_scores(scores[selected], starts[selected])
             for name in names:
