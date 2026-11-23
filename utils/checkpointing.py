@@ -64,7 +64,7 @@ class Checkpoints:
         self.saved_checkpoints[Path(path).name] = {
             "epoch": payload["epoch"], "selection": payload["selection"]}
 
-    def update(self, epoch, losses, evaluation, *, evaluated=False, scaler=None):
+    def update(self, epoch, losses, evaluation, evaluated=False, scaler=None):
         selections = []
         value = losses["validation"]["loss"]
         if np.isfinite(value) and value < self.best["validation_loss"]:

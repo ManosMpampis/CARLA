@@ -34,40 +34,69 @@ class Evaluator:
     def __init__(self, device, logger, config: dict):
         self.vus_window_size = ...
         self.plans = {name: self._plan(plan) for name, plan in config.items()}
-        self.threshold = {plan: np.zeros[0] for plan in config.keys()}
+        self.threshold = {plan: {"calibrate": {"threshold":0, "quantile": 0}, "oracle": {"threshold":0, "quantile": 0}} for plan in config.keys()}
         pass
 
     def _plan(self, config):
         # Changes the data
-        data_config = {
-            "stride": config.pop("stride", None),
-            
+        eval_config = {
             "latency": config.pop("latency", 0),
             "true_target_policy": config.pop("true_target_policy", "count"),
-            "true_target_window": config.pop("true_target_window", None),
+            "true_target_window": config.pop("true_target_window", (0, 1)),
             "true_target_value": config.pop("true_target_value", 1),
+            "wsz": config.pop("eval_wsz", None),
+            "stride": config.pop("eval_stride", None)
         }
 
         plan = {"aggregator": TimeseriesAggregator(**config["aggregator"]),
-                "data_transform": MappingDataset() ,
+                "data_wrapper": MappingDataset(config["aggregator"], **eval_config) ,
             }
         return plan
 
     def calibrate(self, model, dataset, quantile):
         for name, plan in self.plans.items():
-            calib_dataset = plan.data_transform(dataset)
-            dataloader = get_val_dataloader(calib_dataset)
-            scores = plan.aggregator.evaluate_ts(model, dataloader)
-            self.threshold[name] = float(np.quantile(scores, quantile))
+            plan.data_wrapper.reset() #TODO: find a way to not need to reset for the calibration and then again for the evaluation/__call__, because calibration runs with train data and evaluation with test, we need to recalculate the target ts if we reset
+            plan.data_wrapper.assign_dataset(dataset)
+            dataloader = get_val_dataloader(plan.data_wrapper)
+            self.train_scores[name] = plan.aggregator.evaluate_ts(model, dataloader)
+            self.threshold[name]["calibrate"]["threshold"] = float(np.quantile(self.train_scores[name], quantile))
+            self.threshold[name]["calibrate"]["quantile"] = float(np.quantile(self.train_scores[name], quantile))
 
+    def _oracle_threshold(self, scores: np.ndarray, targets: np.ndarray, name: str = None) -> float:
+        precision, recall, thresholds = precision_recall_curve(targets, scores)
+        f1 = np.divide(2 * precision * recall, precision + recall, out=np.zeros_like(precision), where=(precision + recall) > 0, )
+        oracle_th = float(thresholds[int(np.argmax(f1))])
+        self.threshold[name]["oracle"]["threshold"] = oracle_th[name]
+        if name:
+            self.train_scores[name] = np.sort(self.train_scores[name])
+            if oracle_th[name] <= self.train_scores[name][0]:
+                self.threshold[name]["oracle"]["quantile"] = 0
+                return
+            elif oracle_th[name] >= self.train_scores[name][-1]:
+                self.threshold[name]["oracle"]["quantile"] = 1
+                return
+            else:
+                i = np.searchsorted(self.train_scores[name], oracle_th[name], side="left")
+                if self.train_scores[name][i] == oracle_th[name]:
+                    self.threshold[name]["oracle"]["quantile"] = i / (len(self.train_scores[name]) - 1) if len(self.train_scores[name]) > 1 else 0.0
+                else:
+                    fraction = (oracle_th[name] - self.train_scores[name][i - 1]) / (self.train_scores[name][i] - self.train_scores[name][i - 1])
+                    self.threshold[name]["oracle"]["quantile"] = (i - 1 + fraction) / (len(self.train_scores[name]) - 1)
+        return oracle_th
+    
     def __call__(self, model, dataset):
         evaluation_metrics = {}
         for name, plan in self.plans.items():
-            check_dataset = plan.data_transform(dataset)
-            dataloader = get_val_dataloader(check_dataset)
+            plan.data_wrapper.reset()
+            plan.data_wrapper.assign_dataset(dataset)
+            dataloader = get_val_dataloader(plan.data_wrapper)
             scores = plan.aggregator.evaluate_ts(model, dataloader)
-            targets = check_dataset.targets()
-            evaluation_metrics[name] = combine_all_evaluation_scores(scores, targets, self.threshold[name], self.vus_window_size)
+            targets = plan.data_wrapper.get_target_ts()
+            oracle_threshold = self._oracle_threshold(scores, targets, name)
+            evaluation_metrics[name] = {
+                "calibrated": combine_all_evaluation_scores(scores, targets, self.threshold[name]["calibrate"]["threshold"], self.vus_window_size),
+                "oracle": combine_all_evaluation_scores(scores, targets, self.threshold[name]["oracle"]["threshold"], self.vus_window_size),
+            }
         return evaluation_metrics
 
     def running_evaluator(self, model, dataset):
@@ -79,7 +108,7 @@ class Evaluator:
                 target = batch["target"]
                 evaluation_metrics = combine_all_evaluation_scores(score, target, self.threshold[name], self.vus_window_size) #TODO: keep a running metrics evaluation and or scores for "live" view
 
-class Evaluator:
+class Evaluator2:
     """Score train/test windows once and evaluate configurable aggregations.
 
     ``config['evaluator']`` overrides the presets in configs/evaluator.yml.

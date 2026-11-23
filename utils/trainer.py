@@ -30,6 +30,7 @@ class Trainer:
         self.scheduler = scheduler
         self.device = device
         self.logger = logger
+        self.quantile = ...
         self.amp = bool(amp)
         self.scaler = torch.amp.GradScaler(device, enabled=self.amp)
 
@@ -136,10 +137,15 @@ class Trainer:
                 record_losses(self.p, split, values, step, self.logger.log)
             self.logger.scalar_summary("train", "learning_rate",
                                        self.optimizer.param_groups[0]["lr"], step)
-            do_eval = eval_fn is not None and should_evaluate(step, epochs, eval_every)
-            evaluation = eval_fn(step) if do_eval else None
+
+            if should_evaluate(step, epochs, eval_every):
+                self.Evaluator.calibrate(self.model, train_loader.dataset, self.quantile) #TODO: check if I need to calibrate with validation sub_set
+                evaluation_metrics = self.Evaluator(self.model, test_loader.dataset)
+                for phase, metric in evaluation_metrics.items():
+                    self.logger.metrics_summary(phase, metric, step)
+            
             checkpoints.update(step, {"train": train_losses, "validation": val_losses},
-                               evaluation, evaluated=do_eval, scaler=self.scaler)
+                               evaluation, evaluated=should_evaluate(step, epochs, eval_every), scaler=self.scaler)
         return checkpoints.best["validation_loss"]
 
     @staticmethod
