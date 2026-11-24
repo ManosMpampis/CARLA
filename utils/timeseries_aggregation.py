@@ -35,12 +35,14 @@ AGGREGATE_STRATEGIES = {
 }
     
 class TimeseriesAggregator:
+    """Accumulate scores by original timestep or by input window index."""
+
     def __init__(
             self,
             input_length: int,
-            check_window: tuple, 
-            mask: tuple, 
-            aggregate_scores_strategy: str = "None", 
+            check_window: tuple,
+            mask: tuple | None,
+            aggregate_scores_strategy: str | None = None,
             weighted_output: bool = False,
             device: str = "cpu",
             ):

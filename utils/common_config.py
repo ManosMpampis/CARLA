@@ -3,12 +3,12 @@ import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, CosineAnnealingWarmRestarts, MultiStepLR, ConstantLR, SequentialLR
 
 from utils.collate import collate_custom
-from losses import RecCALoss, ReconL1Loss, LeWMLoss
+from losses import ReconL1Loss, LeWMLoss #RecCALoss
 from data import PSM, SMD, TSB
 
-
+# TODO: fix RecCALoss
 CRITERION_BUILDERS = {
-    "lewm_rec_ca": RecCALoss,
+    #"lewm_rec_ca": RecCALoss,
     "recon_l1": ReconL1Loss,
     "lewm": LeWMLoss,
 }

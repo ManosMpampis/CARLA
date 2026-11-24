@@ -6,6 +6,8 @@ from utils.timeseries_aggregation import TimeseriesAggregator
 
 # TODO find a way to initialise without the dataset, it is a wrapper
 class MappingDataset(Dataset):
+    """Rewindow a dataset and map its point labels onto the score axis."""
+
     base_folder = ""
 
     def __init__(
@@ -15,9 +17,8 @@ class MappingDataset(Dataset):
         true_target_policy: str = "count",
         true_target_window: tuple = (0, 1),
         true_target_threshold: int = 1,
-        
-        wsz = None,
-        stride = None,
+        wsz=None,
+        stride=None,
     ):
 
         super().__init__()
