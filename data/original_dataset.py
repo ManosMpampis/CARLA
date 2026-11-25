@@ -83,16 +83,16 @@ class OriginalDataset(Dataset):
     def validation_split(cls, train_dataset, val_fraction):
         """Validation tail, or the full training series when a split is too short."""
         train_dataset._set_training_series(val_fraction=val_fraction)
-        val = cls.__new__(cls)
-        val.train = False
-        val.transform = None
-        val.wsz = train_dataset.wsz
-        val.stride = train_dataset.stride
-        val.data = train_dataset.val_data
-        val.targets = train_dataset.val_targets
+        return cls._series_split(train_dataset, train_dataset.val_data, train_dataset.val_targets)
 
-        val.mean, val.std = train_dataset.mean, train_dataset.std
-        return val
+    @classmethod
+    def _series_split(cls, source, data, targets):
+        split = cls.__new__(cls)
+        split.__dict__.update(source.__dict__)
+        split.train = False
+        split.data = data
+        split.targets = targets
+        return split
     
     def get_ts(self, index):
         idx = index * self.stride
@@ -109,6 +109,11 @@ class OriginalDataset(Dataset):
     @property
     def std(self):
         return self.scaler.scale_
+
+    @property
+    def features(self):
+        """Number of signal columns in the (time, features) array."""
+        return self.data.shape[1]
 
     def __len__(self):
         return (self.data.shape[0] - self.wsz) // self.stride + 1

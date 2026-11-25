@@ -4,6 +4,7 @@ import torch
 
 from utils.timeseries_aggregation import TimeseriesAggregator
 
+
 class MappingDataset(Dataset):
     """Rewindow a dataset and map its point labels onto the score axis."""
 
@@ -15,7 +16,7 @@ class MappingDataset(Dataset):
         latency: int = 0,
         true_target_policy: str = "count",
         true_target_window: tuple = (0, 1),
-        true_target_threshold: int = 1,
+        true_target_threshold: float = 1,
         wsz=None,
         stride=None,
     ):
@@ -24,20 +25,16 @@ class MappingDataset(Dataset):
 
         self.eval_wsz = wsz
         self.eval_stride = stride
-        self.targets_aggregator = TimeseriesAggregator(aggregator_config)
+        self.targets_aggregator = TimeseriesAggregator(**aggregator_config)
 
         self.latency = int(latency)
 
         self.true_target_policy = true_target_policy.lower()
         if self.true_target_policy not in ("count", "percent"):
             raise ValueError("true_target_policy must be count or percent")
-        if self.true_target_policy == "count":
-            self._target_policy = self._target_policy_count
-        elif self.true_target_policy == "percent":
-            self._target_policy = self._target_policy_percent
         self.true_target_window = true_target_window
-        if true_target_window[0] >= true_target_window[1]:
-            raise ValueError("true_target_window must be a nonempty [start, end] interval")
+        if len(true_target_window) != 2 or true_target_window[0] >= true_target_window[1]:
+            raise ValueError("true_target_window must be a nonempty [start, end) interval")
         self.true_target_threshold = true_target_threshold
 
     def assign_dataset(self, dataset):
@@ -50,7 +47,8 @@ class MappingDataset(Dataset):
         self.original_stride = dataset.stride
         self.wsz = self.original_wsz if self.eval_wsz is None else self.eval_wsz
         self.stride = self.original_stride if self.eval_stride is None else self.eval_stride
-    
+        self.reset()
+
     def _target_policy_percent(self, tg_window):
         return ((np.sum(tg_window, axis=0)/len(tg_window))>=self.true_target_threshold).astype(int)
     
@@ -68,16 +66,14 @@ class MappingDataset(Dataset):
         ts_org = self.data[idx : idx + self.wsz]
 
         if len(self.targets) > 0:
-            target = self.targets[idx+self.latency: idx + self.wsz + self.latency]
+            start = idx + self.latency
+            target = self.targets[start : start + self.wsz]
         else:
-            target = np.zeros(ts_org.shape[0]).astype(int)
-
-        ts_size = (ts_org.shape[0], ts_org.shape[1])
-
+            target = np.zeros(self.wsz, dtype=int)
         out = {
             "ts_org": ts_org,
             "target": target,
-            "meta": {"start_idx": idx, "end_idx": idx + self.wsz, "ts_size": ts_size, "index": index},
+            "meta": {"start_idx": idx, "end_idx": idx + self.wsz, "ts_size": ts_org.shape, "index": index},
         }
         
         starts = index if self.targets_aggregator.per_window else idx

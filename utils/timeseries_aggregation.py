@@ -25,10 +25,10 @@ AGGREGATE_STRATEGIES = {
 }
     
 class TimeseriesAggregator:
-    """Mask raw scores, reduce and broadcast if configured, then place check_window.
+    """Project raw score rows through a half-open check window and mask.
 
-    All outputs use original timestep indices. A reduced score fills the
-    requested interval relative to its input start, regardless of input length.
+    Reduction yields a single score. Outputs are placed at input timesteps
+    or, when per_window is set, at the corresponding dataset window index.
     """
 
     def __init__(
@@ -46,7 +46,7 @@ class TimeseriesAggregator:
         if aggregate_scores_strategy not in AGGREGATE_STRATEGIES:
             raise ValueError("aggregate_scores_strategy must be None, 'mean', or 'sum'")
         if aggregate_scores_strategy is not None:
-            check_window = (0, 1) #when average or sum into one value the check window should be only this value
+            check_window = (0, 1)
         self.aggregate_scores_strategy = AGGREGATE_STRATEGIES[aggregate_scores_strategy]
         self.weighted_output = weighted_output
         self.device = torch.device(device) if device is not None else None
@@ -55,7 +55,7 @@ class TimeseriesAggregator:
         self.check_window = check_window
         start, end = check_window
         self.width = end - start
-        if per_window and self.width == 1:
+        if per_window and self.width != 1:
             raise ValueError("per_window True needs an aggregate_score_strategy or final output width equal to 1")
         self.per_window = per_window
         if not 0 <= start < end:

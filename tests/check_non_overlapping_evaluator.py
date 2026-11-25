@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from utils.evaluator import Evaluator
 from utils.timeseries_aggregation import TimeseriesAggregator
+from data.mapping_dataset import MappingDataset
 
 
 class Model(torch.nn.Module):
@@ -32,7 +33,7 @@ def check_window_classification():
     labels[6] = 1
     test = SimpleNamespace(data=values[:, None], targets=labels, wsz=4, stride=2)
     aggregation = {"input_length": 4, "check_window": (0, 1), "mask": None,
-                   "aggregate_scores_strategy": "mean"}
+                   "aggregate_scores_strategy": "mean", "per_window": True}
     for latency in (0, 2):
         starts = range(0, len(values) - latency - test.wsz + 1, test.stride)
         expected_scores = np.array([values[i:i + test.wsz].mean() for i in starts])
@@ -40,30 +41,25 @@ def check_window_classification():
         results = []
         for width in (1, test.stride):
             plan = {"latency": latency, "aggregator": {**aggregation, "check_window": (0, width)}}
-            evaluator = Evaluator("cpu", None, {name: plan}, batch_size=2)
+            evaluator = Evaluator("cpu", None, {"batch_size": 2, name: plan})
             model = Model()
             evaluator.calibrate(model, train, 0.9)
             result = evaluator(model, test)[name]
             results.append(result)
             wrapper = evaluator.plans[name]["data_wrapper"]
             aggregator = evaluator.plans[name]["aggregator"]
-            timeline = np.zeros(starts[-1] + width)
-            coverage = np.zeros_like(timeline)
-            for start, score in zip(starts, expected_scores):
-                timeline[start:start + width] = score
-                coverage[start:start + width] = 1
-            np.testing.assert_array_equal(aggregator.results(), timeline)
-            np.testing.assert_array_equal(aggregator.counts, coverage)
-            np.testing.assert_array_equal(wrapper.get_window_targets(), expected_targets)
+            np.testing.assert_array_equal(aggregator.results(), expected_scores)
+            np.testing.assert_array_equal(aggregator.counts, np.ones(len(starts)))
+            np.testing.assert_array_equal(wrapper.get_target_ts(), expected_targets)
             np.testing.assert_allclose(evaluator.train_scores[name], expected_scores / 10)
             oracle = evaluator.threshold[name]["oracle"]["threshold"]
             assert result["oracle"]["tp"] == np.sum((expected_scores >= oracle) & expected_targets)
             np.testing.assert_allclose(model.seen, [values[i] / 10 for i in starts] + [values[i] for i in starts])
         assert results[0] == results[1]
 
-    masked = TimeseriesAggregator(3, (0, 4), (1, 3), aggregate_scores_strategy="mean")
-    masked.update_record(torch.tensor([[30, 3, 6]]), torch.tensor([0]))
-    np.testing.assert_array_equal(masked.results(), [3, 3, 3, 3])
+    masked = TimeseriesAggregator(4, (0, 4), (1, 3))
+    masked.update_record(torch.tensor([[30, 3, 6, 30]]), torch.tensor([0]))
+    np.testing.assert_array_equal(masked.results(), [0, 3, 6, 0])
 
     try:
         Evaluator("cpu", None, {name: {"latency": -1, "aggregator": aggregation}})
@@ -71,6 +67,34 @@ def check_window_classification():
         assert "latency" in str(exc)
     else:
         raise AssertionError("negative latency was accepted")
+
+
+def check_target_cache():
+    config = {"input_length": 4, "check_window": (1, 3), "mask": None}
+    labels = np.array([0, 0, 1, 0, 0, 1, 1, 0, 0])
+    series = SimpleNamespace(data=np.zeros((len(labels), 1)), targets=labels, wsz=4, stride=2)
+    dataset = MappingDataset(config, latency=1, true_target_window=(-1, 2),
+                             true_target_policy="percent", true_target_threshold=0.5)
+    dataset.assign_dataset(series)
+    np.testing.assert_array_equal(dataset[2]["target"], labels[5:9])
+    np.testing.assert_array_equal(dataset[0]["target"], labels[1:5])
+    assert len(dataset.targets_aggregator) == 0
+
+    mapped = np.array([0, *labels[2:8]])
+    expected = [np.mean(mapped[max(0, i - 1):i + 2]) >= 0.5 for i in range(len(mapped))]
+    dataset.get_target_ts()[:] = 0
+    np.testing.assert_array_equal(dataset.get_target_ts(), expected)
+    counts = dataset.targets_aggregator.counts.copy()
+    dataset[2]
+    np.testing.assert_array_equal(dataset.get_target_ts(), expected)
+    np.testing.assert_array_equal(dataset.targets_aggregator.counts, counts)
+    dataset.reset()
+    np.testing.assert_array_equal(dataset.get_target_ts(), expected)
+
+    dataset.assign_dataset(SimpleNamespace(data=series.data, targets=[], wsz=4, stride=2))
+    np.testing.assert_array_equal(dataset.get_target_ts(), np.zeros_like(expected))
+    dataset.assign_dataset(SimpleNamespace(data=series.data[:1], targets=labels[:1], wsz=4, stride=2))
+    assert len(dataset) == len(dataset.get_target_ts()) == 0
 
 
 def main():
@@ -112,7 +136,8 @@ def main():
     np.testing.assert_array_equal(cropped.results(), [0, 2, 6, 10])
 
     check_window_classification()
-    print("Timestep scoring, overlap averaging, and window classification passed.")
+    check_target_cache()
+    print("Timestep scoring, overlap averaging, window classification, and target caching passed.")
 
 
 if __name__ == "__main__":

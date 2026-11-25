@@ -1,20 +1,16 @@
-import os
-import numpy as np
-
-from utils.mypath import MyPath
-from .original_dataset import OriginalDataset
-from data.original_dataset import training_split_bounds
-
-
 import csv
 from dataclasses import dataclass
 from numbers import Integral
+import os
 from pathlib import Path
 import re
 import warnings
 
 import numpy as np
 import pandas as pd
+
+from utils.mypath import MyPath
+from .original_dataset import OriginalDataset
 
 
 _TRAIN_SUFFIX = re.compile(r"_tr_([0-9]+)_1st_([0-9]+)$")
@@ -122,51 +118,29 @@ class TSB(OriginalDataset):
             raise ValueError("tsb_evaluation_scope must be test or full")
         
         self.series_start = sample.train_end if self.evaluation_scope == "test" else 0
-        self.data = sample.data[:sample.train_end]
-        self.features = self.data.shape[-1] #TODO: check if it is correct
         
         if self.wsz <= 0 or self.stride <= 0:
             raise ValueError("TSB-AD wsz and stride must both be positive")
         
         if self.train:
-            self.scaler.fit(self.data)
-            self.targets = sample.labels[:self.series_start]
+            self.data = self.scaler.fit_transform(sample.data[:self.train_end])
+            self.targets = sample.labels[:self.train_end]
         else:
             self.scaler.mean_ = mean_data
             self.scaler.scale_ = std_data
-        self.data = self.scaler.transform(self.data)
         self.extract_test_set(sample)
+        if not self.train:
+            self.data, self.targets = self.test_data, self.test_target
 
     def extract_test_set(self, sample):
-        self.test_target = sample.labels[sample.train_end:]
-        self.test_data = self.scaler.transform(sample.data[sample.train_end:])
+        self.test_target = sample.labels[self.series_start:]
+        self.test_data = self.scaler.transform(sample.data[self.series_start:])
 
     def _set_training_series(self, val_fraction):
-        cut, val_start = training_split_bounds(len(self.data), self.wsz, float(val_fraction))
-        if self.stride <= 0:
-            raise ValueError("stride must be positive")
-        self.data = self.scaler.inverse_transform(self.data)
-        self.test_data = self.scaler.inverse_transform(self.test_data)
-        
-        self.val_data = self.data[val_start:]
-        self.val_targets = self.targets[val_start:]
-
-        self.data = self.data[:cut]
-        self.targets = self.targets[:cut]
-        
-        self.scaler.fit(self.data)
-        self.data = self.scaler.transform(self.data)
-        self.val_data = self.scaler.transform(self.val_data)
-        self.test_data = self.scaler.transform(self.test_data)
+        raw_test_data = self.scaler.inverse_transform(self.test_data)
+        super()._set_training_series(val_fraction)
+        self.test_data = self.scaler.transform(raw_test_data)
 
     @classmethod
     def test_split(cls, train_dataset):
-        """Test tail, or the full training series when a split is too short."""
-        test = cls.__new__(cls)
-        test.train = False
-        test.transform = None
-        test.wsz = train_dataset.wsz
-        test.stride = train_dataset.stride
-        test.data = train_dataset.test_data
-        test.targets = train_dataset.test_targets
-        return test
+        return cls._series_split(train_dataset, train_dataset.test_data, train_dataset.test_target)

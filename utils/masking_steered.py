@@ -12,7 +12,7 @@ import torch
 
 from data.augment import SubAnomaly, TorchSubAnomaly
 
-# TODO: implement it in torch
+
 class SubAnomalyMaskCollator:
     """Sample one shared temporal span per window and inject SubAnomaly."""
 
