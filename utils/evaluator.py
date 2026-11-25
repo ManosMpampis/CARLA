@@ -32,6 +32,7 @@ def evaluation_options(config: dict) -> dict:
 
 class Evaluator:
     def __init__(self, device, logger, config: dict):
+        self.logger = logger
         self.device = device
         self.loader_config = {"batch_size": config.pop("batch_size", 1), "num_workers": 0}
         self.vus_window_size = config.pop("vus_window_size",100)
@@ -106,7 +107,8 @@ class Evaluator:
         for name, plan in self.plans.items():
             check_dataset = plan.data_transform(dataset)
             dataloader = get_val_dataloader(check_dataset)
-            for batch in dataloader:
+            for i, batch in enumerate(dataloader):
                 score = plan.aggregator(model, batch)
                 target = batch["target"]
                 evaluation_metrics = combine_all_evaluation_scores(score, target, self.threshold[name], self.vus_window_size) #TODO: keep a running metrics evaluation and or scores for "live" view
+                self.logger.metrics_summary(f"running/{name}", evaluation_metrics, i)
