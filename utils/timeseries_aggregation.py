@@ -44,39 +44,44 @@ class TimeseriesAggregator:
             mask: tuple | None,
             aggregate_scores_strategy: str | None = None,
             weighted_output: bool = False,
-            device: str = "cpu",
+            device: str | torch.device | None = "cpu",
+            data_fn: str | None = None,
             ):
-        assert len(check_window) == 2, "check window should have two values, start and end"
-        assert aggregate_scores_strategy == "None" or aggregate_scores_strategy == None or aggregate_scores_strategy == "Sum"
-        if aggregate_scores_strategy not in (None, "mean", "sum"):
-            raise ValueError("aggregate_scores_strategy must be None, 'mean', or 'sum'")
+        if not isinstance(check_window, (tuple, list)) or len(check_window) != 2:
+            raise ValueError("check_window must be [start, end]")
+        if aggregate_scores_strategy not in AGGREGATE_STRATEGIES:
+                    raise ValueError("aggregate_scores_strategy must be None, 'mean', or 'sum'")
         self.aggregate_scores_strategy = AGGREGATE_STRATEGIES[aggregate_scores_strategy]
         self.weighted_output = weighted_output
-        self.device = torch.divide(device)
-        # maybe on evaluator
-        self.latency = latency
-        if data_fn not in (None, "window"):
-                    raise ValueError("data_fn must be None or 'window'")
-
-        # Aggregator
+        self.device = torch.device(device) if device is not None else None
+        
+        start, end = check_window
+        if not 0 <= start < end <= self.input_length:
+            raise ValueError("check_window must be a nonempty interval within input_length")
         self.check_window = check_window
         self.input_length = input_length
-        
-        self.mask = np.zeros(input_length, np.int8)
-        self.mask = self.mask[self.check_window[0]: self.check_window[1]]
-        assert mask == None or len(mask) == 2 or len(mask) == len(self.mask), \
-            "Aggregator mask should be of length 2, [start:end] or a complete mask of length equal to your checking output"
-        if mask == None:
-            self.mask = np.ones_like(self.mask, np.int8)
-        if len(mask) == 2:
-            for i in range(mask[0], mask[1]):
-                self.mask[i] = 1
-        elif len(mask) == len(self.mask):
-            self.mask = mask
-        self.width = len(self.mask)
 
-        self.record = np.empty(0, dtype=float)
-        self.counts = np.empty(0, dtype=np.int32)
+        self.width = end - start
+        if data_fn not in (None, "window"):
+            raise ValueError("data_fn must be None or 'window'")
+        if data_fn == "window" and aggregate_scores_strategy is None:
+            raise ValueError("Window scores require aggregate_scores_strategy='mean' or 'sum'")
+        
+        self.mask = np.ones(self.width, dtype=np.int8)
+        if mask is not None:
+            if len(mask) == 2:
+                left, right = (_integer("mask boundary", value) for value in mask)
+                if not 0 <= left <= right <= self.width:
+                    raise ValueError("mask bounds must be within check_window")
+                self.mask.fill(0)
+                self.mask[left:right] = 1
+            elif np.shape(mask) == (self.width,) and np.isin(mask, [0, 1]).all():
+                self.mask = np.array(mask, dtype=np.int8)
+            else:
+                raise ValueError("mask must be an interval or a binary mask matching check_window")
+        if self.data_fn == "window" and not self.mask.any():
+            raise ValueError("Window scores require at least one unmasked timestep")
+        self.reset()
 
     def reset(self):
         self.record = np.empty(0, dtype=float)
@@ -84,17 +89,17 @@ class TimeseriesAggregator:
 
     def _extract_device(self, model):
         if self.device is None:
-            device = next(iter(model.parameters), torch.empty(0)).device
-            self.device = torch.device(device)
+            parameters = getattr(model, "parameters", lambda: iter(()))
+            self.device = next(iter(parameters()), torch.empty(0)).device
+
+    def _update_batch(self, model, batch):
+        ts = batch["ts_org"].to(self.device).transpose(1, 2).contiguous()
+        self.update_record(model.score(ts), batch["meta"]["start_idx"])
 
     @torch.no_grad()
     def evaluate(self, model, batch):
         self._extract_device(model)
-        ts = batch["ts_org"].to(self.device)
-        ts = ts.transpose(1, 2).contiguous()
-        starts = batch["meta"]["start_idx"]
-        scores = model.score(ts)
-        self.update_record(scores, starts)
+        self._update_batch(model, batch)
         return self.results()
 
     __call__ = evaluate
@@ -102,44 +107,30 @@ class TimeseriesAggregator:
     @torch.no_grad()
     def evaluate_ts(self, model, dataloader):
         self.reset()
+        self._extract_device(model)
         for batch in dataloader:
-            self._extract_device(model)
-            ts = batch["ts_org"].to(self.device)
-            ts = ts.transpose(1, 2).contiguous()
-            starts = batch["meta"]["start_idx"]
-            scores = model.score(ts)
-            self.update_record(scores, starts)
+            self._update_batch(model, batch)
         return self.results()
-    
+
     def update_record(self, scores, starts):
-        scores = self.aggregate_scores_strategy(scores.detach().cpu().numpy())
+        """Add score rows at input starts or, in window mode, dataset indices."""
+
+        start, end = self.check_window
+        scores = self.aggregate_scores_strategy(scores.detach().cpu().numpy())[:, start:end]* self.mask
         starts = starts.detach().cpu().numpy()
 
-        scores = scores[self.check_window[0]: self.check_window[1]]
-        scores = scores*self.mask
-
-        if starts.size == 0 or self.width == 0:
-            return
-
         required = int(starts.max()) + self.width
+        self._extend_record(required=required)
+        for score, window_start in zip(scores, starts):
+            window = slice(window_start + start, window_start + end)
+            self.record[window] += score
+            self.counts[window] += self.mask if self.weighted_output else 1
+
+    def _extend_record(self, required):
         extra = required - self.record.size
         if extra > 0:
             self.record = np.pad(self.record, (0, extra))
             self.counts = np.pad(self.counts, (0, extra))
-
-        for score, start in zip(scores, starts):
-            window = slice(start, start + self.width)
-            self.record[window] = score
-            self.counts[window] += self.mask if self.weighted_output else 1
-
-        # for score, start in zip(scores, starts):
-        #     for i, check in enumerate(range(start,start+len(self.mask))):
-        #         if len(self.record)>=check:
-        #             self.record[check] = score[i]
-        #             self.counts[check] += 1
-        #         else:
-        #             self.record.append(score[i])
-        #             self.counts.append(1)
 
     def results(self):
         means = np.full(self.record.shape, 0, dtype=float)
@@ -147,7 +138,7 @@ class TimeseriesAggregator:
         return means
 
     def __len__(self):
-        return self.counts.shape[0] #TODO: check if it is the length
+        return len(self.counts)
 
 class TimeseriesAggregator2:
     """Batch/online score aggregation with explicit coverage and label alignment.
