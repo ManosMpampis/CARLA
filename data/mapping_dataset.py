@@ -4,7 +4,6 @@ import torch
 
 from utils.timeseries_aggregation import TimeseriesAggregator
 
-# TODO find a way to initialise without the dataset, it is a wrapper
 class MappingDataset(Dataset):
     """Rewindow a dataset and map its point labels onto the score axis."""
 
@@ -23,39 +22,41 @@ class MappingDataset(Dataset):
 
         super().__init__()
 
-        self.wsz = wsz
-        self.stride = stride
-
+        self.eval_wsz = wsz
+        self.eval_stride = stride
         self.targets_aggregator = TimeseriesAggregator(aggregator_config)
-        self.latency = latency
+
+        self.latency = int(latency)
 
         self.true_target_policy = true_target_policy.lower()
+        if self.true_target_policy not in ("count", "percent"):
+            raise ValueError("true_target_policy must be count or percent")
         if self.true_target_policy == "count":
             self._target_policy = self._target_policy_count
         elif self.true_target_policy == "percent":
-            self._target_policy = self._target_policy_count
-        else:
-            raise ValueError("true_target_policy should be of type count or percent")
-        self.true_target_window = true_target_window  # training set or test set
-        assert true_target_window[0] < (true_target_window[1]+1), "true_target_window should allow to compare one number"
+            self._target_policy = self._target_policy_percent
+        self.true_target_window = true_target_window
+        if true_target_window[0] >= true_target_window[1]:
+            raise ValueError("true_target_window must be a nonempty [start, end] interval")
         self.true_target_threshold = true_target_threshold
-
 
     def assign_dataset(self, dataset):
         self.dataset = dataset
         self.data = self.dataset.data
-        self.targets = self.dataset.targets
+        self.targets = np.asarray(self.dataset.targets)
+        if self.targets.ndim != 1 or len(self.targets) not in (0, len(self.data)):
+            raise ValueError("targets must be empty or contain one label per timestep")
         self.original_wsz = dataset.wsz
         self.original_stride = dataset.stride
-
-    #TODO: check in len is correct or needs shape
-    #TODO: check if axis is correct
+        self.wsz = self.original_wsz if self.eval_wsz is None else self.eval_wsz
+        self.stride = self.original_stride if self.eval_stride is None else self.eval_stride
+    
     def _target_policy_percent(self, tg_window):
         return ((np.sum(tg_window, axis=0)/len(tg_window))>=self.true_target_threshold).astype(int)
     
     def _target_policy_count(self, tg_window):
         return (np.sum(tg_window, axis=0)>=self.true_target_threshold).astype(int)
-
+    
     def __getitem__(self, index):
         """
         Args:
@@ -78,14 +79,16 @@ class MappingDataset(Dataset):
             "target": target,
             "meta": {"start_idx": idx, "end_idx": idx + self.wsz, "ts_size": ts_size, "index": index},
         }
-        target_torch = torch.from_numpy(target).unsqueeze() # Aggregator need batches
-        idx_torch = torch.Tensor(idx).unsqueeze() # Aggregator need batches
+        
+        starts = index if self.targets_aggregator.per_window else idx
         if len(self.targets_aggregator) != len(self):  #TODO: check if this is true in every case in order to not recalculate the whole timeseries, then save the target_ts one time to use
-            self.targets_aggregator.update_record(target_torch, idx_torch)
+            self.targets_aggregator.update_record(target[None, ...], starts[None, ...])
         return out
 
     def get_target_ts(self):
         target_ts = (self.targets_aggregator.results() >= 1).astype(int)
+        if self.targets_aggregator.per_window:
+            return target_ts[self.targets_aggregator.counts > 0]
         target_ts_range_start = 0
         target_ts_range_end = len(target_ts)
         if self.true_target_window[0] < 0: # Can not check from start so we start further from the start
@@ -96,8 +99,7 @@ class MappingDataset(Dataset):
         for i in range(target_ts_range_start, target_ts_range_end):
             start_idx = i + self.true_target_window[0]
             end_idx = i + self.true_target_window[1]
-            target_ts[i] = self._target_policy(self.data[start_idx : end_idx])
-        # TODO: in event of targets be altered from true_target_window, we do not have the same number of targets to output scores.
+            target_ts[i] = self._target_policy(target_ts[start_idx : end_idx])
         target_ts = target_ts[target_ts_range_start: target_ts_range_end]
         return target_ts
     
